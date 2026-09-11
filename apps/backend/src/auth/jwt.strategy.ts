@@ -22,10 +22,12 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         username: true,
         name: true,
         role: true,
+        isActive: true,
         passwordChangedAt: true,
       },
     });
     if (!user) return null;
+    if (!user.isActive) return null;
     if (
       user.passwordChangedAt &&
       payload.iat &&

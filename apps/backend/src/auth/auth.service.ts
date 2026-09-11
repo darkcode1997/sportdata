@@ -93,6 +93,9 @@ export class AuthService {
     if (!passwordValid) {
       throw new UnauthorizedException('Email/username hoặc mật khẩu không đúng');
     }
+    if (!user.isActive) {
+      throw new UnauthorizedException('Tài khoản đã bị vô hiệu hóa. Vui lòng liên hệ quản trị viên');
+    }
 
     const {
       password,
@@ -113,7 +116,7 @@ export class AuthService {
     const user = await this.findUserByIdentifier(forgotPasswordDto.identifier.trim());
     let resetUrl: string | undefined;
 
-    if (user) {
+    if (user?.isActive) {
       const cooldownMs = 60 * 1000;
       const requestedRecently =
         user.resetPasswordRequestedAt &&
@@ -163,6 +166,7 @@ export class AuthService {
       where: {
         resetPasswordTokenHash: tokenHash,
         resetPasswordExpiresAt: { gt: new Date() },
+        isActive: true,
       },
     });
 
@@ -176,6 +180,7 @@ export class AuthService {
         id: user.id,
         resetPasswordTokenHash: tokenHash,
         resetPasswordExpiresAt: { gt: now },
+        isActive: true,
       },
       data: {
         password: await this.hashPassword(resetPasswordDto.password),
@@ -202,6 +207,7 @@ export class AuthService {
         username: true,
         name: true,
         role: true,
+        isActive: true,
         createdAt: true,
         updatedAt: true,
       },

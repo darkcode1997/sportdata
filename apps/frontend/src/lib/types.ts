@@ -57,6 +57,7 @@ export interface User {
   username?: string;
   name?: string;
   role: UserRole;
+  isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
 }

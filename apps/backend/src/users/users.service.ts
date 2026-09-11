@@ -17,6 +17,7 @@ const safeUserSelect = {
   username: true,
   name: true,
   role: true,
+  isActive: true,
   createdAt: true,
   updatedAt: true,
 } satisfies Prisma.UserSelect;
@@ -28,7 +29,7 @@ export class UsersService {
   async findAll() {
     const users = await this.prisma.user.findMany({
       select: safeUserSelect,
-      orderBy: [{ role: 'asc' }, { createdAt: 'asc' }],
+      orderBy: [{ isActive: 'desc' }, { role: 'asc' }, { createdAt: 'asc' }],
     });
     return users.map((user) => this.toPublicUser(user));
   }
@@ -47,6 +48,7 @@ export class UsersService {
         name,
         password: await bcrypt.hash(dto.password, 12),
         role: this.toPrismaRole(dto.role || UserRole.CONTENT),
+        isActive: dto.isActive ?? true,
       },
       select: safeUserSelect,
     });
@@ -59,6 +61,17 @@ export class UsersService {
 
     if (actorId === id && dto.role && dto.role !== UserRole.ADMIN) {
       throw new BadRequestException('Bạn không thể tự hạ quyền tài khoản đang đăng nhập');
+    }
+    if (actorId === id && dto.isActive === false) {
+      throw new BadRequestException('Bạn không thể tự vô hiệu hóa tài khoản đang đăng nhập');
+    }
+
+    if (
+      current.role === PrismaUserRole.ADMIN &&
+      current.isActive &&
+      (dto.isActive === false || (dto.role && dto.role !== UserRole.ADMIN))
+    ) {
+      await this.assertAnotherActiveAdmin(id);
     }
 
     const email = dto.email?.trim().toLowerCase();
@@ -74,6 +87,10 @@ export class UsersService {
     if (username !== undefined) data.username = username;
     if (name !== undefined) data.name = name;
     if (dto.role !== undefined) data.role = this.toPrismaRole(dto.role);
+    if (dto.isActive !== undefined) {
+      data.isActive = dto.isActive;
+      if (current.isActive && !dto.isActive) data.passwordChangedAt = new Date();
+    }
     if (dto.password) {
       data.password = await bcrypt.hash(dto.password, 12);
       data.passwordChangedAt = new Date();
@@ -97,13 +114,8 @@ export class UsersService {
     const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user) throw new NotFoundException('Không tìm thấy tài khoản');
 
-    if (user.role === PrismaUserRole.ADMIN) {
-      const adminCount = await this.prisma.user.count({
-        where: { role: PrismaUserRole.ADMIN },
-      });
-      if (adminCount <= 1) {
-        throw new BadRequestException('Hệ thống phải còn ít nhất một tài khoản Admin');
-      }
+    if (user.role === PrismaUserRole.ADMIN && user.isActive) {
+      await this.assertAnotherActiveAdmin(id);
     }
     await this.prisma.user.delete({ where: { id } });
   }
@@ -121,6 +133,19 @@ export class UsersService {
       },
     });
     if (existing) throw new ConflictException('Email hoặc username đã tồn tại');
+  }
+
+  private async assertAnotherActiveAdmin(excludedId: string) {
+    const activeAdminCount = await this.prisma.user.count({
+      where: {
+        id: { not: excludedId },
+        role: PrismaUserRole.ADMIN,
+        isActive: true,
+      },
+    });
+    if (activeAdminCount < 1) {
+      throw new BadRequestException('Hệ thống phải còn ít nhất một tài khoản Admin đang hoạt động');
+    }
   }
 
   private toPrismaRole(role: UserRole): PrismaUserRole {

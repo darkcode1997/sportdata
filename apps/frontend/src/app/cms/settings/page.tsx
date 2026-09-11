@@ -16,6 +16,7 @@ import {
   Popconfirm,
   Select,
   Space,
+  Switch,
   Table,
   Tabs,
   Tag,
@@ -43,6 +44,7 @@ type Account = {
   username?: string | null;
   name: string;
   role: Role;
+  isActive: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -52,6 +54,7 @@ type AccountFormValues = {
   username: string;
   email: string;
   role: Role;
+  isActive: boolean;
   password?: string;
 };
 
@@ -74,6 +77,7 @@ export default function SettingsPage() {
   } = useSWR<Account[]>(isAdmin ? '/users' : null, fetcher);
   const [changingPassword, setChangingPassword] = useState(false);
   const [savingAccount, setSavingAccount] = useState(false);
+  const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
   const [accountModalOpen, setAccountModalOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
 
@@ -98,7 +102,7 @@ export default function SettingsPage() {
   const openCreateAccount = () => {
     setEditingAccount(null);
     accountForm.resetFields();
-    accountForm.setFieldsValue({ role: 'CONTENT' });
+    accountForm.setFieldsValue({ role: 'CONTENT', isActive: true });
     setAccountModalOpen(true);
   };
 
@@ -109,6 +113,7 @@ export default function SettingsPage() {
       username: account.username || '',
       email: account.email,
       role: account.role,
+      isActive: account.isActive,
       password: undefined,
     });
     setAccountModalOpen(true);
@@ -155,12 +160,26 @@ export default function SettingsPage() {
     }
   };
 
+  const updateAccountStatus = async (account: Account, isActive: boolean) => {
+    if (account.id === profile?.id) return;
+    setUpdatingStatusId(account.id);
+    try {
+      await api.patch(`/users/${account.id}`, { isActive });
+      message.success(isActive ? 'Đã kích hoạt tài khoản' : 'Đã vô hiệu hóa tài khoản');
+      await mutateUsers();
+    } catch (error: any) {
+      message.error(requestMessage(error, 'Không thể cập nhật trạng thái tài khoản.'));
+    } finally {
+      setUpdatingStatusId(null);
+    }
+  };
+
   const columns: ColumnsType<Account> = [
     {
       title: 'Tài khoản',
       key: 'account',
       render: (_, account) => (
-        <Space size={12}>
+        <Space size={12} className={account.isActive ? '' : 'opacity-60'}>
           <Avatar icon={<UserRound className="h-4 w-4" />} className="bg-sblue-500/15 text-sblue-300" />
           <div>
             <Typography.Text strong className="block">{account.name}</Typography.Text>
@@ -181,6 +200,38 @@ export default function SettingsPage() {
       render: (role: Role) => role === 'ADMIN'
         ? <Tag color="blue" icon={<ShieldCheck className="h-3 w-3" />}>Admin</Tag>
         : <Tag color="cyan" icon={<Pencil className="h-3 w-3" />}>Content</Tag>,
+    },
+    {
+      title: 'Trạng thái',
+      key: 'status',
+      width: 180,
+      render: (_, account) => (
+        <Space size={8}>
+          <Popconfirm
+            title="Vô hiệu hóa tài khoản?"
+            description={`${account.name} sẽ bị đăng xuất và không thể truy cập CMS.`}
+            okText="Vô hiệu hóa"
+            cancelText="Hủy"
+            okButtonProps={{ danger: true }}
+            disabled={!account.isActive || account.id === profile?.id}
+            onConfirm={() => updateAccountStatus(account, false)}
+          >
+            <Switch
+              size="small"
+              checked={account.isActive}
+              loading={updatingStatusId === account.id}
+              disabled={account.id === profile?.id}
+              aria-label={`${account.isActive ? 'Vô hiệu hóa' : 'Kích hoạt'} tài khoản ${account.name}`}
+              onChange={(checked) => {
+                if (checked) updateAccountStatus(account, true);
+              }}
+            />
+          </Popconfirm>
+          <Tag color={account.isActive ? 'success' : 'default'}>
+            {account.isActive ? 'Active' : 'Inactive'}
+          </Tag>
+        </Space>
+      ),
     },
     {
       title: 'Ngày tạo',
@@ -232,7 +283,10 @@ export default function SettingsPage() {
             <Avatar size={56} icon={<UserRound className="h-6 w-6" />} className="bg-sblue-500/15 text-sblue-300" />
             <div>
               <Typography.Title level={4} className="!mb-1">{profile?.name || 'Tài khoản'}</Typography.Title>
-              <Tag color={isAdmin ? 'blue' : 'cyan'}>{isAdmin ? 'ADMIN' : 'CONTENT'}</Tag>
+              <Space size={6} wrap>
+                <Tag color={isAdmin ? 'blue' : 'cyan'}>{isAdmin ? 'ADMIN' : 'CONTENT'}</Tag>
+                <Tag color="success">ACTIVE</Tag>
+              </Space>
             </div>
           </Space>
           <Descriptions column={1} size="small" colon={false}>
@@ -302,7 +356,7 @@ export default function SettingsPage() {
         type="info"
         showIcon
         message="Phân quyền tài khoản"
-        description="Admin có toàn quyền và quản lý tài khoản. Content được tạo, cập nhật nội dung nhưng không thể xóa dữ liệu, quản lý tài khoản hoặc sao lưu hệ thống."
+        description="Admin có toàn quyền quản lý tài khoản. Tài khoản Inactive sẽ bị đăng xuất khỏi phiên cũ và không thể đăng nhập cho đến khi được kích hoạt lại."
       />
       <Card
         className="border-sdark-700 bg-sdark-900"
@@ -316,7 +370,7 @@ export default function SettingsPage() {
           dataSource={users}
           loading={usersLoading}
           pagination={false}
-          scroll={{ x: 760 }}
+          scroll={{ x: 940 }}
         />
       </Card>
     </div>
@@ -381,6 +435,18 @@ export default function SettingsPage() {
           </div>
           <Form.Item name="email" label="Email" rules={[{ required: true, message: 'Nhập email' }, { type: 'email', message: 'Email không hợp lệ' }]}>
             <Input type="email" autoComplete="off" placeholder="email@example.com" />
+          </Form.Item>
+          <Form.Item
+            name="isActive"
+            label="Trạng thái tài khoản"
+            valuePropName="checked"
+            extra={editingAccount?.id === profile?.id ? 'Không thể tự vô hiệu hóa tài khoản đang đăng nhập.' : 'Tài khoản Inactive không thể đăng nhập hoặc tiếp tục sử dụng phiên cũ.'}
+          >
+            <Switch
+              checkedChildren="Active"
+              unCheckedChildren="Inactive"
+              disabled={editingAccount?.id === profile?.id}
+            />
           </Form.Item>
           <Form.Item
             name="password"
