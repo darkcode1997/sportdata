@@ -58,6 +58,8 @@ const beltOptions = [
 ];
 
 export default function SportsPage() {
+  const { data: currentUser } = useSWR<any>('/auth/profile', fetcher);
+  const canDelete = currentUser?.role === 'ADMIN';
   const { message: toast } = AntApp.useApp();
   const { data: sports = [], error, isLoading, mutate } = useSWR<any[]>('/sports', fetcher);
   const [sportOpen, setSportOpen] = useState(false);
@@ -248,7 +250,7 @@ export default function SportsPage() {
                       onClick={() => openSport(sport)}
                     />
                   </Tooltip>
-                  <Popconfirm
+                  {canDelete && <Popconfirm
                     title="Xóa bộ môn?"
                     description="Các hạng đấu và dữ liệu thi đấu chỉ thuộc bộ môn này cũng sẽ bị xóa."
                     okText="Xóa"
@@ -264,7 +266,7 @@ export default function SportsPage() {
                         icon={<Trash2 className="h-4 w-4" />}
                       />
                     </Tooltip>
-                  </Popconfirm>
+                  </Popconfirm>}
                 </div>
               </div>
 
@@ -305,7 +307,7 @@ export default function SportsPage() {
                           icon={<Pencil className="h-3.5 w-3.5" />}
                           onClick={() => openCategory(sport, category)}
                         />
-                        <Popconfirm
+                        {canDelete && <Popconfirm
                           title="Xóa hạng đấu?"
                           description="Các trận đấu và sơ đồ thuộc hạng này cũng sẽ bị xóa."
                           okText="Xóa"
@@ -320,7 +322,7 @@ export default function SportsPage() {
                             aria-label="Xóa hạng đấu"
                             icon={<Trash2 className="h-3.5 w-3.5" />}
                           />
-                        </Popconfirm>
+                        </Popconfirm>}
                       </div>
                     </div>
                   ))}

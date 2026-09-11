@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   Avatar,
@@ -20,6 +21,7 @@ import {
   LayoutDashboard,
   LogOut,
   Menu as MenuIcon,
+  Settings,
   Swords,
   Trophy,
   User,
@@ -33,6 +35,7 @@ const navItems = [
   { label: 'Bộ môn & hạng đấu', key: '/cms/sports', icon: <Trophy className="h-5 w-5" /> },
   { label: 'Trận đấu', key: '/cms/matches', icon: <Swords className="h-5 w-5" /> },
   { label: 'Thống kê', key: '/cms/statistics', icon: <BarChart3 className="h-5 w-5" /> },
+  { label: 'Cài đặt', key: '/cms/settings', icon: <Settings className="h-5 w-5" /> },
 ];
 
 const publicAuthPaths = ['/cms/login', '/cms/forgot-password', '/cms/reset-password'];
@@ -223,15 +226,21 @@ export default function CmsLayout({ children }: { children: React.ReactNode }) {
             </div>
           </Flex>
 
-          <Flex align="center" gap={12} className="h-full border-l border-white/10 pl-4">
-            <Avatar size={38} icon={<User className="h-4 w-4" />} className="bg-sblue-500/20 text-sblue-300" />
-            <div className="hidden sm:block">
-              <Typography.Text strong className="block text-sm">{userLabel || 'Admin'}</Typography.Text>
-              <Typography.Text type="secondary" className="block text-xs">
-                {userRole === 'ADMIN' ? 'Quản trị viên' : userRole || 'Người dùng'}
-              </Typography.Text>
-            </div>
-          </Flex>
+          <Link
+            href="/cms/settings"
+            className="group h-full rounded-l-xl transition-colors hover:bg-white/[0.03]"
+            aria-label="Mở cài đặt tài khoản"
+          >
+            <Flex align="center" gap={12} className="h-full border-l pl-4 pr-2">
+              <Avatar size={38} icon={<User className="h-4 w-4" />} className="bg-sblue-500/20 text-sblue-300" />
+              <div className="hidden sm:block">
+                <Typography.Text strong className="block text-sm group-hover:text-sblue-300">{userLabel || 'Admin'}</Typography.Text>
+                <Typography.Text type="secondary" className="block text-xs">
+                  {userRole === 'ADMIN' ? 'Quản trị viên' : userRole === 'CONTENT' ? 'Biên tập nội dung' : 'Người dùng'}
+                </Typography.Text>
+              </div>
+            </Flex>
+          </Link>
         </header>
 
         <Layout.Content className="p-4 sm:p-7 lg:p-8">{children}</Layout.Content>

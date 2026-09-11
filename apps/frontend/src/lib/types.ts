@@ -1,8 +1,6 @@
 export enum UserRole {
   ADMIN = 'ADMIN',
-  EDITOR = 'EDITOR',
-  VIEWER = 'VIEWER',
-  ATHLETE = 'ATHLETE',
+  CONTENT = 'CONTENT',
 }
 
 export enum MatchStatus {
@@ -56,6 +54,7 @@ export interface Federation {
 export interface User {
   id: string;
   email: string;
+  username?: string;
   name?: string;
   role: UserRole;
   createdAt: Date;

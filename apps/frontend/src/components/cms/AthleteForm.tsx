@@ -61,6 +61,7 @@ const athleteSchema = z.object({
 type AthleteFormValues = z.infer<typeof athleteSchema>;
 
 export function AthleteForm({ athleteId, initialData }: { athleteId?: string; initialData?: any }) {
+  const { data: currentUser } = useSWR<any>('/auth/profile', fetcher);
   const router = useRouter();
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [federationManagerOpen, setFederationManagerOpen] = useState(false);
@@ -336,6 +337,7 @@ export function AthleteForm({ athleteId, initialData }: { athleteId?: string; in
           });
         }}
         onChanged={() => mutateFederations()}
+        canDelete={currentUser?.role === 'ADMIN'}
       />
     </>
   );
@@ -368,6 +370,7 @@ function FederationManager({
   onClose,
   onSelect,
   onChanged,
+  canDelete,
 }: {
   open: boolean;
   countries: CountryOption[];
@@ -378,6 +381,7 @@ function FederationManager({
   onClose: () => void;
   onSelect: (federationId: string) => void;
   onChanged: () => Promise<unknown>;
+  canDelete: boolean;
 }) {
   const [countryId, setCountryId] = useState('');
   const [name, setName] = useState('');
@@ -581,7 +585,7 @@ function FederationManager({
                         }}
                       />
                     </Tooltip>,
-                    <Popconfirm
+                    canDelete ? <Popconfirm
                       key="delete"
                       title={`Xóa “${federation.name}”?`}
                       description="Chỉ có thể xóa liên đoàn chưa được vận động viên sử dụng."
@@ -601,7 +605,7 @@ function FederationManager({
                           icon={<Trash2 className="h-4 w-4" />}
                         />
                       </Tooltip>
-                    </Popconfirm>,
+                    </Popconfirm> : null,
                   ]}
                 >
                   <Typography.Text>{federation.name}</Typography.Text>

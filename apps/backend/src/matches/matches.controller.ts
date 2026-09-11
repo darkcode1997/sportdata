@@ -64,7 +64,7 @@ export class MatchesController {
 
   @Post('event/:eventId/category/:categoryId/generate-draw')
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN, UserRole.EDITOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTENT)
   @ApiOperation({
     summary: 'Generate a seeded elimination graph',
     description:
@@ -92,7 +92,7 @@ export class MatchesController {
 
   @Post()
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN, UserRole.EDITOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTENT)
   @ApiOperation({
     summary: 'Create a new match',
     description: 'Create a new match with athletes, scores, and scheduling details.',
@@ -104,7 +104,7 @@ export class MatchesController {
 
   @Patch(':id')
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN, UserRole.EDITOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTENT)
   @ApiOperation({
     summary: 'Update a match',
     description:

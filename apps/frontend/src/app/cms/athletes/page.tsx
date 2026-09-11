@@ -30,6 +30,8 @@ const genderLabels: Record<string, string> = {
 };
 
 export default function AthletesListPage() {
+  const { data: currentUser } = useSWR<any>('/auth/profile', fetcher);
+  const canDelete = currentUser?.role === 'ADMIN';
   const [search, setSearch] = useState('');
   const [gender, setGender] = useState('');
   const [page, setPage] = useState(1);
@@ -181,7 +183,7 @@ export default function AthletesListPage() {
               icon={<Pencil className="h-4 w-4" />}
             />
           </Tooltip>
-          <Popconfirm
+          {canDelete && <Popconfirm
             title={`Xóa “${athlete.fullName}”?`}
             description="Thao tác này không thể hoàn tác."
             okText="Xóa"
@@ -197,7 +199,7 @@ export default function AthletesListPage() {
                 icon={<Trash2 className="h-4 w-4" />}
               />
             </Tooltip>
-          </Popconfirm>
+          </Popconfirm>}
         </Space>
       ),
     },

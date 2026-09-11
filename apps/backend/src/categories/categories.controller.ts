@@ -29,7 +29,7 @@ export class CategoriesController {
 
   @Post()
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN, UserRole.EDITOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTENT)
   @ApiOperation({ summary: 'Create a new category' })
   @ApiResponse({ status: 201, description: 'Category created successfully' })
   create(@Body() createCategoryDto: CreateCategoryDto) {
@@ -53,7 +53,7 @@ export class CategoriesController {
 
   @Patch(':id')
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN, UserRole.EDITOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTENT)
   @ApiOperation({ summary: 'Update category by ID' })
   @ApiResponse({ status: 200, description: 'Category updated successfully' })
   @ApiResponse({ status: 404, description: 'Category not found' })
@@ -77,7 +77,7 @@ export class CategoriesController {
 
   @Post(':categoryId/divisions')
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN, UserRole.EDITOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTENT)
   @ApiOperation({ summary: 'Create a division under a category' })
   @ApiResponse({ status: 201, description: 'Division created successfully' })
   createDivision(
@@ -113,7 +113,7 @@ export class DivisionsController {
 
   @Patch(':id')
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN, UserRole.EDITOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTENT)
   @ApiOperation({ summary: 'Update division by ID' })
   @ApiResponse({ status: 200, description: 'Division updated successfully' })
   @ApiResponse({ status: 404, description: 'Division not found' })

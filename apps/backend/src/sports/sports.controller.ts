@@ -20,7 +20,7 @@ export class SportsController {
   constructor(private readonly sportsService: SportsService) {}
 
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN, UserRole.EDITOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTENT)
   @Post()
   create(@Body() createSportDto: CreateSportDto) {
     return this.sportsService.create(createSportDto);
@@ -37,7 +37,7 @@ export class SportsController {
   }
 
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN, UserRole.EDITOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTENT)
   @Patch(':id')
   update(@Param('id') id: string, @Body() updateSportDto: UpdateSportDto) {
     return this.sportsService.update(id, updateSportDto);

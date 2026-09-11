@@ -20,7 +20,7 @@ export class CountriesController {
   constructor(private readonly countriesService: CountriesService) {}
 
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN, UserRole.EDITOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTENT)
   @Post()
   create(@Body() createCountryDto: CreateCountryDto) {
     return this.countriesService.create(createCountryDto);
@@ -37,7 +37,7 @@ export class CountriesController {
   }
 
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN, UserRole.EDITOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTENT)
   @Patch(':id')
   update(
     @Param('id') id: string,

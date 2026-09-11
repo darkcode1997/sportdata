@@ -27,7 +27,7 @@ export class AthletesController {
 
   @Post()
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN, UserRole.EDITOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTENT)
   @ApiOperation({ summary: 'Create a new athlete' })
   @ApiResponse({ status: 201, description: 'Athlete created successfully' })
   create(@Body() createAthleteDto: CreateAthleteDto) {
@@ -51,7 +51,7 @@ export class AthletesController {
 
   @Patch(':id')
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN, UserRole.EDITOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTENT)
   @ApiOperation({ summary: 'Update athlete by ID' })
   @ApiResponse({ status: 200, description: 'Athlete updated successfully' })
   @ApiResponse({ status: 404, description: 'Athlete not found' })

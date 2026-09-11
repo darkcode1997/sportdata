@@ -11,6 +11,7 @@ import { StatisticsModule } from './statistics/statistics.module';
 import { CountriesModule } from './countries/countries.module';
 import { FederationsModule } from './federations/federations.module';
 import { BackupModule } from './backup/backup.module';
+import { UsersModule } from './users/users.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { BackupModule } from './backup/backup.module';
     CountriesModule,
     FederationsModule,
     BackupModule,
+    UsersModule,
   ],
 })
 export class AppModule {}

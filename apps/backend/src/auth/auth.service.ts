@@ -14,6 +14,7 @@ import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { UserRole } from '../common/enums/user-role.enum';
 
 const FORGOT_PASSWORD_MESSAGE =
@@ -61,7 +62,7 @@ export class AuthService {
         username,
         name: registerDto.name,
         password: await this.hashPassword(registerDto.password),
-        role: registerDto.role || UserRole.EDITOR,
+        role: registerDto.role || UserRole.CONTENT,
       },
       select: {
         id: true,
@@ -207,6 +208,37 @@ export class AuthService {
     });
     if (!user) throw new UnauthorizedException('Không tìm thấy tài khoản');
     return user;
+  }
+
+  async changePassword(userId: string, changePasswordDto: ChangePasswordDto) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new UnauthorizedException('Không tìm thấy tài khoản');
+
+    const passwordValid = await this.comparePasswords(
+      changePasswordDto.currentPassword,
+      user.password,
+    );
+    if (!passwordValid) {
+      throw new BadRequestException('Mật khẩu hiện tại không đúng');
+    }
+    if (
+      await this.comparePasswords(changePasswordDto.newPassword, user.password)
+    ) {
+      throw new BadRequestException('Mật khẩu mới phải khác mật khẩu hiện tại');
+    }
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        password: await this.hashPassword(changePasswordDto.newPassword),
+        passwordChangedAt: new Date(),
+        resetPasswordTokenHash: null,
+        resetPasswordExpiresAt: null,
+        resetPasswordRequestedAt: null,
+      },
+    });
+
+    return { message: 'Đổi mật khẩu thành công. Vui lòng đăng nhập lại.' };
   }
 
   private findUserByIdentifier(identifier: string) {

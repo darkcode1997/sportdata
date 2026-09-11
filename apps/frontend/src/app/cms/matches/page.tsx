@@ -39,6 +39,8 @@ const statusMap: Record<string, { label: string; color: string }> = {
 };
 
 export default function MatchesListPage() {
+  const { data: currentUser } = useSWR<any>('/auth/profile', fetcher);
+  const canDelete = currentUser?.role === 'ADMIN';
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
   const [page, setPage] = useState(1);
@@ -185,7 +187,7 @@ export default function MatchesListPage() {
               icon={<Pencil className="h-4 w-4" />}
             />
           </Tooltip>
-          <Popconfirm
+          {canDelete && <Popconfirm
             title="Xóa trận đấu này?"
             description="Thao tác này không thể hoàn tác."
             okText="Xóa"
@@ -196,7 +198,7 @@ export default function MatchesListPage() {
             <Tooltip title="Xóa">
               <Button type="text" danger aria-label="Xóa" icon={<Trash2 className="h-4 w-4" />} />
             </Tooltip>
-          </Popconfirm>
+          </Popconfirm>}
         </Space>
       ),
     },

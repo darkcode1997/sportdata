@@ -61,15 +61,6 @@ const viDate = new Intl.DateTimeFormat('vi-VN', {
   minute: '2-digit',
 });
 
-function initials(name: string) {
-  return name
-    .split(/[\s/]+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0])
-    .join('');
-}
-
 export default function HomePage() {
   const athletesQuery = useSWR('/athletes?limit=6', fetcher);
   const matchesQuery = useSWR('/matches?limit=8', fetcher);

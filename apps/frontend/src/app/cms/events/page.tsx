@@ -39,6 +39,8 @@ function eventStatus(event: any) {
 }
 
 export default function EventsListPage() {
+  const { data: currentUser } = useSWR<any>('/auth/profile', fetcher);
+  const canDelete = currentUser?.role === 'ADMIN';
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -148,7 +150,7 @@ export default function EventsListPage() {
               icon={<Pencil className="h-4 w-4" />}
             />
           </Tooltip>
-          <Popconfirm
+          {canDelete && <Popconfirm
             title={`Xóa “${event.name}”?`}
             description="Toàn bộ trận đấu, sơ đồ và thống kê của sự kiện cũng sẽ bị xóa."
             okText="Xóa"
@@ -164,7 +166,7 @@ export default function EventsListPage() {
                 icon={<Trash2 className="h-4 w-4" />}
               />
             </Tooltip>
-          </Popconfirm>
+          </Popconfirm>}
         </Space>
       ),
     },

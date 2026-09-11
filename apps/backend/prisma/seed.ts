@@ -33,13 +33,20 @@ function vietnamTime(day: number, minutesFromMidnight: number) {
 async function main() {
   console.log('Seeding SportData database...');
 
+  // Quyền VIEWER cũ được gom về CONTENT. Hai giá trị cũ vẫn được map trong
+  // Prisma để nâng cấp database hiện hữu mà không phải xóa dữ liệu enum.
+  await prisma.user.updateMany({
+    where: { role: UserRole.LEGACY_VIEWER },
+    data: { role: UserRole.CONTENT },
+  });
+
   const adminEmail = (process.env.ADMIN_EMAIL || 'admin@sportdata.vn').trim().toLowerCase();
   const adminUsername = (process.env.ADMIN_USERNAME || 'admin').trim().toLowerCase();
   const adminName = process.env.ADMIN_NAME || 'SportData Administrator';
   const adminPassword = process.env.ADMIN_PASSWORD || 'SportData@ChangeMe2026!';
-  const configuredRole = process.env.ADMIN_ROLE as UserRole | undefined;
-  const adminRole = configuredRole && Object.values(UserRole).includes(configuredRole)
-    ? configuredRole
+  const configuredRole = process.env.ADMIN_ROLE?.trim().toUpperCase();
+  const adminRole = configuredRole === 'CONTENT' || configuredRole === 'EDITOR'
+    ? UserRole.CONTENT
     : UserRole.ADMIN;
   const hashedPassword = await bcrypt.hash(adminPassword, 12);
   const syncPassword = process.env.ADMIN_SYNC_PASSWORD === 'true';
