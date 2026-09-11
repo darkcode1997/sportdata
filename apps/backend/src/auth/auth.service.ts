@@ -290,7 +290,7 @@ export class AuthService {
 
   private generateToken(userId: string, email: string, username?: string | null): string {
     return this.jwtService.sign(
-      { sub: userId, email, username },
+      { sub: userId, email, username, sessionIssuedAt: Date.now() },
       {
         secret: process.env.JWT_SECRET || 'sportdata-dev-secret-change-me-please',
         expiresIn: process.env.JWT_EXPIRES_IN || '7d',

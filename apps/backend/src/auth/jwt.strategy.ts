@@ -13,7 +13,13 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     });
   }
 
-  async validate(payload: { sub: string; email: string; username?: string; iat?: number }) {
+  async validate(payload: {
+    sub: string;
+    email: string;
+    username?: string;
+    iat?: number;
+    sessionIssuedAt?: number;
+  }) {
     const user = await this.prisma.user.findUnique({
       where: { id: payload.sub },
       select: {
@@ -28,12 +34,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     });
     if (!user) return null;
     if (!user.isActive) return null;
-    if (
-      user.passwordChangedAt &&
-      payload.iat &&
-      payload.iat * 1000 < user.passwordChangedAt.getTime()
-    ) {
-      return null;
+    if (user.passwordChangedAt) {
+      const issuedAt = payload.sessionIssuedAt ?? (payload.iat ? payload.iat * 1000 : 0);
+      if (issuedAt < user.passwordChangedAt.getTime()) return null;
     }
     const { passwordChangedAt, ...safeUser } = user;
     return safeUser;
