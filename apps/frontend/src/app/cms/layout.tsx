@@ -6,11 +6,13 @@ import { usePathname, useRouter } from 'next/navigation';
 import {
   Avatar,
   Button,
+  ConfigProvider,
   Drawer,
   Flex,
   Layout,
   Menu as AntMenu,
   Spin,
+  Tooltip,
   Typography,
 } from 'antd';
 import {
@@ -21,12 +23,15 @@ import {
   LayoutDashboard,
   LogOut,
   Menu as MenuIcon,
+  Moon,
   Settings,
+  Sun,
   Swords,
   Trophy,
   User,
   Users,
 } from 'lucide-react';
+import { createSportdataTheme, type SportdataColorMode } from '@/components/AntdProvider';
 
 const navItems = [
   { label: 'Dashboard', key: '/cms', icon: <LayoutDashboard className="h-5 w-5" /> },
@@ -48,10 +53,20 @@ export default function CmsLayout({ children }: { children: React.ReactNode }) {
   const [authenticated, setAuthenticated] = useState(false);
   const [userLabel, setUserLabel] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
+  const [colorMode, setColorMode] = useState<SportdataColorMode>('dark');
   const isPublicAuthPath = publicAuthPaths.includes(pathname);
+  const isLight = colorMode === 'light';
+  const cmsTheme = useMemo(() => createSportdataTheme(colorMode), [colorMode]);
 
   useEffect(() => {
     setSidebarCollapsed(localStorage.getItem('cms_sidebar_collapsed') === 'true');
+
+    const savedTheme = localStorage.getItem('cms_color_mode');
+    if (savedTheme === 'light' || savedTheme === 'dark') {
+      setColorMode(savedTheme);
+    } else if (window.matchMedia('(prefers-color-scheme: light)').matches) {
+      setColorMode('light');
+    }
   }, []);
 
   useEffect(() => {
@@ -118,25 +133,46 @@ export default function CmsLayout({ children }: { children: React.ReactNode }) {
     });
   };
 
+  const toggleColorMode = () => {
+    setColorMode((current) => {
+      const next = current === 'dark' ? 'light' : 'dark';
+      localStorage.setItem('cms_color_mode', next);
+      return next;
+    });
+  };
+
+  const renderThemeToggle = () => (
+    <Tooltip title={isLight ? 'Chuyển sang giao diện tối' : 'Chuyển sang giao diện sáng'}>
+      <Button
+        type="text"
+        shape="circle"
+        aria-label={isLight ? 'Chuyển sang giao diện tối' : 'Chuyển sang giao diện sáng'}
+        aria-pressed={isLight}
+        icon={isLight ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
+        onClick={toggleColorMode}
+      />
+    </Tooltip>
+  );
+
   const renderNavigation = (compact = false) => (
-    <Flex vertical className="h-full bg-[#0d1425]">
+    <Flex vertical className={`h-full ${isLight ? 'bg-white' : 'bg-[#0d1425]'}`}>
       <Flex
         align="center"
         justify={compact ? 'center' : 'flex-start'}
         gap={11}
-        className={`h-[72px] min-h-[72px] shrink-0 border-b border-white/10 ${compact ? 'px-3' : 'px-6'}`}
+        className={`h-[72px] min-h-[72px] shrink-0 border-b ${isLight ? 'border-slate-200' : 'border-white/10'} ${compact ? 'px-3' : 'px-6'}`}
       >
         <span className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-sblue-400 to-sblue-700 shadow-lg shadow-sblue-500/20">
           <Trophy className="h-5 w-5 text-white" />
         </span>
         {!compact && <div>
-          <Typography.Text strong className="block text-base tracking-tight text-white">SportCMS</Typography.Text>
+          <Typography.Text strong className={`block text-base tracking-tight ${isLight ? '!text-slate-900' : '!text-white'}`}>SportCMS</Typography.Text>
           <Typography.Text type="secondary" className="text-[11px] uppercase tracking-[0.14em]">Control center</Typography.Text>
         </div>}
       </Flex>
 
       <AntMenu
-        theme="dark"
+        theme={isLight ? 'light' : 'dark'}
         mode="inline"
         inlineCollapsed={compact}
         selectedKeys={[selectedKey]}
@@ -148,7 +184,7 @@ export default function CmsLayout({ children }: { children: React.ReactNode }) {
         }}
       />
 
-      <div className="border-t border-white/10 p-4">
+      <div className={`border-t p-4 ${isLight ? 'border-slate-200' : 'border-white/10'}`}>
         <Button
           type="text"
           danger
@@ -165,23 +201,39 @@ export default function CmsLayout({ children }: { children: React.ReactNode }) {
 
   if (!authenticated && !isPublicAuthPath) {
     return (
-      <Flex className="min-h-screen bg-[#070b16]" align="center" justify="center">
-        <Spin size="large" tip="Đang xác thực" />
-      </Flex>
+      <ConfigProvider theme={cmsTheme}>
+        <Flex className={`min-h-screen ${isLight ? 'cms-theme-light bg-[#f4f7fb]' : 'bg-[#070b16]'}`} align="center" justify="center">
+          <Spin size="large" tip="Đang xác thực" />
+        </Flex>
+      </ConfigProvider>
     );
   }
 
-  if (isPublicAuthPath) return children;
+  if (isPublicAuthPath) {
+    return (
+      <ConfigProvider theme={cmsTheme}>
+        <div className={`min-h-screen ${isLight ? 'cms-theme-light bg-[#f4f7fb]' : 'bg-[#070b16]'}`}>
+          <div className="fixed right-4 top-4 z-50">{renderThemeToggle()}</div>
+          {children}
+        </div>
+      </ConfigProvider>
+    );
+  }
 
   return (
-    <Layout hasSider className="min-h-screen bg-[#070b16]">
+    <ConfigProvider theme={cmsTheme}>
+    <Layout
+      hasSider
+      className={isLight ? 'cms-theme-light bg-[#f4f7fb]' : 'bg-[#070b16]'}
+      style={{ minHeight: '100vh' }}
+    >
       <Layout.Sider
         width={264}
         collapsedWidth={80}
         collapsed={sidebarCollapsed}
         trigger={null}
-        theme="dark"
-        className="!fixed inset-y-0 left-0 z-40 hidden overflow-hidden border-r border-white/10 lg:!block"
+        theme={isLight ? 'light' : 'dark'}
+        className={`!fixed inset-y-0 left-0 z-40 hidden overflow-hidden border-r lg:!block ${isLight ? 'border-slate-200' : 'border-white/10'}`}
       >
         {renderNavigation(sidebarCollapsed)}
       </Layout.Sider>
@@ -198,10 +250,13 @@ export default function CmsLayout({ children }: { children: React.ReactNode }) {
       </Drawer>
 
       <Layout
-        className="cms-layout-main min-h-screen min-w-0 bg-[#070b16]"
-        style={{ '--cms-sidebar-width': `${sidebarCollapsed ? 80 : 264}px` } as React.CSSProperties}
+        className={`cms-layout-main min-w-0 ${isLight ? 'bg-[#f4f7fb]' : 'bg-[#070b16]'}`}
+        style={{
+          '--cms-sidebar-width': `${sidebarCollapsed ? 80 : 264}px`,
+          minHeight: '100vh',
+        } as React.CSSProperties}
       >
-        <header className="sticky top-0 z-30 flex h-[72px] min-h-[72px] shrink-0 items-center justify-between border-b border-white/10 bg-[#0d1425]/95 px-4 leading-normal backdrop-blur-xl sm:px-7">
+        <header className={`sticky top-0 z-30 flex h-[72px] min-h-[72px] shrink-0 items-center justify-between border-b px-4 leading-normal backdrop-blur-xl sm:px-7 ${isLight ? 'border-slate-200 bg-white/95' : 'border-white/10 bg-[#0d1425]/95'}`}>
           <Flex align="center" gap={14}>
             <Button
               type="text"
@@ -221,30 +276,34 @@ export default function CmsLayout({ children }: { children: React.ReactNode }) {
               onClick={toggleSidebar}
             />
             <div>
-              <Typography.Text strong className="block text-sm text-slate-200">Trung tâm quản trị</Typography.Text>
+              <Typography.Text strong className={`block text-sm ${isLight ? '!text-slate-900' : '!text-slate-200'}`}>Trung tâm quản trị</Typography.Text>
               <Typography.Text type="secondary" className="hidden text-xs sm:block">Dữ liệu vận động viên và giải đấu</Typography.Text>
             </div>
           </Flex>
 
-          <Link
-            href="/cms/settings"
-            className="group h-full rounded-l-xl transition-colors hover:bg-white/[0.03]"
-            aria-label="Mở cài đặt tài khoản"
-          >
-            <Flex align="center" gap={12} className="h-full border-l pl-4 pr-2">
-              <Avatar size={38} icon={<User className="h-4 w-4" />} className="bg-sblue-500/20 text-sblue-300" />
-              <div className="hidden sm:block">
-                <Typography.Text strong className="block text-sm group-hover:text-sblue-300">{userLabel || 'Admin'}</Typography.Text>
-                <Typography.Text type="secondary" className="block text-xs">
-                  {userRole === 'ADMIN' ? 'Quản trị viên' : userRole === 'CONTENT' ? 'Biên tập nội dung' : 'Người dùng'}
-                </Typography.Text>
-              </div>
-            </Flex>
-          </Link>
+          <Flex align="center" gap={8} className="h-full">
+            {renderThemeToggle()}
+            <Link
+              href="/cms/settings"
+              className={`group h-full rounded-l-xl transition-colors ${isLight ? 'hover:bg-slate-100' : 'hover:bg-white/[0.03]'}`}
+              aria-label="Mở cài đặt tài khoản"
+            >
+              <Flex align="center" gap={12} className={`h-full border-l pl-4 pr-2 ${isLight ? 'border-slate-200' : 'border-white/10'}`}>
+                <Avatar size={38} icon={<User className="h-4 w-4" />} className="bg-sblue-500/20 text-sblue-300" />
+                <div className="hidden sm:block">
+                  <Typography.Text strong className="block text-sm group-hover:text-sblue-500">{userLabel || 'Admin'}</Typography.Text>
+                  <Typography.Text type="secondary" className="block text-xs">
+                    {userRole === 'ADMIN' ? 'Quản trị viên' : userRole === 'CONTENT' ? 'Biên tập nội dung' : 'Người dùng'}
+                  </Typography.Text>
+                </div>
+              </Flex>
+            </Link>
+          </Flex>
         </header>
 
-        <Layout.Content className="p-4 sm:p-7 lg:p-8">{children}</Layout.Content>
+        <Layout.Content className="flex-1 p-4 sm:p-7 lg:p-8">{children}</Layout.Content>
       </Layout>
     </Layout>
+    </ConfigProvider>
   );
 }

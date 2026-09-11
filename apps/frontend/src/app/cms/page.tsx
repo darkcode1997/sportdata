@@ -15,6 +15,7 @@ import {
   Statistic,
   Table,
   Tag,
+  theme as antdTheme,
   Typography,
   type TableProps,
 } from 'antd';
@@ -66,6 +67,7 @@ function StatCard({ label, value, icon: Icon, color, trend }: StatCardProps) {
 }
 
 export default function DashboardPage() {
+  const { token } = antdTheme.useToken();
   const { data: stats } = useSWR('/api/dashboard/stats', fetcher);
   const { data: recentMatches = [], isLoading: loadingMatches } = useSWR('/api/dashboard/recent-matches', fetcher);
   const { data: eventChart = [] } = useSWR('/api/dashboard/events-chart', fetcher);
@@ -144,8 +146,8 @@ export default function DashboardPage() {
                     <Typography.Text type="secondary">{item.events} sự kiện · {item.matches} trận</Typography.Text>
                   </Flex>
                   <Flex gap={10}>
-                    <Progress percent={(item.events / maxChartValue) * 100} showInfo={false} strokeColor="#00a6f0" trailColor="#202c43" className="!mb-0" />
-                    <Progress percent={(item.matches / maxChartValue) * 100} showInfo={false} strokeColor="#f59e0b" trailColor="#202c43" className="!mb-0" />
+                    <Progress percent={(item.events / maxChartValue) * 100} showInfo={false} strokeColor="#00a6f0" trailColor={token.colorFillSecondary} className="!mb-0" />
+                    <Progress percent={(item.matches / maxChartValue) * 100} showInfo={false} strokeColor="#f59e0b" trailColor={token.colorFillSecondary} className="!mb-0" />
                   </Flex>
                 </div>
               ))}

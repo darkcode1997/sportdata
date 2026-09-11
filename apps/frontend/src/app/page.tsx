@@ -149,7 +149,7 @@ export default function HomePage() {
             description="Thông tin cá nhân, đơn vị thi đấu và thành tích mới nhất."
             href="/athletes"
           />
-          <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {loading
               ? Array.from({ length: 6 }).map((_, index) => <SkeletonCard key={index} />)
               : athletes.map((athlete) => <AthleteCard key={athlete.id} athlete={athlete} />)}

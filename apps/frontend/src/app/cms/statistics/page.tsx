@@ -12,6 +12,7 @@ import {
   Statistic,
   Table,
   Tag,
+  theme as antdTheme,
   Typography,
   type TableProps,
 } from 'antd';
@@ -28,6 +29,7 @@ const fetcher = async (url: string) => {
 };
 
 export default function StatisticsPage() {
+  const { token } = antdTheme.useToken();
   const { data: stats, isLoading } = useSWR('/api/statistics', fetcher);
   const { data: rankingsData, isLoading: loadingRankings } = useSWR(
     '/api/statistics/rankings/athletes?sortBy=medals&limit=10',
@@ -114,7 +116,7 @@ export default function StatisticsPage() {
                     <Typography.Text strong>{month.month}</Typography.Text>
                     <Typography.Text type="secondary">{month.medals} huy chương</Typography.Text>
                   </Flex>
-                  <Progress percent={(month.medals / maxMedals) * 100} showInfo={false} strokeColor={{ from: '#00a6f0', to: '#67d2ff' }} trailColor="#202c43" />
+                  <Progress percent={(month.medals / maxMedals) * 100} showInfo={false} strokeColor={{ from: '#00a6f0', to: '#67d2ff' }} trailColor={token.colorFillSecondary} />
                 </div>
               ))}
             </div>

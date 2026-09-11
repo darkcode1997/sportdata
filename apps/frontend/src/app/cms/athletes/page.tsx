@@ -67,18 +67,20 @@ export default function AthletesListPage() {
       fixed: 'left',
       width: 260,
       render: (_, athlete) => (
-        <Flex align="center" gap={12}>
+        <Flex align="center" gap={12} className="w-full min-w-0">
           <Avatar
             size={44}
             src={athlete.photoUrl || undefined}
             alt={athlete.fullName}
             icon={<UserRound className="h-5 w-5" />}
-            className="bg-sblue-500/20 text-sblue-300"
+            className="!shrink-0 bg-sblue-500/20 text-sblue-300"
           />
-          <div className="min-w-0">
-            <Typography.Text strong className="block truncate">
-              {athlete.fullName}
-            </Typography.Text>
+          <div className="min-w-0 flex-1 overflow-hidden">
+            <Tooltip title={athlete.fullName} placement="topLeft">
+              <Typography.Text strong className="block max-w-full truncate">
+                {athlete.fullName}
+              </Typography.Text>
+            </Tooltip>
             <Typography.Text type="secondary" className="text-xs">
               {genderLabels[athlete.gender] || 'Chưa xác định'}
             </Typography.Text>
@@ -96,7 +98,7 @@ export default function AthletesListPage() {
             <img
               src={athlete.country.flagUrl}
               alt={`Cờ ${athlete.country.name || athlete.country.code}`}
-              className="h-3.5 w-5 rounded-sm object-cover"
+              className="h-3.5 w-5 shrink-0 rounded-sm object-cover"
             />
           )}
           {athlete.country?.code || '—'}

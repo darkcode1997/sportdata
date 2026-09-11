@@ -233,7 +233,7 @@ export default function SportsPage() {
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <h2 className="truncate text-lg font-black text-white">{sport.name}</h2>
+                    <h2 className="truncate text-lg font-black text-slate-100">{sport.name}</h2>
                     <Tag className="m-0 font-mono font-bold">{sport.code}</Tag>
                     <Tag color="blue" className="m-0">{sport._count?.events || 0} sự kiện</Tag>
                   </div>
