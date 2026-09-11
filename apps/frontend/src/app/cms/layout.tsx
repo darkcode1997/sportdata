@@ -234,88 +234,88 @@ export default function CmsLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <ConfigProvider theme={cmsTheme}>
-    <Layout
-      hasSider
-      className={isLight ? 'cms-theme-light bg-[#f4f7fb]' : 'bg-[#070b16]'}
-      style={{ minHeight: '100vh' }}
-    >
-      <Layout.Sider
-        width={264}
-        collapsedWidth={80}
-        collapsed={sidebarCollapsed}
-        trigger={null}
-        theme={isLight ? 'light' : 'dark'}
-        className={`!fixed inset-y-0 left-0 z-40 hidden overflow-hidden border-r lg:!block ${isLight ? 'border-slate-200' : 'border-white/10'}`}
-      >
-        {renderNavigation(sidebarCollapsed)}
-      </Layout.Sider>
-
-      <Drawer
-        open={sidebarOpen}
-        onClose={() => setSidebarOpen(false)}
-        placement="left"
-        width={264}
-        closable={false}
-        styles={{ body: { padding: 0 } }}
-      >
-        {renderNavigation(false)}
-      </Drawer>
-
       <Layout
-        className={`cms-layout-main min-w-0 ${isLight ? 'bg-[#f4f7fb]' : 'bg-[#070b16]'}`}
-        style={{
-          '--cms-sidebar-width': `${sidebarCollapsed ? 80 : 264}px`,
-          minHeight: '100vh',
-        } as React.CSSProperties}
+        hasSider
+        className={isLight ? 'cms-theme-light bg-[#f4f7fb]' : 'bg-[#070b16]'}
+        style={{ minHeight: '100vh' }}
       >
-        <header className={`sticky top-0 z-30 flex h-[72px] min-h-[72px] shrink-0 items-center justify-between border-b px-4 leading-normal backdrop-blur-xl sm:px-7 ${isLight ? 'border-slate-200 bg-white/95' : 'border-white/10 bg-[#0d1425]/95'}`}>
-          <Flex align="center" gap={14}>
-            <Button
-              type="text"
-              className="!inline-flex lg:!hidden"
-              aria-label="Mở điều hướng"
-              icon={<MenuIcon className="h-5 w-5" />}
-              onClick={() => setSidebarOpen(true)}
-            />
-            <Button
-              type="text"
-              className="!hidden lg:!inline-flex"
-              aria-label={sidebarCollapsed ? 'Mở rộng thanh bên' : 'Thu gọn thanh bên'}
-              title={sidebarCollapsed ? 'Mở rộng thanh bên' : 'Thu gọn thanh bên'}
-              icon={sidebarCollapsed
-                ? <ChevronsRight className="h-5 w-5" />
-                : <ChevronsLeft className="h-5 w-5" />}
-              onClick={toggleSidebar}
-            />
-            <div>
-              <Typography.Text strong className={`block text-sm ${isLight ? '!text-slate-900' : '!text-slate-200'}`}>Trung tâm quản trị</Typography.Text>
-              <Typography.Text type="secondary" className="hidden text-xs sm:block">Dữ liệu vận động viên và giải đấu</Typography.Text>
-            </div>
-          </Flex>
+        <Layout.Sider
+          width={264}
+          collapsedWidth={80}
+          collapsed={sidebarCollapsed}
+          trigger={null}
+          theme={isLight ? 'light' : 'dark'}
+          className={`!fixed inset-y-0 left-0 z-40 hidden overflow-hidden border-r lg:!block ${isLight ? 'border-slate-200' : 'border-white/10'}`}
+        >
+          {renderNavigation(sidebarCollapsed)}
+        </Layout.Sider>
 
-          <Flex align="center" gap={8} className="h-full">
-            {renderThemeToggle()}
-            <Link
-              href="/cms/settings"
-              className={`group h-full rounded-l-xl transition-colors ${isLight ? 'hover:bg-slate-100' : 'hover:bg-white/[0.03]'}`}
-              aria-label="Mở cài đặt tài khoản"
-            >
-              <Flex align="center" gap={12} className={`h-full border-l pl-4 pr-2 ${isLight ? '' : ''}`}>
-                <Avatar size={38} icon={<User className="h-4 w-4" />} className="bg-sblue-500/20 text-sblue-300" />
-                <div className="hidden sm:block">
-                  <Typography.Text strong className="block text-sm group-hover:text-sblue-500">{userLabel || 'Admin'}</Typography.Text>
-                  <Typography.Text type="secondary" className="block text-xs">
-                    {userRole === 'ADMIN' ? 'Quản trị viên' : userRole === 'CONTENT' ? 'Biên tập nội dung' : 'Người dùng'}
-                  </Typography.Text>
-                </div>
-              </Flex>
-            </Link>
-          </Flex>
-        </header>
+        <Drawer
+          open={sidebarOpen}
+          onClose={() => setSidebarOpen(false)}
+          placement="left"
+          width={264}
+          closable={false}
+          styles={{ body: { padding: 0 } }}
+        >
+          {renderNavigation(false)}
+        </Drawer>
 
-        <Layout.Content className="flex-1 p-4 sm:p-7 lg:p-8">{children}</Layout.Content>
+        <Layout
+          className={`cms-layout-main min-w-0 ${isLight ? 'bg-[#f4f7fb]' : 'bg-[#070b16]'}`}
+          style={{
+            '--cms-sidebar-width': `${sidebarCollapsed ? 80 : 264}px`,
+            minHeight: '100vh',
+          } as React.CSSProperties}
+        >
+          <header className={`sticky top-0 z-30 flex h-[72px] min-h-[72px] shrink-0 items-center justify-between border-b px-4 leading-normal backdrop-blur-xl sm:px-7 ${isLight ? 'border-slate-200 bg-white/95' : 'border-white/10 bg-[#0d1425]/95'}`}>
+            <Flex align="center" gap={14}>
+              <Button
+                type="text"
+                className="!inline-flex lg:!hidden"
+                aria-label="Mở điều hướng"
+                icon={<MenuIcon className="h-5 w-5" />}
+                onClick={() => setSidebarOpen(true)}
+              />
+              <Button
+                type="text"
+                className="!hidden lg:!inline-flex"
+                aria-label={sidebarCollapsed ? 'Mở rộng thanh bên' : 'Thu gọn thanh bên'}
+                title={sidebarCollapsed ? 'Mở rộng thanh bên' : 'Thu gọn thanh bên'}
+                icon={sidebarCollapsed
+                  ? <ChevronsRight className="h-5 w-5" />
+                  : <ChevronsLeft className="h-5 w-5" />}
+                onClick={toggleSidebar}
+              />
+              <div>
+                <Typography.Text strong className={`block text-sm ${isLight ? '!text-slate-900' : '!text-slate-200'}`}>Trung tâm quản trị</Typography.Text>
+                <Typography.Text type="secondary" className="hidden text-xs sm:block">Dữ liệu vận động viên và giải đấu</Typography.Text>
+              </div>
+            </Flex>
+
+            <Flex align="center" gap={8} className="h-full">
+              {renderThemeToggle()}
+              <Link
+                href="/cms/settings"
+                className={`group h-full rounded-l-xl transition-colors ${isLight ? 'hover:bg-slate-100' : 'hover:bg-white/[0.03]'}`}
+                aria-label="Mở cài đặt tài khoản"
+              >
+                <Flex align="center" gap={12} className={`h-full pl-4 pr-2 ${isLight ? '' : ''}`}>
+                  <Avatar size={38} icon={<User className="h-4 w-4" />} className="bg-sblue-500/20 text-sblue-300" />
+                  <div className="hidden sm:block">
+                    <Typography.Text strong className="block text-sm group-hover:text-sblue-500">{userLabel || 'Admin'}</Typography.Text>
+                    <Typography.Text type="secondary" className="block text-xs">
+                      {userRole === 'ADMIN' ? 'Quản trị viên' : userRole === 'CONTENT' ? 'Biên tập nội dung' : 'Người dùng'}
+                    </Typography.Text>
+                  </div>
+                </Flex>
+              </Link>
+            </Flex>
+          </header>
+
+          <Layout.Content className="flex-1 p-4 sm:p-7 lg:p-8">{children}</Layout.Content>
+        </Layout>
       </Layout>
-    </Layout>
     </ConfigProvider>
   );
 }
