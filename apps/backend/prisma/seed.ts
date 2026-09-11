@@ -217,7 +217,8 @@ Danh sách nhân vật và thành tích nổi bật đang được ban biên t�
 
   const articles = await Promise.all(articleSeeds.map((article) => prisma.article.upsert({
     where: { slug: article.slug },
-    update: article,
+    // Nội dung do biên tập viên quản lý trong CMS không được ghi đè mỗi lần container khởi động.
+    update: {},
     create: article,
   })));
   console.log(`Demo articles synchronized: ${articles.length}`);

@@ -102,7 +102,9 @@ export default function LoginPage() {
 
         <Card className="border-sdark-700 bg-sdark-900 shadow-2xl shadow-black/20">
           <h2 className="mb-1 text-xl font-bold text-slate-100">Đăng nhập</h2>
-          
+          <p className="mb-6 text-sm text-slate-500">
+            Dùng email hoặc username để truy cập bảng điều khiển
+          </p>
 
           {globalError && (
             <Alert
@@ -174,7 +176,7 @@ export default function LoginPage() {
               />
             </Form.Item>
 
-            <div className="flex items-center justify-between text-sm">
+            <div className="flex items-center justify-between text-sm mb-6">
               <Checkbox>Ghi nhớ</Checkbox>
               <Link href="/cms/forgot-password" className="font-medium text-sblue-400 hover:text-sblue-300">
                 Quên mật khẩu?
