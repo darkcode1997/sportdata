@@ -5,7 +5,11 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { Button, ConfigProvider, Drawer, Flex, Menu as AntMenu, Tooltip } from 'antd';
 import { BarChart3, CalendarDays, Mail, Menu, Moon, Newspaper, Sun, Trophy, Users, X } from 'lucide-react';
-import { createSportdataTheme, type SportdataColorMode } from '@/components/AntdProvider';
+import {
+  applyDocumentColorMode,
+  createSportdataTheme,
+  type SportdataColorMode,
+} from '@/components/AntdProvider';
 
 const navigation = [
   { href: '/', label: 'Tổng quan', icon: BarChart3 },
@@ -36,18 +40,24 @@ export function PublicShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     setMenuOpen(false);
 
+    if (pathname.startsWith('/cms') || pathname === '/d') return;
+
     const savedTheme = localStorage.getItem('public_color_mode');
+    let nextMode: SportdataColorMode = 'dark';
     if (savedTheme === 'light' || savedTheme === 'dark') {
-      setColorMode(savedTheme);
+      nextMode = savedTheme;
     } else if (window.matchMedia('(prefers-color-scheme: light)').matches) {
-      setColorMode('light');
+      nextMode = 'light';
     }
+    applyDocumentColorMode(nextMode);
+    setColorMode(nextMode);
   }, [pathname]);
 
   const toggleColorMode = () => {
     setColorMode((current) => {
       const next = current === 'dark' ? 'light' : 'dark';
       localStorage.setItem('public_color_mode', next);
+      applyDocumentColorMode(next);
       return next;
     });
   };
@@ -66,15 +76,6 @@ export function PublicShell({ children }: { children: React.ReactNode }) {
   );
 
   if (pathname.startsWith('/cms') || pathname === '/d') return <>{children}</>;
-  if (/^\/events\/[^/]+(?:\/categories\/[^/]+)?\/?$/.test(pathname)) {
-    return (
-      <ConfigProvider theme={publicTheme}>
-        <main className={isLight ? 'public-theme-light min-h-screen bg-[#f4f7fb]' : 'min-h-screen bg-sdark-950'}>
-          {children}
-        </main>
-      </ConfigProvider>
-    );
-  }
 
   return (
     <ConfigProvider theme={publicTheme}>

@@ -6,6 +6,7 @@ import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Card, Checkbox, Col, Form, Input, Row } from 'antd';
+import { Star } from 'lucide-react';
 import { api } from '@/lib/api';
 import { ErrorMessage, FormActions } from './AthleteForm';
 import { MarkdownEditor } from './MarkdownEditor';
@@ -19,6 +20,7 @@ const articleSchema = z.object({
   coverImageUrl: z.string().url('URL ảnh không hợp lệ').or(z.literal('')),
   content: z.string().min(10, 'Nội dung phải có ít nhất 10 ký tự').max(100_000),
   isPublished: z.boolean(),
+  isFeatured: z.boolean(),
 });
 
 type ArticleFormValues = z.infer<typeof articleSchema>;
@@ -39,6 +41,7 @@ export function ArticleForm({ articleId, initialData }: { articleId?: string; in
       coverImageUrl: initialData?.coverImageUrl || '',
       content: initialData?.content || '',
       isPublished: initialData?.isPublished ?? false,
+      isFeatured: initialData?.isFeatured ?? false,
     },
   });
 
@@ -118,15 +121,29 @@ export function ArticleForm({ articleId, initialData }: { articleId?: string; in
           </Col>
           <Col span={24}>
             <Form.Item className="!mb-0">
-              <Controller
-                name="isPublished"
-                control={control}
-                render={({ field }) => (
-                  <Checkbox checked={field.value} onChange={(event) => field.onChange(event.target.checked)}>
-                    Công khai bài viết trên trang Tin tức
-                  </Checkbox>
-                )}
-              />
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-8">
+                <Controller
+                  name="isPublished"
+                  control={control}
+                  render={({ field }) => (
+                    <Checkbox checked={field.value} onChange={(event) => field.onChange(event.target.checked)}>
+                      Công khai bài viết trên trang Tin tức
+                    </Checkbox>
+                  )}
+                />
+                <Controller
+                  name="isFeatured"
+                  control={control}
+                  render={({ field }) => (
+                    <Checkbox checked={field.value} onChange={(event) => field.onChange(event.target.checked)}>
+                      <span className="inline-flex items-center gap-1.5">
+                        <Star className={`h-4 w-4 ${field.value ? 'fill-amber-400 text-amber-400' : 'text-slate-500'}`} />
+                        Ưu tiên trên trang Tổng quan
+                      </span>
+                    </Checkbox>
+                  )}
+                />
+              </div>
             </Form.Item>
           </Col>
         </Row>

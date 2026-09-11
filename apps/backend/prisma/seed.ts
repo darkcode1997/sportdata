@@ -87,6 +87,7 @@ Ba ngày thi đấu đã mang đến những cuộc so tài quyết liệt ở n
 
 SportData tiếp tục tổng hợp lịch đấu, kết quả và thành tích để người hâm mộ có thể theo dõi thuận tiện hơn.`,
       isPublished: true,
+      isFeatured: true,
       publishedAt: new Date('2026-09-10T02:00:00.000Z'),
     },
     {
@@ -104,6 +105,7 @@ Thành tích trên sàn đấu là kết quả của một quá trình dài. T�
 
 Khả năng duy trì sự tập trung qua từng vòng đấu giúp vận động viên chủ động hơn trước những đối thủ có phong cách khác nhau. Đây cũng là nền tảng quan trọng cho các mục tiêu tiếp theo trong mùa giải.`,
       isPublished: true,
+      isFeatured: true,
       publishedAt: new Date('2026-09-09T03:30:00.000Z'),
     },
     {
@@ -123,6 +125,7 @@ Sau một giải đấu cường độ cao, cơ thể cần được chăm sóc 
 
 Một kế hoạch phục hồi phù hợp cần dựa trên thể trạng và lịch thi đấu riêng của từng người.`,
       isPublished: true,
+      isFeatured: true,
       publishedAt: new Date('2026-09-08T01:15:00.000Z'),
     },
     {
@@ -143,6 +146,7 @@ Giao diện lịch thi đấu mới ưu tiên những thông tin quan trọng: t
 
 Các dữ liệu được đồng bộ từ CMS để ban tổ chức có thể cập nhật trong cùng một quy trình.`,
       isPublished: true,
+      isFeatured: true,
       publishedAt: new Date('2026-09-07T04:00:00.000Z'),
     },
     {
@@ -160,6 +164,7 @@ Ban trọng tài, bàn điều hành và đội ngũ nhập liệu liên tục �
 
 Quy trình rõ ràng giúp giảm sai sót và đảm bảo mọi vận động viên được ghi nhận thành tích chính xác.`,
       isPublished: true,
+      isFeatured: false,
       publishedAt: new Date('2026-09-06T02:45:00.000Z'),
     },
     {
@@ -177,6 +182,7 @@ Việc ghi lại thành tích tập luyện và thi đấu giúp vận động v
 
 Sự bền bỉ được hình thành từ những thói quen nhỏ, được duy trì đều đặn mỗi ngày.`,
       isPublished: true,
+      isFeatured: false,
       publishedAt: new Date('2026-09-05T02:20:00.000Z'),
     },
     {
@@ -190,6 +196,7 @@ Các vận động viên hoàn tất khởi động, kiểm tra trang phục và
 
 Nội dung hậu trường đầy đủ sẽ được cập nhật sau khi đội ngũ biên tập hoàn thiện hình ảnh và thông tin.`,
       isPublished: false,
+      isFeatured: false,
       publishedAt: null,
     },
     {
@@ -203,6 +210,7 @@ Nhiều vận động viên trẻ đã cho thấy khả năng thích nghi nhanh 
 
 Danh sách nhân vật và thành tích nổi bật đang được ban biên tập tổng hợp.`,
       isPublished: false,
+      isFeatured: false,
       publishedAt: null,
     },
   ];

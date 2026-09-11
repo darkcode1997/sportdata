@@ -33,7 +33,11 @@ import {
   User,
   Users,
 } from 'lucide-react';
-import { createSportdataTheme, type SportdataColorMode } from '@/components/AntdProvider';
+import {
+  applyDocumentColorMode,
+  createSportdataTheme,
+  type SportdataColorMode,
+} from '@/components/AntdProvider';
 
 const navItems = [
   { label: 'Dashboard', key: '/cms', icon: <LayoutDashboard className="h-5 w-5" /> },
@@ -66,11 +70,14 @@ export default function CmsLayout({ children }: { children: React.ReactNode }) {
     setSidebarCollapsed(localStorage.getItem('cms_sidebar_collapsed') === 'true');
 
     const savedTheme = localStorage.getItem('cms_color_mode');
+    let nextMode: SportdataColorMode = 'dark';
     if (savedTheme === 'light' || savedTheme === 'dark') {
-      setColorMode(savedTheme);
+      nextMode = savedTheme;
     } else if (window.matchMedia('(prefers-color-scheme: light)').matches) {
-      setColorMode('light');
+      nextMode = 'light';
     }
+    applyDocumentColorMode(nextMode);
+    setColorMode(nextMode);
   }, []);
 
   useEffect(() => {
@@ -141,6 +148,7 @@ export default function CmsLayout({ children }: { children: React.ReactNode }) {
     setColorMode((current) => {
       const next = current === 'dark' ? 'light' : 'dark';
       localStorage.setItem('cms_color_mode', next);
+      applyDocumentColorMode(next);
       return next;
     });
   };

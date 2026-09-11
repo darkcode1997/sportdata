@@ -47,6 +47,11 @@ export class CreateArticleDto {
   @IsBoolean()
   isPublished?: boolean;
 
+  @ApiPropertyOptional({ description: 'Ưu tiên hiển thị bài viết trên trang Tổng quan' })
+  @IsOptional()
+  @IsBoolean()
+  isFeatured?: boolean;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsDateString()

@@ -20,7 +20,7 @@ import {
   Typography,
   type TableProps,
 } from 'antd';
-import { ExternalLink, FileText, Pencil, Search, Trash2 } from 'lucide-react';
+import { ExternalLink, FileText, Pencil, Search, Star, Trash2 } from 'lucide-react';
 import { CmsPageHeader } from '@/components/cms/CmsPageHeader';
 import { api, fetcher } from '@/lib/api';
 
@@ -57,6 +57,16 @@ export default function NewsManagementPage() {
       await mutate();
     } catch (updateError: any) {
       setRequestError(updateError.response?.data?.message || 'Không thể cập nhật trạng thái bài viết.');
+    }
+  };
+
+  const updateFeatured = async (article: any) => {
+    setRequestError(null);
+    try {
+      await api.patch(`/articles/${article.id}`, { isFeatured: !article.isFeatured });
+      await mutate();
+    } catch (updateError: any) {
+      setRequestError(updateError.response?.data?.message || 'Không thể cập nhật bài viết nổi bật.');
     }
   };
 
@@ -104,6 +114,25 @@ export default function NewsManagementPage() {
             {article.isPublished ? 'Đã xuất bản' : 'Bản nháp'}
           </Tag>
         </Space>
+      ),
+    },
+    {
+      title: 'Tổng quan',
+      key: 'featured',
+      width: 112,
+      align: 'center',
+      render: (_, article) => (
+        <Tooltip title={article.isFeatured ? 'Bỏ khỏi bài viết nổi bật' : 'Ưu tiên trên trang Tổng quan'}>
+          <Button
+            type="text"
+            shape="circle"
+            aria-label={article.isFeatured ? 'Bỏ khỏi bài viết nổi bật' : 'Đánh dấu bài viết nổi bật'}
+            aria-pressed={Boolean(article.isFeatured)}
+            className={article.isFeatured ? '!text-amber-500' : '!text-slate-500'}
+            icon={<Star className={`h-5 w-5 ${article.isFeatured ? 'fill-current' : ''}`} />}
+            onClick={() => updateFeatured(article)}
+          />
+        </Tooltip>
       ),
     },
     {
@@ -198,7 +227,7 @@ export default function NewsManagementPage() {
           dataSource={articles}
           loading={isLoading}
           pagination={false}
-          scroll={{ x: 900 }}
+          scroll={{ x: 1010 }}
           locale={{ emptyText: 'Chưa có bài viết.' }}
         />
         <Flex justify="flex-end" className="border-t border-sdark-800 p-4">

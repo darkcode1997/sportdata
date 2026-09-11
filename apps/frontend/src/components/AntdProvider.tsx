@@ -6,6 +6,15 @@ import viVN from 'antd/locale/vi_VN';
 
 export type SportdataColorMode = 'light' | 'dark';
 
+export function applyDocumentColorMode(mode: SportdataColorMode) {
+  if (typeof document === 'undefined') return;
+  const background = mode === 'light' ? '#f4f7fb' : '#070b16';
+  document.documentElement.dataset.appTheme = mode;
+  document.documentElement.style.backgroundColor = background;
+  document.documentElement.style.colorScheme = mode;
+  document.body.style.backgroundColor = background;
+}
+
 export function createSportdataTheme(mode: SportdataColorMode): ThemeConfig {
   const isLight = mode === 'light';
 

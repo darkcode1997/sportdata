@@ -13,10 +13,26 @@ export const metadata: Metadata = {
     'Theo dõi hồ sơ vận động viên, lịch thi đấu, kết quả và bảng thành tích thể thao.',
 };
 
+const themeBootstrapScript = `(() => {
+  try {
+    const isCms = window.location.pathname.startsWith('/cms');
+    const storageKey = isCms ? 'cms_color_mode' : 'public_color_mode';
+    const savedMode = window.localStorage.getItem(storageKey);
+    const mode = savedMode === 'light' || savedMode === 'dark'
+      ? savedMode
+      : window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+    const background = mode === 'light' ? '#f4f7fb' : '#070b16';
+    document.documentElement.dataset.appTheme = mode;
+    document.documentElement.style.backgroundColor = background;
+    document.documentElement.style.colorScheme = mode;
+  } catch (_) {}
+})();`;
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="vi">
+    <html lang="vi" suppressHydrationWarning>
       <head>
+        <script dangerouslySetInnerHTML={{ __html: themeBootstrapScript }} />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link

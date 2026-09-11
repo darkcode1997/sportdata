@@ -7,15 +7,18 @@ import { Alert, Avatar, Button, Card, Empty, Skeleton, Statistic, Tag } from 'an
 import {
   ArrowRight,
   CalendarDays,
+  ChevronLeft,
   ChevronRight,
   CircleDot,
   Clock3,
   MapPin,
   Medal,
+  Newspaper,
   Radio,
   ShieldCheck,
   Swords,
   Target,
+  Star,
   Trophy,
   UserRound,
   Users,
@@ -53,6 +56,16 @@ type Match = {
   category?: { name: string };
 };
 
+type FeaturedArticle = {
+  id: string;
+  title: string;
+  slug: string;
+  excerpt?: string;
+  coverImageUrl?: string;
+  publishedAt?: string;
+  createdAt: string;
+};
+
 const viDate = new Intl.DateTimeFormat('vi-VN', {
   weekday: 'short',
   day: '2-digit',
@@ -61,11 +74,18 @@ const viDate = new Intl.DateTimeFormat('vi-VN', {
   minute: '2-digit',
 });
 
+const viArticleDate = new Intl.DateTimeFormat('vi-VN', {
+  day: '2-digit',
+  month: 'long',
+  year: 'numeric',
+});
+
 export default function HomePage() {
   const athletesQuery = useSWR('/athletes?limit=6', fetcher);
   const matchesQuery = useSWR('/matches?limit=8', fetcher);
   const rankingsQuery = useSWR('/statistics/rankings/athletes?sortBy=medals&limit=5', fetcher);
   const eventsQuery = useSWR('/events?isPublished=true&limit=4', fetcher);
+  const featuredArticlesQuery = useSWR('/articles?isFeatured=true&limit=8', fetcher);
 
   const athleteData = athletesQuery.data as any;
   const matchData = matchesQuery.data as any;
@@ -74,6 +94,7 @@ export default function HomePage() {
   const athletes = (athleteData?.items || []) as Athlete[];
   const matches = (matchData?.items || []) as Match[];
   const rankings = (rankingData?.items || []) as any[];
+  const featuredArticles = ((featuredArticlesQuery.data as any)?.items || []) as FeaturedArticle[];
   const featuredMatches = [...matches]
     .sort((a, b) => {
       const priority = { RUNNING: 0, SCHEDULED: 1, FINISHED: 2, CANCELLED: 3 };
@@ -81,7 +102,7 @@ export default function HomePage() {
     })
     .slice(0, 5);
   const loading = athletesQuery.isLoading || matchesQuery.isLoading;
-  const hasError = athletesQuery.error || matchesQuery.error || rankingsQuery.error;
+  const hasError = athletesQuery.error || matchesQuery.error || rankingsQuery.error || featuredArticlesQuery.error;
 
   return (
     <div className="home-page min-h-screen">
@@ -183,8 +204,133 @@ export default function HomePage() {
             </Card>
           </section>
         </div>
+
+        <FeaturedNewsSlider articles={featuredArticles} loading={featuredArticlesQuery.isLoading} />
       </div>
     </div>
+  );
+}
+
+function FeaturedNewsSlider({ articles, loading }: { articles: FeaturedArticle[]; loading: boolean }) {
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [paused, setPaused] = useState(false);
+
+  useEffect(() => {
+    if (activeIndex >= articles.length) setActiveIndex(0);
+  }, [activeIndex, articles.length]);
+
+  useEffect(() => {
+    if (paused || articles.length < 2 || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const timer = window.setInterval(() => {
+      setActiveIndex((current) => (current + 1) % articles.length);
+    }, 5500);
+    return () => window.clearInterval(timer);
+  }, [articles.length, paused]);
+
+  if (loading) {
+    return (
+      <section aria-label="Đang tải bài viết nổi bật">
+        <SectionHeading eyebrow="Tin tức SportData" title="Bài viết nổi bật" href="/news" />
+        <Card className="home-featured-news-skeleton public-surface mt-7">
+          <Skeleton active avatar paragraph={{ rows: 5 }} />
+        </Card>
+      </section>
+    );
+  }
+
+  if (articles.length === 0) return null;
+
+  const showPrevious = () => setActiveIndex((current) => (current - 1 + articles.length) % articles.length);
+  const showNext = () => setActiveIndex((current) => (current + 1) % articles.length);
+
+  return (
+    <section aria-label="Bài viết nổi bật">
+      <SectionHeading
+        eyebrow="Tin tức SportData"
+        title="Bài viết nổi bật"
+        description="Những câu chuyện, dấu ấn và cập nhật đáng chú ý được ban biên tập lựa chọn."
+        href="/news"
+      />
+      <div
+        className="home-featured-news mt-7"
+        role="region"
+        aria-roledescription="slider"
+        aria-label={`Bài viết ${activeIndex + 1} trên ${articles.length}`}
+        onMouseEnter={() => setPaused(true)}
+        onMouseLeave={() => setPaused(false)}
+        onFocus={() => setPaused(true)}
+        onBlur={() => setPaused(false)}
+      >
+        <div className="home-featured-news-viewport">
+          <div
+            className="home-featured-news-track"
+            style={{ transform: `translate3d(-${activeIndex * 100}%, 0, 0)` }}
+          >
+            {articles.map((article, index) => (
+              <article
+                key={article.id}
+                className="home-featured-news-slide"
+                aria-hidden={index !== activeIndex}
+              >
+                <Link
+                  href={`/news/${article.slug}`}
+                  className="home-featured-news-cover"
+                  tabIndex={index === activeIndex ? 0 : -1}
+                >
+                  {article.coverImageUrl ? (
+                    <img src={article.coverImageUrl} alt={article.title} loading={index === 0 ? 'eager' : 'lazy'} />
+                  ) : (
+                    <span className="home-featured-news-placeholder"><Newspaper className="h-14 w-14" /></span>
+                  )}
+                  <span className="home-featured-news-cover-shade" />
+                  <span className="home-featured-news-badge"><Star className="h-3.5 w-3.5 fill-current" /> Nổi bật</span>
+                </Link>
+
+                <div className="home-featured-news-copy">
+                  <p className="home-featured-news-date">
+                    <CalendarDays className="h-4 w-4" />
+                    {viArticleDate.format(new Date(article.publishedAt || article.createdAt))}
+                  </p>
+                  <h3>{article.title}</h3>
+                  <p className="home-featured-news-excerpt">
+                    {article.excerpt || 'Khám phá nội dung mới nhất từ SportData.'}
+                  </p>
+                  <Link
+                    href={`/news/${article.slug}`}
+                    className="home-featured-news-action"
+                    tabIndex={index === activeIndex ? 0 : -1}
+                  >
+                    Đọc bài viết <ArrowRight className="h-4 w-4" />
+                  </Link>
+                </div>
+              </article>
+            ))}
+          </div>
+        </div>
+
+        {articles.length > 1 && (
+          <div className="home-featured-news-controls">
+            <div className="home-featured-news-dots" role="tablist" aria-label="Chọn bài viết">
+              {articles.map((article, index) => (
+                <button
+                  key={article.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={index === activeIndex}
+                  aria-label={`Xem bài viết ${index + 1}: ${article.title}`}
+                  className={index === activeIndex ? 'is-active' : ''}
+                  onClick={() => setActiveIndex(index)}
+                />
+              ))}
+            </div>
+            <div className="home-featured-news-arrows">
+              <Button type="text" shape="circle" icon={<ChevronLeft className="h-5 w-5" />} onClick={showPrevious} aria-label="Bài viết trước" />
+              <Button type="text" shape="circle" icon={<ChevronRight className="h-5 w-5" />} onClick={showNext} aria-label="Bài viết tiếp theo" />
+            </div>
+          </div>
+        )}
+      </div>
+    </section>
   );
 }
 

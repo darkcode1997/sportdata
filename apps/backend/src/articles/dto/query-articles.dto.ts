@@ -16,6 +16,12 @@ export class QueryArticlesDto {
 
   @ApiPropertyOptional()
   @IsOptional()
+  @IsBoolean()
+  @Transform(({ value }) => value === 'true' ? true : value === 'false' ? false : value)
+  isFeatured?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsInt()
   @Min(1)
   @Type(() => Number)

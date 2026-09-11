@@ -19,6 +19,7 @@ export class ArticlesService {
         content: dto.content.trim(),
         coverImageUrl: this.optional(dto.coverImageUrl),
         isPublished,
+        isFeatured: dto.isFeatured ?? false,
         publishedAt: isPublished ? new Date(dto.publishedAt || Date.now()) : null,
       },
     });
@@ -64,6 +65,7 @@ export class ArticlesService {
           ? { coverImageUrl: this.optional(dto.coverImageUrl) }
           : {}),
         isPublished,
+        ...(dto.isFeatured !== undefined ? { isFeatured: dto.isFeatured } : {}),
         publishedAt: isPublished
           ? new Date(dto.publishedAt || existing.publishedAt || Date.now())
           : null,
@@ -83,6 +85,7 @@ export class ArticlesService {
     const search = query.search?.trim();
     const where = {
       ...(query.isPublished !== undefined ? { isPublished: query.isPublished } : {}),
+      ...(query.isFeatured !== undefined ? { isFeatured: query.isFeatured } : {}),
       ...(search ? {
         OR: [
           { title: { contains: search, mode: 'insensitive' as const } },
