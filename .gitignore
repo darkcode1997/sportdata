@@ -7,3 +7,6 @@ dist
 .DS_Store
 coverage
 .vscode
+
+.vercel
+.env*
