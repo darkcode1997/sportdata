@@ -109,7 +109,7 @@ export default function AthletesPage() {
   return (
     <div className="mx-auto max-w-7xl space-y-8 px-4 py-10 sm:px-6 lg:px-8">
       <div>
-        <h1 className="text-3xl font-bold text-white mb-2">Vận động viên</h1>
+        <h1 className="text-3xl font-bold text-slate-100 mb-2">Vận động viên</h1>
         <p className="text-slate-400">Tra cứu hồ sơ, quốc gia thi đấu và thành tích của từng vận động viên.</p>
       </div>
 
@@ -262,7 +262,7 @@ function AthleteCard({ athlete }: { athlete: Athlete }) {
           )}
         </div>
         <div className="mt-3 text-center">
-          <h3 className="font-bold text-white group-hover:text-sblue-400 transition-colors">
+          <h3 className="font-bold text-slate-100 group-hover:text-sblue-400 transition-colors">
             {athlete.fullName}
           </h3>
           <div className="flex items-center justify-center gap-2 mt-1 text-xs text-slate-400 flex-wrap">

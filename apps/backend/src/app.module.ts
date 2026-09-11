@@ -12,6 +12,8 @@ import { CountriesModule } from './countries/countries.module';
 import { FederationsModule } from './federations/federations.module';
 import { BackupModule } from './backup/backup.module';
 import { UsersModule } from './users/users.module';
+import { ArticlesModule } from './articles/articles.module';
+import { ContactsModule } from './contacts/contacts.module';
 
 @Module({
   imports: [
@@ -28,6 +30,8 @@ import { UsersModule } from './users/users.module';
     FederationsModule,
     BackupModule,
     UsersModule,
+    ArticlesModule,
+    ContactsModule,
   ],
 })
 export class AppModule {}

@@ -114,7 +114,7 @@ export default function AthleteProfilePage() {
                   );
                 })}
               </div>
-              <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black text-white tracking-tight drop-shadow-lg">
+              <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black text-slate-100 tracking-tight drop-shadow-lg">
                 {athlete.fullName}
               </h1>
               <p className="mt-1 text-slate-300 text-base sm:text-lg font-medium flex flex-wrap items-center gap-3">

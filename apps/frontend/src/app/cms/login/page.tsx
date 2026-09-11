@@ -102,9 +102,7 @@ export default function LoginPage() {
 
         <Card className="border-sdark-700 bg-sdark-900 shadow-2xl shadow-black/20">
           <h2 className="mb-1 text-xl font-bold text-slate-100">Đăng nhập</h2>
-          <p className="mb-6 text-sm text-slate-500">
-            Dùng email hoặc username để truy cập bảng điều khiển
-          </p>
+          
 
           {globalError && (
             <Alert
@@ -146,7 +144,6 @@ export default function LoginPage() {
               required
               validateStatus={errors.password ? 'error' : undefined}
               help={errors.password?.message}
-              extra={<>Dùng toàn bộ giá trị <code>ADMIN_PASSWORD</code> trong <code>.env</code>, không gồm dấu ngoặc kép.</>}
             >
               <Controller
                 name="password"

@@ -22,8 +22,10 @@ import {
   ChevronsRight,
   LayoutDashboard,
   LogOut,
+  Mail,
   Menu as MenuIcon,
   Moon,
+  Newspaper,
   Settings,
   Sun,
   Swords,
@@ -40,6 +42,8 @@ const navItems = [
   { label: 'Bộ môn & hạng đấu', key: '/cms/sports', icon: <Trophy className="h-5 w-5" /> },
   { label: 'Trận đấu', key: '/cms/matches', icon: <Swords className="h-5 w-5" /> },
   { label: 'Thống kê', key: '/cms/statistics', icon: <BarChart3 className="h-5 w-5" /> },
+  { label: 'Tin tức', key: '/cms/news', icon: <Newspaper className="h-5 w-5" /> },
+  { label: 'Liên hệ', key: '/cms/contacts', icon: <Mail className="h-5 w-5" /> },
   { label: 'Cài đặt', key: '/cms/settings', icon: <Settings className="h-5 w-5" /> },
 ];
 
@@ -177,7 +181,7 @@ export default function CmsLayout({ children }: { children: React.ReactNode }) {
         inlineCollapsed={compact}
         selectedKeys={[selectedKey]}
         items={navItems}
-        className={`flex-1 border-0 py-5 ${compact ? 'px-2' : 'px-3'}`}
+        className={`flex-1 overflow-y-auto border-0 py-5 ${compact ? 'px-2' : 'px-3'}`}
         onClick={({ key }) => {
           router.push(key);
           setSidebarOpen(false);

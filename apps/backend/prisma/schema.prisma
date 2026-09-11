@@ -86,6 +86,12 @@ enum BracketSide {
   ATHLETE2
 }
 
+enum ContactStatus {
+  NEW
+  READ
+  RESOLVED
+}
+
 model Country {
   id          String       @id @default(cuid())
   code        String       @unique
@@ -122,6 +128,38 @@ model User {
   passwordChangedAt        DateTime?
   createdAt                DateTime  @default(now())
   updatedAt                DateTime  @updatedAt
+}
+
+model Article {
+  id            String    @id @default(cuid())
+  title         String
+  slug          String    @unique
+  excerpt       String?
+  content       String    @db.Text
+  coverImageUrl String?
+  isPublished   Boolean   @default(false)
+  publishedAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([isPublished, publishedAt])
+  @@index([createdAt])
+}
+
+model ContactMessage {
+  id        String        @id @default(cuid())
+  fullName  String
+  email     String
+  phone     String?
+  subject   String?
+  message   String        @db.Text
+  status    ContactStatus @default(NEW)
+  adminNote String?       @db.Text
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@index([email])
+  @@index([status, createdAt])
 }
 
 model Sport {

@@ -30,7 +30,7 @@ export function createSportdataTheme(mode: SportdataColorMode): ThemeConfig {
       colorTextTertiary: isLight ? '#64748b' : '#70819f',
       borderRadius: 12,
       borderRadiusLG: 18,
-      fontFamily: '"Google Sans Flex", "Segoe UI", system-ui, sans-serif',
+      fontFamily: '"Be Vietnam Pro", "Segoe UI", system-ui, sans-serif',
       controlHeight: 42,
       controlHeightLG: 48,
       boxShadowSecondary: isLight

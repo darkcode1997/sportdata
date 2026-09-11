@@ -221,8 +221,54 @@ export default function EventDetailPage() {
   }, [activeGroup, selectedSportId, selectedCategoryId]);
 
   const totalMatches = event?._count?.matches ?? dateGroups.reduce((sum, group) => sum + group.count, 0);
-  const hasLiveMatches = activeMatches.some((match) => match.status === 'RUNNING');
+  const liveMatchTarget = useMemo(() => {
+    const visibleLiveMatch = activeMatches.find((match) => match.status === 'RUNNING');
+    if (visibleLiveMatch) {
+      return { id: visibleLiveMatch.id, date: activeGroup?.date };
+    }
+
+    return dateGroups
+      .flatMap((group) => group.categories.flatMap((category) => category.matches
+        .filter((match) => match.status === 'RUNNING')
+        .map((match) => ({ ...match, date: group.date }))))
+      .sort((left, right) => {
+        const dateOrder = left.date.localeCompare(right.date);
+        if (dateOrder) return dateOrder;
+        const leftTime = new Date(left.startTime || left.matchDate).getTime();
+        const rightTime = new Date(right.startTime || right.matchDate).getTime();
+        return leftTime - rightTime || (left.matchNumber || 0) - (right.matchNumber || 0);
+      })
+      .map((match) => ({ id: match.id, date: match.date }))[0];
+  }, [activeGroup?.date, activeMatches, dateGroups]);
+  const [pendingLiveMatchId, setPendingLiveMatchId] = useState<string>();
+  const hasLiveMatches = Boolean(liveMatchTarget);
   const loading = eventLoading || matchesLoading;
+
+  useEffect(() => {
+    if (!pendingLiveMatchId || loading) return;
+    const liveMatchElement = document.getElementById(`match-${pendingLiveMatchId}`);
+    if (!liveMatchElement) return;
+
+    const animationFrame = requestAnimationFrame(() => {
+      liveMatchElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      liveMatchElement.focus({ preventScroll: true });
+      setPendingLiveMatchId(undefined);
+    });
+
+    return () => cancelAnimationFrame(animationFrame);
+  }, [activeMatches, loading, pendingLiveMatchId]);
+
+  const scrollToLiveMatch = () => {
+    if (!liveMatchTarget) return;
+    const targetIsVisible = activeMatches.some((match) => match.id === liveMatchTarget.id);
+
+    if (!targetIsVisible) {
+      setSelectedDate(liveMatchTarget.date);
+      setSelectedSportId(undefined);
+      setSelectedCategoryId(undefined);
+    }
+    setPendingLiveMatchId(liveMatchTarget.id);
+  };
 
   return (
     <div className="schedule-page min-h-screen pb-20">
@@ -236,7 +282,7 @@ export default function EventDetailPage() {
             </span>
           </Link>
           <div className="mt-3 text-xs font-black tracking-[0.16em] text-sky-400">MATCH SCHEDULE</div>
-          <h1 className="mx-auto mt-5 max-w-4xl text-xl font-black uppercase leading-tight text-white sm:text-2xl lg:text-[1.7rem]">
+          <h1 className="mx-auto mt-5 max-w-4xl text-xl font-black uppercase leading-tight text-slate-100 sm:text-2xl lg:text-[1.7rem]">
             {event?.name || 'Lịch thi đấu'}
           </h1>
           <p className="mt-3 text-sm text-slate-300">
@@ -340,10 +386,16 @@ export default function EventDetailPage() {
       </div>
 
       {hasLiveMatches && (
-        <div className="schedule-live-float">
+        <button
+          type="button"
+          className="schedule-live-float"
+          onClick={scrollToLiveMatch}
+          aria-label="Cuộn đến trận đang thi đấu"
+          title="Xem trận đang thi đấu"
+        >
           <Radio className="h-3.5 w-3.5" />
           LIVE
-        </div>
+        </button>
       )}
     </div>
   );

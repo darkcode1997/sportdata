@@ -69,6 +69,151 @@ async function main() {
   });
   console.log(`Admin configured: ${adminUsername} (${adminEmail}) - ${adminRole}`);
 
+  const articleSeeds: Prisma.ArticleCreateInput[] = [
+    {
+      title: 'Dấu ấn 5th JJAU Regional Championship Southeast Asia',
+      slug: 'dau-an-5th-jjau-regional-championship-southeast-asia',
+      excerpt: 'Những màn tranh tài giàu cảm xúc và các cột mốc đáng nhớ tại giải Ju-Jitsu khu vực Đông Nam Á.',
+      coverImageUrl: 'https://images.unsplash.com/photo-1549719386-74dfcbf7dbed?auto=format&fit=crop&w=1400&q=85',
+      content: `## Một giải đấu giàu cảm xúc
+
+Ba ngày thi đấu đã mang đến những cuộc so tài quyết liệt ở nhiều nhóm tuổi và hạng cân. Các vận động viên thể hiện kỹ thuật, bản lĩnh và tinh thần tôn trọng đối thủ trên từng thảm đấu.
+
+## Những con số nổi bật
+
+- Hơn 1.300 trận đấu được cập nhật trên hệ thống
+- Nhiều nội dung từ Duo, Show đến Fighting và Newaza
+- Các đoàn thể thao trong khu vực cùng góp mặt
+
+SportData tiếp tục tổng hợp lịch đấu, kết quả và thành tích để người hâm mộ có thể theo dõi thuận tiện hơn.`,
+      isPublished: true,
+      publishedAt: new Date('2026-09-10T02:00:00.000Z'),
+    },
+    {
+      title: 'LE/TRONG NGHIA và hành trình chinh phục ngôi đầu',
+      slug: 'le-trong-nghia-va-hanh-trinh-chinh-phuc-ngoi-dau',
+      excerpt: 'Sự ổn định, kỷ luật và khả năng làm chủ áp lực đã tạo nên một hành trình thi đấu ấn tượng.',
+      coverImageUrl: 'https://images.unsplash.com/photo-1461896836934-ffe607ba8211?auto=format&fit=crop&w=1400&q=85',
+      content: `## Chuẩn bị từ những điều nhỏ nhất
+
+Thành tích trên sàn đấu là kết quả của một quá trình dài. Từ giáo án thể lực, kỹ thuật đến chế độ nghỉ ngơi, mọi chi tiết đều được đội ngũ huấn luyện theo dõi sát sao.
+
+> Mỗi trận đấu là một cơ hội để hiểu rõ hơn điểm mạnh và điều cần cải thiện.
+
+## Giữ nhịp thi đấu
+
+Khả năng duy trì sự tập trung qua từng vòng đấu giúp vận động viên chủ động hơn trước những đối thủ có phong cách khác nhau. Đây cũng là nền tảng quan trọng cho các mục tiêu tiếp theo trong mùa giải.`,
+      isPublished: true,
+      publishedAt: new Date('2026-09-09T03:30:00.000Z'),
+    },
+    {
+      title: '5 nguyên tắc phục hồi dành cho vận động viên sau giải đấu',
+      slug: '5-nguyen-tac-phuc-hoi-danh-cho-van-dong-vien-sau-giai-dau',
+      excerpt: 'Phục hồi đúng cách giúp cơ thể tái tạo năng lượng và sẵn sàng cho chu kỳ tập luyện tiếp theo.',
+      coverImageUrl: 'https://images.unsplash.com/photo-1517836357463-d25dfeac3438?auto=format&fit=crop&w=1400&q=85',
+      content: `## Phục hồi là một phần của tập luyện
+
+Sau một giải đấu cường độ cao, cơ thể cần được chăm sóc có kế hoạch. Vận động viên không nên quay lại khối lượng tập nặng quá sớm.
+
+1. Ngủ đủ và duy trì giờ nghỉ ổn định
+2. Bổ sung nước cùng dinh dưỡng cân bằng
+3. Vận động nhẹ để tăng tuần hoàn
+4. Theo dõi các dấu hiệu đau kéo dài
+5. Trao đổi thường xuyên với huấn luyện viên
+
+Một kế hoạch phục hồi phù hợp cần dựa trên thể trạng và lịch thi đấu riêng của từng người.`,
+      isPublished: true,
+      publishedAt: new Date('2026-09-08T01:15:00.000Z'),
+    },
+    {
+      title: 'SportData nâng cấp trải nghiệm theo dõi lịch thi đấu trực tiếp',
+      slug: 'sportdata-nang-cap-trai-nghiem-theo-doi-lich-thi-dau-truc-tiep',
+      excerpt: 'Lịch đấu, trạng thái trận và kết quả được tập trung trong một giao diện rõ ràng trên cả máy tính lẫn điện thoại.',
+      coverImageUrl: 'https://images.unsplash.com/photo-1552674605-db6ffd4facb5?auto=format&fit=crop&w=1400&q=85',
+      content: `## Theo dõi giải đấu dễ dàng hơn
+
+Giao diện lịch thi đấu mới ưu tiên những thông tin quan trọng: thời gian, thảm đấu, vận động viên, tỷ số và trạng thái trực tiếp.
+
+## Hoạt động tốt trên mọi thiết bị
+
+- Tìm nhanh theo tên vận động viên
+- Lọc theo ngày và nội dung thi đấu
+- Nút Live đưa người xem đến ngay các trận đang diễn ra
+- Chế độ sáng và tối phù hợp với nhiều môi trường sử dụng
+
+Các dữ liệu được đồng bộ từ CMS để ban tổ chức có thể cập nhật trong cùng một quy trình.`,
+      isPublished: true,
+      publishedAt: new Date('2026-09-07T04:00:00.000Z'),
+    },
+    {
+      title: 'Bên trong công tác vận hành một giải đấu võ thuật',
+      slug: 'ben-trong-cong-tac-van-hanh-mot-giai-dau-vo-thuat',
+      excerpt: 'Từ xếp lịch đến cập nhật kết quả, mỗi bộ phận đều cần phối hợp chính xác để giải đấu diễn ra liền mạch.',
+      coverImageUrl: 'https://images.unsplash.com/photo-1579952363873-27f3bade9f55?auto=format&fit=crop&w=1400&q=85',
+      content: `## Chuẩn bị trước ngày thi đấu
+
+Danh sách vận động viên, hạng cân và sơ đồ thi đấu cần được kiểm tra qua nhiều bước. Một thay đổi nhỏ cũng có thể ảnh hưởng đến lịch của cả đoàn.
+
+## Phối hợp trong thời gian thực
+
+Ban trọng tài, bàn điều hành và đội ngũ nhập liệu liên tục đối chiếu thông tin. Khi kết quả được xác nhận, dữ liệu mới được công bố đến người xem.
+
+Quy trình rõ ràng giúp giảm sai sót và đảm bảo mọi vận động viên được ghi nhận thành tích chính xác.`,
+      isPublished: true,
+      publishedAt: new Date('2026-09-06T02:45:00.000Z'),
+    },
+    {
+      title: 'Tập luyện cân bằng: nền tảng cho phong độ bền vững',
+      slug: 'tap-luyen-can-bang-nen-tang-cho-phong-do-ben-vung',
+      excerpt: 'Kỹ thuật, thể lực và tinh thần cần được phát triển đồng đều để tạo nên phong độ ổn định.',
+      coverImageUrl: 'https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?auto=format&fit=crop&w=1400&q=85',
+      content: `## Không chỉ là tập nặng
+
+Một giáo án hiệu quả cần có sự cân bằng giữa buổi tập cường độ cao, kỹ thuật chuyên môn và thời gian hồi phục. Khối lượng tập nên được điều chỉnh theo từng giai đoạn của mùa giải.
+
+## Theo dõi tiến bộ
+
+Việc ghi lại thành tích tập luyện và thi đấu giúp vận động viên nhìn thấy xu hướng dài hạn thay vì chỉ tập trung vào một kết quả đơn lẻ.
+
+Sự bền bỉ được hình thành từ những thói quen nhỏ, được duy trì đều đặn mỗi ngày.`,
+      isPublished: true,
+      publishedAt: new Date('2026-09-05T02:20:00.000Z'),
+    },
+    {
+      title: 'Hậu trường đội tuyển trước giờ khai mạc',
+      slug: 'hau-truong-doi-tuyen-truoc-gio-khai-mac',
+      excerpt: 'Những bước chuẩn bị cuối cùng của các vận động viên và ban huấn luyện trước khi bước vào giải đấu.',
+      coverImageUrl: 'https://images.unsplash.com/photo-1594736797933-d0501ba2fe65?auto=format&fit=crop&w=1400&q=85',
+      content: `## Không khí trước giờ thi đấu
+
+Các vận động viên hoàn tất khởi động, kiểm tra trang phục và thống nhất chiến thuật cùng ban huấn luyện.
+
+Nội dung hậu trường đầy đủ sẽ được cập nhật sau khi đội ngũ biên tập hoàn thiện hình ảnh và thông tin.`,
+      isPublished: false,
+      publishedAt: null,
+    },
+    {
+      title: 'Các gương mặt trẻ đáng chú ý trong mùa giải mới',
+      slug: 'cac-guong-mat-tre-dang-chu-y-trong-mua-giai-moi',
+      excerpt: 'Lứa vận động viên trẻ đang tạo ra nguồn năng lượng mới bằng tinh thần thi đấu tự tin và tiến bộ rõ rệt.',
+      coverImageUrl: 'https://images.unsplash.com/photo-1549719386-74dfcbf7dbed?auto=format&fit=crop&w=1400&q=85',
+      content: `## Thế hệ tiếp nối
+
+Nhiều vận động viên trẻ đã cho thấy khả năng thích nghi nhanh với áp lực thi đấu. Đây là tín hiệu tích cực cho sự phát triển lâu dài của phong trào.
+
+Danh sách nhân vật và thành tích nổi bật đang được ban biên tập tổng hợp.`,
+      isPublished: false,
+      publishedAt: null,
+    },
+  ];
+
+  const articles = await Promise.all(articleSeeds.map((article) => prisma.article.upsert({
+    where: { slug: article.slug },
+    update: article,
+    create: article,
+  })));
+  console.log(`Demo articles synchronized: ${articles.length}`);
+
   // Use the IOC code when available because this is a sports platform, then
   // fall back to ISO alpha-3 for territories that do not have an IOC code.
   // The complete ISO list also gives every country a stable flag image.

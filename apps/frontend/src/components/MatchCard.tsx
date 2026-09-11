@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { Card, Tag } from 'antd';
-import { AlertTriangle, ChevronRight, Clock3 } from 'lucide-react';
+import { AlertTriangle, ChevronRight, Clock3, UserRound } from 'lucide-react';
 import { cn, formatTime } from '@/lib/utils';
 
 interface Athlete {
@@ -69,6 +69,7 @@ const methodLabel: Record<string, string> = {
 };
 
 export function MatchCard({
+  id,
   eventId,
   categoryId,
   categoryName,
@@ -97,6 +98,9 @@ export function MatchCard({
 
   return (
     <Card
+      id={`match-${id}`}
+      data-live-match={isRunning ? 'true' : undefined}
+      tabIndex={isRunning ? -1 : undefined}
       className={cn('schedule-match-card', isRunning && 'schedule-match-card-live')}
       styles={{ body: { padding: 0 } }}
     >
@@ -125,7 +129,7 @@ export function MatchCard({
 
         <div className="match-card-grid">
           <div className="match-time-status min-w-0">
-            <div className="text-[0.82rem] font-black tabular-nums text-white">
+            <div className="text-[0.82rem] font-black tabular-nums text-slate-100">
               {formatTime(startTime)}
             </div>
             <Tag className={cn('match-status-tag mt-1.5', `is-${status.toLowerCase()}`)} bordered={false}>
@@ -145,7 +149,7 @@ export function MatchCard({
               <Clock3 className="h-3.5 w-3.5" />
               <span>{notes || '-'}</span>
             </div>
-            <div className="mt-0.5 text-[1.85rem] font-black leading-none tracking-tight text-white tabular-nums">
+            <div className="mt-0.5 whitespace-nowrap text-[1.85rem] font-black leading-none tracking-tight text-slate-100 tabular-nums">
               {showScore ? `${athlete1Score} : ${athlete2Score}` : '— : —'}
             </div>
             <div className="mt-1 min-h-4 text-[0.62rem] font-semibold text-slate-400">
@@ -180,7 +184,12 @@ function AthleteSlot({
   reverse?: boolean;
 }) {
   if (!athlete) {
-    return <div className="h-[4.6rem] rounded-xl bg-[#20263d]" aria-label="Chưa xác định vận động viên" />;
+    return (
+      <div className="match-athlete match-athlete-empty" aria-label="Chưa xác định vận động viên">
+        <UserRound className="h-5 w-5" />
+        <span>Chờ xác định</span>
+      </div>
+    );
   }
 
   const code = athlete.country?.code || '';
@@ -200,7 +209,7 @@ function AthleteSlot({
       </div>
 
       <div className="min-w-0 flex-1">
-        <div className="truncate text-[0.82rem] font-black text-white">{athlete.fullName}</div>
+        <div className="truncate text-[0.82rem] font-black text-slate-100">{athlete.fullName}</div>
         <div className="mt-0.5 truncate text-[0.55rem] font-bold uppercase text-slate-400">
           {athlete.federation?.name || athlete.country?.name || 'Independent athlete'}
         </div>
