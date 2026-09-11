@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useState } from 'react';
 import useSWR from 'swr';
 import { Alert, Avatar, Button, Card, Empty, Skeleton, Statistic, Tag } from 'antd';
 import {
@@ -16,6 +17,7 @@ import {
   Swords,
   Target,
   Trophy,
+  UserRound,
   Users,
 } from 'lucide-react';
 import { fetcher } from '@/lib/api';
@@ -23,6 +25,7 @@ import { fetcher } from '@/lib/api';
 type Athlete = {
   id: string;
   fullName: string;
+  photoUrl?: string;
   country?: { code?: string; name?: string; flagUrl?: string };
   federation?: { name?: string };
   categories?: Array<{ name: string }>;
@@ -235,17 +238,28 @@ function SectionHeading({ eyebrow, title, description, href, compact = false }: 
 }
 
 function AthleteCard({ athlete }: { athlete: Athlete }) {
+  const [imageFailed, setImageFailed] = useState(false);
   const stat = athlete.statistics?.[0];
   const wins = stat?.totalWins || 0;
   const total = stat?.totalMatches || 0;
   const medals = (stat?.goldMedals || 0) + (stat?.silverMedals || 0) + (stat?.bronzeMedals || 0);
+  const photoUrl = athlete.photoUrl?.trim();
   return (
     <Link href={`/athletes/${athlete.id}`} className="group block h-full">
       <Card hoverable className="public-surface h-full">
       <div className="flex items-start gap-4">
-        <div className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-sblue-400 to-sblue-700 text-lg font-black text-white shadow-lg shadow-sblue-500/15">
-          {initials(athlete.fullName)}
-        </div>
+        <Avatar
+          shape="square"
+          size={56}
+          src={photoUrl && !imageFailed ? photoUrl : undefined}
+          icon={<UserRound className="h-6 w-6" />}
+          alt={`Ảnh đại diện ${athlete.fullName}`}
+          className="shrink-0 rounded-2xl bg-gradient-to-br from-sblue-400 to-sblue-700 text-white shadow-lg shadow-sblue-500/15 [&_img]:object-cover"
+          onError={() => {
+            setImageFailed(true);
+            return false;
+          }}
+        />
         <div className="min-w-0 flex-1">
           <p className="truncate text-base font-black text-white group-hover:text-sblue-300">{athlete.fullName}</p>
           <p className="mt-1 truncate text-xs text-slate-500">{athlete.country?.code || '—'} · {athlete.federation?.name || 'Chưa cập nhật đơn vị'}</p>

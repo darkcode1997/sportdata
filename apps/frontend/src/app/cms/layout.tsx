@@ -121,7 +121,7 @@ export default function CmsLayout({ children }: { children: React.ReactNode }) {
         align="center"
         justify={compact ? 'center' : 'flex-start'}
         gap={11}
-        className={`h-[72px] border-b border-white/10 ${compact ? 'px-3' : 'px-6'}`}
+        className={`h-[72px] min-h-[72px] shrink-0 border-b border-white/10 ${compact ? 'px-3' : 'px-6'}`}
       >
         <span className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-sblue-400 to-sblue-700 shadow-lg shadow-sblue-500/20">
           <Trophy className="h-5 w-5 text-white" />
@@ -198,7 +198,7 @@ export default function CmsLayout({ children }: { children: React.ReactNode }) {
         className="cms-layout-main min-h-screen min-w-0 bg-[#070b16]"
         style={{ '--cms-sidebar-width': `${sidebarCollapsed ? 80 : 264}px` } as React.CSSProperties}
       >
-        <Layout.Header className="sticky top-0 z-30 flex h-[72px] items-center justify-between border-b border-white/10 bg-[#0d1425]/95 px-4 backdrop-blur-xl sm:px-7">
+        <header className="sticky top-0 z-30 flex h-[72px] min-h-[72px] shrink-0 items-center justify-between border-b border-white/10 bg-[#0d1425]/95 px-4 leading-normal backdrop-blur-xl sm:px-7">
           <Flex align="center" gap={14}>
             <Button
               type="text"
@@ -223,7 +223,7 @@ export default function CmsLayout({ children }: { children: React.ReactNode }) {
             </div>
           </Flex>
 
-          <Flex align="center" gap={12} className="border-l border-white/10 pl-4">
+          <Flex align="center" gap={12} className="h-full border-l border-white/10 pl-4">
             <Avatar size={38} icon={<User className="h-4 w-4" />} className="bg-sblue-500/20 text-sblue-300" />
             <div className="hidden sm:block">
               <Typography.Text strong className="block text-sm">{userLabel || 'Admin'}</Typography.Text>
@@ -232,7 +232,7 @@ export default function CmsLayout({ children }: { children: React.ReactNode }) {
               </Typography.Text>
             </div>
           </Flex>
-        </Layout.Header>
+        </header>
 
         <Layout.Content className="p-4 sm:p-7 lg:p-8">{children}</Layout.Content>
       </Layout>
