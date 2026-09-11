@@ -1,0 +1,25 @@
+{
+  "name": "sportdata-platform",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev:backend": "npm run start:dev --workspace=@sportdata/backend",
+    "dev:frontend": "npm run dev --workspace=@sportdata/frontend",
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "build:backend": "npm run build --workspace=@sportdata/backend",
+    "build:frontend": "npm run build --workspace=@sportdata/frontend",
+    "build": "npm run build:backend && npm run build:frontend",
+    "prisma:generate": "npm run prisma:generate --workspace=@sportdata/backend",
+    "prisma:migrate": "npm run prisma:migrate --workspace=@sportdata/backend",
+    "seed": "npm run seed --workspace=@sportdata/backend",
+    "docker:up": "docker compose up --build",
+    "docker:down": "docker compose down"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "typescript": "^5.3.3"
+  }
+}

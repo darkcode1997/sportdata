@@ -1,0 +1,333 @@
+// Prisma Schema for SportData Platform
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  EDITOR
+  VIEWER
+}
+
+enum MatchStatus {
+  SCHEDULED
+  RUNNING
+  FINISHED
+  CANCELLED
+}
+
+enum WinMethod {
+  POINTS
+  SUBMISSION
+  IPPON
+  KNOCKOUT
+  DISQUALIFICATION
+  WALKOVVER
+  DECISION
+  TECHNICAL
+}
+
+enum MatchType {
+  POOL
+  ELIMINATION
+  FINAL
+  SEMIFINAL
+  QUARTERFINAL
+  ROUND_OF_16
+  ROUND_OF_32
+  GROUP_STAGE
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  MIXED
+}
+
+enum JiuJitsuDiscipline {
+  NEWAZA
+  FIGHTING
+  CONTACT
+  FULL_CONTACT
+  DUO
+  SHOW
+}
+
+enum UniformType {
+  GI
+  NO_GI
+}
+
+enum BeltLevel {
+  WHITE
+  BLUE
+  PURPLE
+  BROWN
+  BLACK
+  OPEN
+}
+
+enum DrawType {
+  ROUND_ROBIN_POOL
+  MAIN_TREE
+  POOL_WINNER_TREE
+  REPECHAGE
+  DOUBLE_ELIMINATION
+}
+
+enum BracketSide {
+  ATHLETE1
+  ATHLETE2
+}
+
+model Country {
+  id          String       @id @default(cuid())
+  code        String       @unique
+  name        String
+  flagUrl     String?
+  athletes    Athlete[]
+  federations Federation[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+
+model Federation {
+  id        String    @id @default(cuid())
+  name      String
+  countryId String
+  country   Country   @relation(fields: [countryId], references: [id])
+  athletes  Athlete[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([countryId])
+}
+
+model User {
+  id                       String    @id @default(cuid())
+  email                    String    @unique
+  username                 String?   @unique
+  name                     String
+  password                 String
+  role                     UserRole  @default(EDITOR)
+  resetPasswordTokenHash   String?   @unique
+  resetPasswordExpiresAt   DateTime?
+  resetPasswordRequestedAt DateTime?
+  passwordChangedAt        DateTime?
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
+}
+
+model Sport {
+  id            String      @id @default(cuid())
+  name          String
+  code          String      @unique
+  description   String?
+  logoUrl       String?
+  events        Event[]     @relation("EventSports")
+  primaryEvents Event[]     @relation("PrimarySportEvents")
+  categories    Category[]
+  statistics    Statistic[]
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+}
+
+model Category {
+  id                   String              @id @default(cuid())
+  name                 String
+  sportId              String
+  sport                Sport               @relation(fields: [sportId], references: [id])
+  gender               Gender
+  discipline           JiuJitsuDiscipline?
+  uniform              UniformType?
+  beltLevel            BeltLevel?
+  matchDurationSeconds Int?
+  minAge               Int?
+  maxAge               Int?
+  minWeight            Float?
+  maxWeight            Float?
+  athletes             Athlete[]
+  matches              Match[]
+  divisions            Division[]
+  draws                Draw[]
+  events               Event[]
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+
+  @@index([sportId])
+}
+
+model Division {
+  id         String   @id @default(cuid())
+  name       String
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id])
+  matches    Match[]
+  draws      Draw[]
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([categoryId])
+}
+
+model Event {
+  id          String      @id @default(cuid())
+  name        String
+  sportId     String
+  sport       Sport       @relation("PrimarySportEvents", fields: [sportId], references: [id])
+  sports      Sport[]     @relation("EventSports")
+  description String?
+  startDate   DateTime
+  endDate     DateTime
+  location    String?
+  bannerUrl   String?
+  logoUrl     String?
+  matches     Match[]
+  draws       Draw[]
+  athletes    Athlete[]
+  categories  Category[]
+  statistics  Statistic[]
+  isPublished Boolean     @default(false)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@index([sportId])
+  @@index([startDate])
+}
+
+model Athlete {
+  id                String      @id @default(cuid())
+  firstName         String
+  lastName          String
+  fullName          String
+  gender            Gender
+  birthDate         DateTime?
+  weight            Float?
+  height            Float?
+  countryId         String
+  country           Country     @relation(fields: [countryId], references: [id])
+  federationId      String?
+  federation        Federation? @relation(fields: [federationId], references: [id])
+  photoUrl          String?
+  matchesAsAthlete1 Match[]     @relation("Athlete1Matches")
+  matchesAsAthlete2 Match[]     @relation("Athlete2Matches")
+  matchesAsWinner   Match[]     @relation("WinnerMatches")
+  events            Event[]
+  categories        Category[]
+  statistics        Statistic[]
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  @@index([countryId])
+  @@index([federationId])
+  @@index([fullName])
+}
+
+model Match {
+  id                 String       @id @default(cuid())
+  eventId            String
+  event              Event        @relation(fields: [eventId], references: [id])
+  categoryId         String
+  category           Category     @relation(fields: [categoryId], references: [id])
+  divisionId         String?
+  division           Division?    @relation(fields: [divisionId], references: [id])
+  drawId             String?
+  draw               Draw?        @relation(fields: [drawId], references: [id], onDelete: SetNull)
+  matchNumber        Int?
+  fop                String?
+  matchDate          DateTime
+  startTime          DateTime?
+  endTime            DateTime?
+  athlete1Id         String?
+  athlete1           Athlete?     @relation("Athlete1Matches", fields: [athlete1Id], references: [id])
+  athlete2Id         String?
+  athlete2           Athlete?     @relation("Athlete2Matches", fields: [athlete2Id], references: [id])
+  athlete1Score      Float        @default(0)
+  athlete2Score      Float        @default(0)
+  athlete1Advantages Int          @default(0)
+  athlete2Advantages Int          @default(0)
+  athlete1Penalties  Int          @default(0)
+  athlete2Penalties  Int          @default(0)
+  status             MatchStatus  @default(SCHEDULED)
+  matchType          MatchType    @default(ELIMINATION)
+  winnerId           String?
+  winner             Athlete?     @relation("WinnerMatches", fields: [winnerId], references: [id])
+  winMethod          WinMethod?
+  round              Int?
+  bracketPosition    Int?
+  winnerToMatchId    String?
+  winnerToMatch      Match?       @relation("WinnerProgression", fields: [winnerToMatchId], references: [id], onDelete: SetNull)
+  winnerFromMatches  Match[]      @relation("WinnerProgression")
+  winnerToSide       BracketSide?
+  loserToMatchId     String?
+  loserToMatch       Match?       @relation("LoserProgression", fields: [loserToMatchId], references: [id], onDelete: SetNull)
+  loserFromMatches   Match[]      @relation("LoserProgression")
+  loserToSide        BracketSide?
+  pool               String?
+  notes              String?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  @@index([eventId])
+  @@index([categoryId])
+  @@index([drawId])
+  @@index([winnerToMatchId])
+  @@index([loserToMatchId])
+  @@index([matchDate])
+  @@index([status])
+  @@index([athlete1Id])
+  @@index([athlete2Id])
+}
+
+model Draw {
+  id          String    @id @default(cuid())
+  name        String
+  type        DrawType
+  eventId     String
+  event       Event     @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  categoryId  String
+  category    Category  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  divisionId  String?
+  division    Division? @relation(fields: [divisionId], references: [id], onDelete: SetNull)
+  poolNumber  Int?
+  bracketSize Int?
+  sortOrder   Int       @default(0)
+  matches     Match[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([eventId, categoryId, name])
+  @@index([eventId, categoryId])
+  @@index([divisionId])
+}
+
+model Statistic {
+  id           String   @id @default(cuid())
+  athleteId    String
+  athlete      Athlete  @relation(fields: [athleteId], references: [id])
+  eventId      String?
+  event        Event?   @relation(fields: [eventId], references: [id])
+  sportId      String
+  sport        Sport    @relation(fields: [sportId], references: [id])
+  categoryId   String?
+  totalWins    Int      @default(0)
+  totalLosses  Int      @default(0)
+  totalDraws   Int      @default(0)
+  totalMatches Int      @default(0)
+  goldMedals   Int      @default(0)
+  silverMedals Int      @default(0)
+  bronzeMedals Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([athleteId, eventId, sportId])
+  @@index([athleteId])
+  @@index([eventId])
+  @@index([sportId])
+}

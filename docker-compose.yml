@@ -1,0 +1,81 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: sportdata
+      POSTGRES_USER: sportdata
+      POSTGRES_PASSWORD: sportdata
+    ports:
+      - "${POSTGRES_HOST_PORT:-5433}:5432"
+    volumes:
+      - sportdata_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sportdata -d sportdata"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    environment:
+      DATABASE_URL: postgresql://sportdata:sportdata@postgres:5432/sportdata?schema=public
+      PORT: 4000
+      FRONTEND_URL: http://localhost:${FRONTEND_HOST_PORT:-3000}
+      JWT_SECRET: ${JWT_SECRET:-sportdata-dev-secret-change-me-please}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      SEED_DATABASE: ${SEED_DATABASE:-true}
+      NODE_ENV: ${NODE_ENV:-development}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@sportdata.vn}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_NAME: ${ADMIN_NAME:-SportData Administrator}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-SportData@ChangeMe2026!}
+      ADMIN_ROLE: ${ADMIN_ROLE:-ADMIN}
+      ADMIN_SYNC_PASSWORD: ${ADMIN_SYNC_PASSWORD:-false}
+      PASSWORD_RESET_TTL_MINUTES: ${PASSWORD_RESET_TTL_MINUTES:-30}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-SportData CMS <no-reply@sportdata.local>}
+    ports:
+      - "${BACKEND_HOST_PORT:-4000}:4000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/api/sports').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      args:
+        API_INTERNAL_URL: http://backend:4000/api
+    environment:
+      NEXT_PUBLIC_API_URL: http://backend:4000/api
+      NEXT_PUBLIC_APP_URL: http://localhost:${FRONTEND_HOST_PORT:-3000}
+      NEXT_TELEMETRY_DISABLED: 1
+    ports:
+      - "${FRONTEND_HOST_PORT:-3000}:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+
+volumes:
+  sportdata_postgres:
