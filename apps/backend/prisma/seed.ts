@@ -234,11 +234,17 @@ Danh sách nhân vật và thành tích nổi bật đang được ban biên t�
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
 
-  const countries = await Promise.all(countrySeeds.map(({ code, name, flag }) => prisma.country.upsert({
-    where: { code },
-    update: { name, flagUrl: `https://flagcdn.com/w40/${flag}.png` },
-    create: { code, name, flagUrl: `https://flagcdn.com/w40/${flag}.png` },
-  })));
+  // Serverless PostgreSQL providers intentionally expose a small connection
+  // pool. Seeding the complete country list in one Promise.all can exhaust it
+  // before queued upserts get a connection, so keep this import sequential.
+  const countries = [];
+  for (const { code, name, flag } of countrySeeds) {
+    countries.push(await prisma.country.upsert({
+      where: { code },
+      update: { name, flagUrl: `https://flagcdn.com/w40/${flag}.png` },
+      create: { code, name, flagUrl: `https://flagcdn.com/w40/${flag}.png` },
+    }));
+  }
   console.log(`Countries synchronized: ${countries.length}`);
   const countryByCode = new Map(countries.map((country) => [country.code, country]));
 
