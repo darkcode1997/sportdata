@@ -292,7 +292,7 @@ export default function CmsLayout({ children }: { children: React.ReactNode }) {
               className={`group h-full rounded-l-xl transition-colors ${isLight ? 'hover:bg-slate-100' : 'hover:bg-white/[0.03]'}`}
               aria-label="Mở cài đặt tài khoản"
             >
-              <Flex align="center" gap={12} className={`h-full border-l pl-4 pr-2 ${isLight ? 'border-slate-200' : 'border-white/10'}`}>
+              <Flex align="center" gap={12} className={`h-full border-l pl-4 pr-2 ${isLight ? 'border-slate-200' : ''}`}>
                 <Avatar size={38} icon={<User className="h-4 w-4" />} className="bg-sblue-500/20 text-sblue-300" />
                 <div className="hidden sm:block">
                   <Typography.Text strong className="block text-sm group-hover:text-sblue-500">{userLabel || 'Admin'}</Typography.Text>

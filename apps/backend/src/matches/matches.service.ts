@@ -74,21 +74,29 @@ export class MatchesService {
   constructor(private readonly prisma: PrismaService) {}
 
   async findAll(query: QueryMatchDto) {
-    const { eventId, categoryId, athleteId, date, status, page = 1, limit = 20 } = query;
+    const {
+      eventId,
+      categoryId,
+      sportId,
+      athleteId,
+      date,
+      status,
+      page = 1,
+      limit = 20,
+    } = query;
 
     const where: Prisma.MatchWhereInput = {};
 
     if (eventId) where.eventId = eventId;
     if (categoryId) where.categoryId = categoryId;
+    if (sportId) where.category = { sportId };
     if (athleteId) {
       where.OR = [{ athlete1Id: athleteId }, { athlete2Id: athleteId }];
     }
     if (status) where.status = status;
     if (date) {
-      const startOfDay = new Date(date);
-      startOfDay.setHours(0, 0, 0, 0);
-      const endOfDay = new Date(date);
-      endOfDay.setHours(23, 59, 59, 999);
+      const startOfDay = new Date(`${date}T00:00:00.000Z`);
+      const endOfDay = new Date(`${date}T23:59:59.999Z`);
       where.matchDate = {
         gte: startOfDay,
         lte: endOfDay,
@@ -116,6 +124,45 @@ export class MatchesService {
         limit,
         totalPages: Math.ceil(total / limit),
       },
+    };
+  }
+
+  async findScheduleSummary(eventId: string) {
+    const event = await this.prisma.event.findUnique({
+      where: { id: eventId },
+      select: { id: true },
+    });
+    if (!event) throw new NotFoundException(`Event with ID ${eventId} not found`);
+
+    const dates = await this.prisma.$queryRaw<Array<{ date: string; count: number }>>(Prisma.sql`
+      SELECT "matchDate"::date::text AS "date", COUNT(*)::int AS "count"
+      FROM "Match"
+      WHERE "eventId" = ${eventId}
+      GROUP BY "matchDate"::date
+      ORDER BY "matchDate"::date ASC
+    `);
+    const liveMatch = await this.prisma.match.findFirst({
+      where: { eventId, status: MatchStatus.RUNNING },
+      orderBy: [{ matchDate: 'asc' }, { matchNumber: 'asc' }],
+      select: {
+        id: true,
+        categoryId: true,
+        matchDate: true,
+        category: { select: { sportId: true } },
+      },
+    });
+
+    return {
+      dates,
+      total: dates.reduce((sum, item) => sum + Number(item.count), 0),
+      liveMatch: liveMatch
+        ? {
+          id: liveMatch.id,
+          date: liveMatch.matchDate.toISOString().slice(0, 10),
+          categoryId: liveMatch.categoryId,
+          sportId: liveMatch.category.sportId,
+        }
+        : null,
     };
   }
 

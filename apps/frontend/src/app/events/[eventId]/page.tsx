@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import useSWR from 'swr';
-import { Button, Card, Empty, Select, Skeleton, Tag } from 'antd';
+import useSWRInfinite from 'swr/infinite';
+import { Button, Card, Empty, Select, Skeleton, Spin, Tag } from 'antd';
 import { Radio, Trophy } from 'lucide-react';
 import { MatchCard } from '@/components/MatchCard';
 import { fetcher } from '@/lib/api';
@@ -57,16 +58,30 @@ interface Match {
   category?: EventCategory | null;
 }
 
-interface CategoryGroup {
-  id: string;
-  name: string;
-  matches: Match[];
-}
-
-interface DateGroup {
+interface ScheduleDate {
   date: string;
   count: number;
-  categories: CategoryGroup[];
+}
+
+interface ScheduleSummary {
+  dates: ScheduleDate[];
+  total: number;
+  liveMatch?: {
+    id: string;
+    date: string;
+    categoryId: string;
+    sportId: string;
+  } | null;
+}
+
+interface MatchPage {
+  items: Match[];
+  meta: {
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  };
 }
 
 interface EventData {
@@ -118,41 +133,6 @@ function categoryLabel(category: EventCategory) {
   return details.length ? `${category.name} · ${details.join(' · ')}` : category.name;
 }
 
-function normalizeDateGroups(payload: unknown): DateGroup[] {
-  if (!payload || typeof payload !== 'object') return [];
-  const response = payload as { dates?: unknown; data?: unknown };
-  const source = response.dates ?? response.data ?? payload;
-
-  if (Array.isArray(source)) {
-    return source.filter((group): group is DateGroup => Boolean(group && typeof group.date === 'string'));
-  }
-  if (!source || typeof source !== 'object') return [];
-
-  return Object.entries(source as Record<string, unknown>)
-    .map(([date, categoryMap]): DateGroup | null => {
-      if (!categoryMap || typeof categoryMap !== 'object' || Array.isArray(categoryMap)) return null;
-      const categories = Object.entries(categoryMap as Record<string, unknown>)
-        .map(([categoryName, rawMatches]): CategoryGroup | null => {
-          const matches = Array.isArray(rawMatches) ? rawMatches as Match[] : [];
-          if (!matches.length) return null;
-          return {
-            id: matches[0].category?.id || matches[0].categoryId || categoryName,
-            name: matches[0].category?.name || categoryName,
-            matches,
-          };
-        })
-        .filter((group): group is CategoryGroup => group !== null);
-
-      return {
-        date,
-        count: categories.reduce((total, category) => total + category.matches.length, 0),
-        categories,
-      };
-    })
-    .filter((group): group is DateGroup => group !== null)
-    .sort((left, right) => left.date.localeCompare(right.date));
-}
-
 export default function EventDetailPage() {
   const params = useParams<{ eventId: string }>();
   const eventId = params.eventId;
@@ -160,13 +140,13 @@ export default function EventDetailPage() {
     eventId ? `/events/${eventId}` : null,
     fetcher,
   );
-  const { data: groupedResponse, isLoading: matchesLoading } = useSWR<unknown>(
-    eventId ? `/matches/event/${eventId}/grouped` : null,
+  const { data: scheduleSummary, isLoading: summaryLoading } = useSWR<ScheduleSummary>(
+    eventId ? `/matches/event/${eventId}/schedule-summary` : null,
     fetcher,
   );
 
   const event = eventResponse || (eventId === demoEvent.id ? demoEvent : undefined);
-  const dateGroups = useMemo(() => normalizeDateGroups(groupedResponse), [groupedResponse]);
+  const dateGroups = useMemo(() => scheduleSummary?.dates || [], [scheduleSummary?.dates]);
   const [selectedDate, setSelectedDate] = useState<string>();
   const [selectedSportId, setSelectedSportId] = useState<string>();
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>();
@@ -178,17 +158,63 @@ export default function EventDetailPage() {
     }
   }, [dateGroups, selectedDate]);
 
-  const activeGroup = dateGroups.find((group) => group.date === selectedDate) || dateGroups[0];
+  const getMatchesKey = useCallback((pageIndex: number, previousPage: MatchPage | null) => {
+    if (!eventId || !selectedDate) return null;
+    if (previousPage && previousPage.meta.page >= previousPage.meta.totalPages) return null;
+
+    const query = new URLSearchParams({
+      eventId,
+      date: selectedDate,
+      page: String(pageIndex + 1),
+      limit: '50',
+    });
+    if (selectedSportId) query.set('sportId', selectedSportId);
+    if (selectedCategoryId) query.set('categoryId', selectedCategoryId);
+    return `/matches?${query}`;
+  }, [eventId, selectedCategoryId, selectedDate, selectedSportId]);
+
+  const {
+    data: matchPages,
+    isLoading: matchesLoading,
+    isValidating: matchesValidating,
+    setSize,
+  } = useSWRInfinite<MatchPage>(getMatchesKey, fetcher, {
+    persistSize: false,
+    revalidateFirstPage: false,
+  });
+  const activeMatches = useMemo(() => {
+    const uniqueMatches = new Map<string, Match>();
+    matchPages?.forEach((page) => page.items.forEach((match) => uniqueMatches.set(match.id, match)));
+    return Array.from(uniqueMatches.values());
+  }, [matchPages]);
+  const lastPage = matchPages?.[matchPages.length - 1];
+  const hasMore = Boolean(lastPage && lastPage.meta.page < lastPage.meta.totalPages);
+  const filteredTotal = matchPages?.[0]?.meta.total || 0;
+  const loadMoreRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const target = loadMoreRef.current;
+    if (!target || !hasMore) return;
+
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0]?.isIntersecting && !matchesValidating) {
+        setSize((currentSize) => currentSize + 1);
+      }
+    }, { rootMargin: '500px 0px' });
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [hasMore, matchesValidating, setSize]);
+
   const eventSports = event?.sports?.length ? event.sports : event?.sport ? [event.sport] : [];
   const eventCategories = useMemo<EventCategory[]>(() => {
     if (event?.categories?.length) return event.categories;
     const categoryMap = new Map<string, EventCategory>();
-    dateGroups.forEach((group) => group.categories.forEach((category) => {
-      const sample = category.matches[0]?.category;
-      categoryMap.set(category.id, sample || { id: category.id, name: category.name });
-    }));
+    activeMatches.forEach((match) => {
+      const category = match.category;
+      if (category) categoryMap.set(category.id, category);
+    });
     return Array.from(categoryMap.values());
-  }, [event?.categories, dateGroups]);
+  }, [activeMatches, event?.categories]);
   const filteredCategories = useMemo(
     () => eventCategories.filter((category) => (
       !selectedSportId || category.sportId === selectedSportId || category.sport?.id === selectedSportId
@@ -202,52 +228,22 @@ export default function EventDetailPage() {
     }
   }, [filteredCategories, selectedCategoryId]);
 
-  const activeMatches = useMemo(() => {
-    if (!activeGroup) return [];
-    return activeGroup.categories
-      .flatMap((category) => category.matches.map((match) => ({
-        ...match,
-        category: match.category || { id: category.id, name: category.name },
-      })))
-      .filter((match) => (
-        (!selectedSportId || match.category?.sportId === selectedSportId || match.category?.sport?.id === selectedSportId)
-        && (!selectedCategoryId || match.categoryId === selectedCategoryId)
-      ))
-      .sort((left, right) => {
-        const leftTime = new Date(left.startTime || left.matchDate).getTime();
-        const rightTime = new Date(right.startTime || right.matchDate).getTime();
-        return leftTime - rightTime || (left.matchNumber || 0) - (right.matchNumber || 0);
-      });
-  }, [activeGroup, selectedSportId, selectedCategoryId]);
-
-  const totalMatches = event?._count?.matches ?? dateGroups.reduce((sum, group) => sum + group.count, 0);
-  const liveMatchTarget = useMemo(() => {
-    const visibleLiveMatch = activeMatches.find((match) => match.status === 'RUNNING');
-    if (visibleLiveMatch) {
-      return { id: visibleLiveMatch.id, date: activeGroup?.date };
-    }
-
-    return dateGroups
-      .flatMap((group) => group.categories.flatMap((category) => category.matches
-        .filter((match) => match.status === 'RUNNING')
-        .map((match) => ({ ...match, date: group.date }))))
-      .sort((left, right) => {
-        const dateOrder = left.date.localeCompare(right.date);
-        if (dateOrder) return dateOrder;
-        const leftTime = new Date(left.startTime || left.matchDate).getTime();
-        const rightTime = new Date(right.startTime || right.matchDate).getTime();
-        return leftTime - rightTime || (left.matchNumber || 0) - (right.matchNumber || 0);
-      })
-      .map((match) => ({ id: match.id, date: match.date }))[0];
-  }, [activeGroup?.date, activeMatches, dateGroups]);
+  const totalMatches = event?._count?.matches ?? scheduleSummary?.total ?? 0;
+  const liveMatchTarget = scheduleSummary?.liveMatch;
   const [pendingLiveMatchId, setPendingLiveMatchId] = useState<string>();
   const hasLiveMatches = Boolean(liveMatchTarget);
-  const loading = eventLoading || matchesLoading;
+  const loading = eventLoading
+    || summaryLoading
+    || Boolean(dateGroups.length && !selectedDate)
+    || Boolean(selectedDate && !matchPages && matchesLoading);
 
   useEffect(() => {
-    if (!pendingLiveMatchId || loading) return;
+    if (!pendingLiveMatchId || loading || matchesValidating) return;
     const liveMatchElement = document.getElementById(`match-${pendingLiveMatchId}`);
-    if (!liveMatchElement) return;
+    if (!liveMatchElement) {
+      if (hasMore) setSize((currentSize) => currentSize + 1);
+      return;
+    }
 
     const animationFrame = requestAnimationFrame(() => {
       liveMatchElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -256,7 +252,7 @@ export default function EventDetailPage() {
     });
 
     return () => cancelAnimationFrame(animationFrame);
-  }, [activeMatches, loading, pendingLiveMatchId]);
+  }, [activeMatches, hasMore, loading, matchesValidating, pendingLiveMatchId, setSize]);
 
   const scrollToLiveMatch = () => {
     if (!liveMatchTarget) return;
@@ -266,6 +262,7 @@ export default function EventDetailPage() {
       setSelectedDate(liveMatchTarget.date);
       setSelectedSportId(undefined);
       setSelectedCategoryId(undefined);
+      setSize(1);
     }
     setPendingLiveMatchId(liveMatchTarget.id);
   };
@@ -312,7 +309,11 @@ export default function EventDetailPage() {
                 type={active ? 'primary' : 'default'}
                 shape="round"
                 className={active ? 'schedule-day-active' : 'schedule-day-button'}
-                onClick={() => setSelectedDate(group.date)}
+                onClick={() => {
+                  setPendingLiveMatchId(undefined);
+                  setSize(1);
+                  setSelectedDate(group.date);
+                }}
               >
                 {group.date} ({group.count.toLocaleString()})
               </Button>
@@ -326,7 +327,12 @@ export default function EventDetailPage() {
             size="large"
             placeholder="Tất cả bộ môn"
             value={selectedSportId}
-            onChange={(value) => setSelectedSportId(value)}
+            onChange={(value) => {
+              setPendingLiveMatchId(undefined);
+              setSize(1);
+              setSelectedSportId(value);
+              setSelectedCategoryId(undefined);
+            }}
             options={eventSports.map((sport) => ({ value: sport.id, label: sport.name }))}
           />
           <Select
@@ -336,7 +342,11 @@ export default function EventDetailPage() {
             optionFilterProp="label"
             placeholder="Tất cả hạng cân / nội dung"
             value={selectedCategoryId}
-            onChange={(value) => setSelectedCategoryId(value)}
+            onChange={(value) => {
+              setPendingLiveMatchId(undefined);
+              setSize(1);
+              setSelectedCategoryId(value);
+            }}
             options={filteredCategories.map((category) => ({
               value: category.id,
               label: categoryLabel(category),
@@ -348,32 +358,43 @@ export default function EventDetailPage() {
           {loading ? (
             <ScheduleSkeleton />
           ) : activeMatches.length ? (
-            activeMatches.map((match) => (
-              <MatchCard
-                key={match.id}
-                id={match.id}
-                eventId={match.eventId}
-                categoryId={match.categoryId}
-                categoryName={match.category?.name}
-                matchNumber={match.matchNumber}
-                fop={match.fop}
-                matchDate={match.matchDate}
-                startTime={match.startTime}
-                athlete1={match.athlete1}
-                athlete2={match.athlete2}
-                athlete1Score={match.athlete1Score}
-                athlete2Score={match.athlete2Score}
-                athlete1Advantages={match.athlete1Advantages}
-                athlete2Advantages={match.athlete2Advantages}
-                athlete1Penalties={match.athlete1Penalties}
-                athlete2Penalties={match.athlete2Penalties}
-                status={match.status}
-                matchType={match.matchType}
-                winnerId={match.winnerId}
-                winMethod={match.winMethod}
-                notes={match.notes}
-              />
-            ))
+            <>
+              {activeMatches.map((match) => (
+                <MatchCard
+                  key={match.id}
+                  id={match.id}
+                  eventId={match.eventId}
+                  categoryId={match.categoryId}
+                  categoryName={match.category?.name}
+                  matchNumber={match.matchNumber}
+                  fop={match.fop}
+                  matchDate={match.matchDate}
+                  startTime={match.startTime}
+                  athlete1={match.athlete1}
+                  athlete2={match.athlete2}
+                  athlete1Score={match.athlete1Score}
+                  athlete2Score={match.athlete2Score}
+                  athlete1Advantages={match.athlete1Advantages}
+                  athlete2Advantages={match.athlete2Advantages}
+                  athlete1Penalties={match.athlete1Penalties}
+                  athlete2Penalties={match.athlete2Penalties}
+                  status={match.status}
+                  matchType={match.matchType}
+                  winnerId={match.winnerId}
+                  winMethod={match.winMethod}
+                  notes={match.notes}
+                />
+              ))}
+              <div ref={loadMoreRef} className="flex min-h-16 items-center justify-center py-3">
+                {matchesValidating ? (
+                  <Spin size="small" />
+                ) : !hasMore ? (
+                  <span className="text-xs font-medium text-slate-500">
+                    Đã hiển thị toàn bộ {filteredTotal.toLocaleString()} trận
+                  </span>
+                ) : null}
+              </div>
+            </>
           ) : (
             <Card className="schedule-empty-card">
               <Empty

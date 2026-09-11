@@ -35,6 +35,7 @@ export class MatchesController {
   })
   @ApiQuery({ name: 'eventId', required: false, type: String })
   @ApiQuery({ name: 'categoryId', required: false, type: String })
+  @ApiQuery({ name: 'sportId', required: false, type: String })
   @ApiQuery({ name: 'date', required: false, type: String, example: '2024-01-15' })
   @ApiQuery({
     name: 'status',
@@ -45,6 +46,16 @@ export class MatchesController {
   @ApiQuery({ name: 'limit', required: false, type: Number, example: 20 })
   findAll(@Query() query: QueryMatchDto) {
     return this.matchesService.findAll(query);
+  }
+
+  @Get('event/:eventId/schedule-summary')
+  @ApiOperation({
+    summary: 'Get lightweight schedule metadata for an event',
+    description: 'Returns match counts by date and the first live match without loading full match records.',
+  })
+  @ApiParam({ name: 'eventId', type: String, description: 'Event ID' })
+  findScheduleSummary(@Param('eventId') eventId: string) {
+    return this.matchesService.findScheduleSummary(eventId);
   }
 
   @Get('event/:eventId/category/:categoryId/draws')

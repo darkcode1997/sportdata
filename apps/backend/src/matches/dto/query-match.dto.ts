@@ -21,6 +21,11 @@ export class QueryMatchDto {
   @IsOptional()
   categoryId?: string;
 
+  @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  sportId?: string;
+
   @ApiPropertyOptional({ description: 'Lọc các trận có vận động viên này' })
   @IsString()
   @IsOptional()
