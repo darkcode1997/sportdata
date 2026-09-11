@@ -96,13 +96,13 @@ export default function HomePage() {
         <div className="home-hero-grid absolute -inset-[52px] opacity-[0.055] [background-image:linear-gradient(rgba(255,255,255,.7)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.7)_1px,transparent_1px)] [background-size:52px_52px]" />
         <div className="relative mx-auto grid max-w-7xl gap-10 px-4 py-14 sm:px-6 lg:grid-cols-[1.15fr_.85fr] lg:px-8 lg:py-20">
           <div className="home-hero-copy self-center">
-            <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-emerald-400/25 bg-emerald-400/10 px-3 py-1.5 text-xs font-bold uppercase tracking-[0.16em] text-emerald-300">
-              <Radio className="h-3.5 w-3.5" />
+            <div className="home-hero-live-badge relative mb-6 inline-flex items-center gap-2 overflow-hidden rounded-full border border-emerald-400/25 bg-emerald-400/10 px-3 py-1.5 text-xs font-bold uppercase tracking-[0.16em] text-emerald-300">
+              <Radio className="home-hero-live-icon h-3.5 w-3.5" />
               Dữ liệu thi đấu trực tiếp
             </div>
-            <h1 className="max-w-3xl text-4xl font-black leading-[1.05] tracking-[-0.04em] text-white sm:text-5xl lg:text-6xl">
-              Mọi dấu ấn của vận động viên,
-              <span className="block bg-gradient-to-r from-sblue-300 to-emerald-300 bg-clip-text text-transparent">đều được ghi lại</span>
+            <h1 className="home-hero-title max-w-3xl text-4xl font-black leading-[1.05] tracking-[-0.04em] text-white sm:text-5xl lg:text-6xl">
+              <span className="home-hero-title-line block">Mọi dấu ấn của vận động viên,</span>
+              <span className="home-hero-title-line home-hero-title-accent block text-transparent">đều được ghi lại</span>
             </h1>
             <p className="mt-6 max-w-2xl text-base leading-7 text-slate-400 sm:text-lg">
               Tra cứu hồ sơ, theo dõi lịch đấu và xem thành tích được cập nhật tập trung theo từng giải đấu.

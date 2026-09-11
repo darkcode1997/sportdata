@@ -56,20 +56,10 @@ export function PublicShell({ children }: { children: React.ReactNode }) {
           </nav>
 
           <div className="flex items-center gap-2">
-            <div className="hidden sm:block">
-              <Button
-                href="/cms"
-                type="primary"
-                ghost
-                icon={<ShieldCheck className="h-4 w-4" />}
-              >
-                CMS quản trị
-              </Button>
-            </div>
             <Button
               type="text"
               onClick={() => setMenuOpen((value) => !value)}
-              className="md:hidden"
+              className="!inline-flex md:!hidden"
               icon={menuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
               aria-expanded={menuOpen}
               aria-controls="mobile-navigation"
@@ -90,7 +80,7 @@ export function PublicShell({ children }: { children: React.ReactNode }) {
                   </Link>
                 );
               })}
-              <Link href="/cms" className="mt-1 flex items-center gap-3 rounded-lg bg-sblue-500/15 px-3 py-2.5 text-sm font-bold text-sblue-300 sm:hidden">
+              <Link href="/cms" className="mt-1 flex items-center gap-3 rounded-lg bg-sblue-500/15 px-3 py-2.5 text-sm font-bold text-sblue-300">
                 <ShieldCheck className="h-4 w-4" />
                 CMS quản trị
               </Link>

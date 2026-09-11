@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import useSWR from 'swr';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -78,11 +78,6 @@ export default function AthleteProfilePage() {
   const draws = overallStat?.totalDraws || 0;
   const winRate = totalMatches ? Math.round((wins / totalMatches) * 100) : 0;
 
-  const flagCdn = function (code?: string) {
-    if (!code) return '';
-    return 'https://flagcdn.com/w640/' + code.toLowerCase() + '.png';
-  };
-
   return (
     <div className="mx-auto max-w-7xl space-y-8 px-4 py-10 sm:px-6 lg:px-8">
       <Link href="/athletes">
@@ -102,15 +97,11 @@ export default function AthleteProfilePage() {
                   </div>
                 )}
               </div>
-              <div className="absolute -bottom-2 -right-2 rounded-2xl bg-white/95 p-1.5 shadow-xl border border-white/30">
-                {athlete.country?.code ? (
-                  <img
-                    src={flagCdn(athlete.country.code)}
-                    alt={athlete.country.name}
-                    className="w-10 h-8 object-cover rounded-md"
-                  />
-                ) : null}
-              </div>
+              {athlete.country && (
+                <div className="absolute -bottom-2 -right-2 grid h-11 w-14 place-items-center overflow-hidden rounded-xl border-2 border-sdark-950 bg-sdark-800 shadow-xl">
+                  <CountryFlag country={athlete.country} />
+                </div>
+              )}
             </div>
 
             <div className="flex-1 min-w-0 pb-2">
@@ -244,6 +235,29 @@ export default function AthleteProfilePage() {
         </div>
       </div>
     </div>
+  );
+}
+
+function CountryFlag({ country }: { country: { code?: string; name?: string; flagUrl?: string } }) {
+  const [imageFailed, setImageFailed] = useState(false);
+  const flagUrl = country.flagUrl || '';
+  const alpha2 = flagUrl.match(/\/([a-z]{2})\.png(?:\?|$)/i)?.[1];
+  const emoji = alpha2
+    ? alpha2.toUpperCase().replace(/[A-Z]/g, (letter) =>
+        String.fromCodePoint(127397 + letter.charCodeAt(0)))
+    : '🌐';
+
+  if (!flagUrl || imageFailed) {
+    return <span className="text-2xl leading-none" role="img" aria-label={`Cờ ${country.name || country.code || ''}`}>{emoji}</span>;
+  }
+
+  return (
+    <img
+      src={flagUrl}
+      alt={`Cờ ${country.name || country.code || ''}`}
+      className="h-full w-full object-cover"
+      onError={() => setImageFailed(true)}
+    />
   );
 }
 

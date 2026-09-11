@@ -202,14 +202,14 @@ export default function CmsLayout({ children }: { children: React.ReactNode }) {
           <Flex align="center" gap={14}>
             <Button
               type="text"
-              className="lg:hidden"
+              className="!inline-flex lg:!hidden"
               aria-label="Mở điều hướng"
               icon={<MenuIcon className="h-5 w-5" />}
               onClick={() => setSidebarOpen(true)}
             />
             <Button
               type="text"
-              className="hidden lg:inline-flex"
+              className="!hidden lg:!inline-flex"
               aria-label={sidebarCollapsed ? 'Mở rộng thanh bên' : 'Thu gọn thanh bên'}
               title={sidebarCollapsed ? 'Mở rộng thanh bên' : 'Thu gọn thanh bên'}
               icon={sidebarCollapsed
