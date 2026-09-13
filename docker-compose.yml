@@ -27,6 +27,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:-sportdata-dev-secret-change-me-please}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
       SEED_DATABASE: ${SEED_DATABASE:-true}
+      SEED_SEA_GAMES_DEMO: ${SEED_SEA_GAMES_DEMO:-true}
       NODE_ENV: ${NODE_ENV:-development}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@sportdata.vn}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}

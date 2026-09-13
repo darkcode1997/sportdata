@@ -41,6 +41,11 @@ export class CreateMatchDto {
   @IsOptional()
   fop?: string;
 
+  @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  fopId?: string;
+
   @ApiProperty()
   @IsDateString()
   @IsNotEmpty()

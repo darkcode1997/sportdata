@@ -14,6 +14,7 @@ import {
 } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import worldCountries from 'world-countries';
+import { seedSeaGamesDemo } from './sea-games.seed';
 
 const prisma = new PrismaClient();
 
@@ -917,6 +918,10 @@ Danh sách nhân vật và thành tích nổi bật đang được ban biên t�
       update: statisticData,
       create: { athleteId: athlete.id, eventId: event.id, sportId: sportJJ.id, ...statisticData },
     });
+  }
+
+  if (process.env.SEED_SEA_GAMES_DEMO !== 'false') {
+    await seedSeaGamesDemo(prisma);
   }
 
   console.log('Seed completed successfully.');

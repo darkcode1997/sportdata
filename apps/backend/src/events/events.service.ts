@@ -14,18 +14,21 @@ export class EventsService {
     if (!selectedSportIds.length) {
       throw new BadRequestException('Sự kiện phải có ít nhất một bộ môn');
     }
-    await this.validateCategories(categoryIds, selectedSportIds);
+    const selectedCategoryIds = Array.from(new Set(categoryIds || []));
+    const selectedAthleteIds = Array.from(new Set(athleteIds || []));
+    await this.validateCategories(selectedCategoryIds, selectedSportIds);
+    await this.validateAthletes(selectedAthleteIds, selectedCategoryIds, selectedSportIds);
 
     return this.prisma.event.create({
       data: {
         ...data,
         sportId: selectedSportIds[0],
         sports: { connect: selectedSportIds.map((id) => ({ id })) },
-        categories: categoryIds
-          ? { connect: categoryIds.map((id) => ({ id })) }
+        categories: selectedCategoryIds.length
+          ? { connect: selectedCategoryIds.map((id) => ({ id })) }
           : undefined,
-        athletes: athleteIds
-          ? { connect: athleteIds.map((id) => ({ id })) }
+        athletes: selectedAthleteIds.length
+          ? { connect: selectedAthleteIds.map((id) => ({ id })) }
           : undefined,
       },
       include: this.getEventInclude(),
@@ -125,10 +128,17 @@ export class EventsService {
         : undefined;
 
     const existingEvent = await this.findOne(id);
-    await this.validateCategories(
-      categoryIds,
-      selectedSportIds || existingEvent.sports.map((sport) => sport.id),
-    );
+    const resultingSportIds = selectedSportIds || existingEvent.sports.map((sport) => sport.id);
+    const resultingCategoryIds = categoryIds !== undefined
+      ? Array.from(new Set(categoryIds))
+      : existingEvent.categories.map((category) => category.id);
+    const resultingAthleteIds = athleteIds !== undefined
+      ? Array.from(new Set(athleteIds))
+      : existingEvent.athletes.map((athlete) => athlete.id);
+    await this.validateCategories(resultingCategoryIds, resultingSportIds);
+    if (athleteIds !== undefined || categoryIds !== undefined || selectedSportIds !== undefined) {
+      await this.validateAthletes(resultingAthleteIds, resultingCategoryIds, resultingSportIds);
+    }
 
     return this.prisma.event.update({
       where: { id },
@@ -140,11 +150,11 @@ export class EventsService {
               sports: { set: selectedSportIds.map((id) => ({ id })) },
             }
           : {}),
-        categories: categoryIds
-          ? { set: categoryIds.map((catId) => ({ id: catId })) }
+        categories: categoryIds !== undefined
+          ? { set: resultingCategoryIds.map((catId) => ({ id: catId })) }
           : undefined,
-        athletes: athleteIds
-          ? { set: athleteIds.map((athId) => ({ id: athId })) }
+        athletes: athleteIds !== undefined
+          ? { set: resultingAthleteIds.map((athId) => ({ id: athId })) }
           : undefined,
       },
       include: this.getEventInclude(),
@@ -168,6 +178,9 @@ export class EventsService {
     return {
       sport: true,
       sports: true,
+      fops: {
+        orderBy: { name: 'asc' as const },
+      },
       categories: {
         include: { sport: true },
         orderBy: { name: 'asc' as const },
@@ -195,6 +208,48 @@ export class EventsService {
     });
     if (validCategoryCount !== new Set(categoryIds).size) {
       throw new BadRequestException('Hạng mục phải thuộc một trong các bộ môn của sự kiện');
+    }
+  }
+
+  private async validateAthletes(
+    athleteIds: string[],
+    categoryIds: string[],
+    sportIds: string[],
+  ) {
+    if (!athleteIds.length) return;
+    if (!categoryIds.length) {
+      throw new BadRequestException(
+        'Phải chọn hạng mục thi đấu trước khi thêm vận động viên',
+      );
+    }
+
+    const athletes = await this.prisma.athlete.findMany({
+      where: { id: { in: athleteIds } },
+      select: {
+        id: true,
+        fullName: true,
+        categories: {
+          where: {
+            id: { in: categoryIds },
+            sportId: { in: sportIds },
+          },
+          select: { id: true },
+        },
+      },
+    });
+    const athleteById = new Map(athletes.map((athlete) => [athlete.id, athlete]));
+    const invalidAthletes = athleteIds.filter((athleteId) => {
+      const athlete = athleteById.get(athleteId);
+      return !athlete || athlete.categories.length === 0;
+    });
+
+    if (invalidAthletes.length) {
+      const names = invalidAthletes.map(
+        (athleteId) => athleteById.get(athleteId)?.fullName || athleteId,
+      );
+      throw new BadRequestException(
+        `Vận động viên chưa đăng ký bộ môn/hạng mục đã chọn: ${names.join(', ')}`,
+      );
     }
   }
 }

@@ -55,6 +55,18 @@ export class GenerateDrawDto {
   @IsOptional()
   fop?: string;
 
+  @ApiPropertyOptional({
+    type: [String],
+    example: ['FOP 1', 'FOP 2'],
+    description: 'Danh sách sàn được dùng cho cây; các trận được phân bổ luân phiên',
+  })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayUnique()
+  @IsString({ each: true })
+  @IsOptional()
+  fops?: string[];
+
   @ApiPropertyOptional({ minimum: 1 })
   @IsInt()
   @Min(1)

@@ -6,6 +6,7 @@ import {
   Alert,
   Button,
   Card,
+  Divider,
   Flex,
   Input,
   Form,
@@ -38,6 +39,17 @@ const statusMap: Record<string, { label: string; color: string }> = {
   CANCELLED: { label: 'Đã hủy', color: 'default' },
 };
 
+type DrawFormValues = {
+  eventId: string;
+  sportIds: string[];
+  categoryIds: string[];
+  athleteIdsByCategory: Record<string, string[]>;
+  type: 'MAIN_TREE' | 'DOUBLE_ELIMINATION';
+  seedingMode: string;
+  name?: string;
+  fops: string[];
+};
+
 export default function MatchesListPage() {
   const { data: currentUser } = useSWR<any>('/auth/profile', fetcher);
   const canDelete = currentUser?.role === 'ADMIN';
@@ -50,23 +62,56 @@ export default function MatchesListPage() {
   const [drawError, setDrawError] = useState<string | null>(null);
   const [drawForm] = Form.useForm();
   const selectedEventId = Form.useWatch('eventId', drawForm);
-  const selectedCategoryId = Form.useWatch('categoryId', drawForm);
+  const selectedSportIds: string[] = Form.useWatch('sportIds', drawForm) || [];
+  const selectedCategoryIds: string[] = Form.useWatch('categoryIds', drawForm) || [];
+  const selectedDrawType = Form.useWatch('type', drawForm) || 'MAIN_TREE';
 
-  const { data: eventsResponse } = useSWR<any>('/events?limit=200', fetcher);
-  const { data: categoriesResponse } = useSWR<any>('/categories?limit=200', fetcher);
-  const { data: athletesResponse } = useSWR<any>('/athletes?limit=200', fetcher);
+  const { data: eventsResponse } = useSWR<any>('/events?limit=500', fetcher);
+  const { data: categoriesResponse } = useSWR<any>('/categories?limit=500', fetcher);
+  const { data: athletesResponse } = useSWR<any>('/athletes?limit=500', fetcher);
   const events = eventsResponse?.items || [];
   const allCategories = categoriesResponse?.items || [];
   const allAthletes = athletesResponse?.items || [];
   const selectedEvent = events.find((event: any) => event.id === selectedEventId);
-  const eventCategories = selectedEvent?.categories?.length ? selectedEvent.categories : allCategories;
-  const selectedCategory = allCategories.find((category: any) => category.id === selectedCategoryId)
-    || eventCategories.find((category: any) => category.id === selectedCategoryId);
-  const eventAthletes = selectedEvent?.athletes?.length ? selectedEvent.athletes : allAthletes;
-  const eligibleAthleteIds = new Set((selectedCategory?.athletes || []).map((athlete: any) => athlete.id));
-  const eligibleAthletes = eligibleAthleteIds.size
-    ? eventAthletes.filter((athlete: any) => eligibleAthleteIds.has(athlete.id))
-    : eventAthletes;
+  const eventSportIds = new Set<string>([
+    ...(selectedEvent?.sports || []).map((sport: any) => sport.id),
+    ...(selectedEvent?.sportId ? [selectedEvent.sportId] : []),
+  ]);
+  const eventSports = (selectedEvent?.sports?.length
+    ? selectedEvent.sports
+    : selectedEvent?.sport
+      ? [selectedEvent.sport]
+      : []) as any[];
+  const eventCategoryIds = new Set<string>(
+    (selectedEvent?.categories || []).map((category: any) => category.id),
+  );
+  const eventCategories = allCategories.filter((category: any) => (
+    eventCategoryIds.size
+      ? eventCategoryIds.has(category.id)
+      : eventSportIds.has(category.sportId)
+  ));
+  const availableCategories = eventCategories.filter((category: any) => (
+    selectedSportIds.includes(category.sportId)
+  ));
+  const selectedCategories = selectedCategoryIds
+    .map((categoryId) => eventCategories.find((category: any) => category.id === categoryId))
+    .filter(Boolean);
+  const eventAthleteIds = new Set<string>(
+    (selectedEvent?.athletes || []).map((athlete: any) => athlete.id),
+  );
+  const eventAthletes = eventAthleteIds.size
+    ? allAthletes.filter((athlete: any) => eventAthleteIds.has(athlete.id))
+    : allAthletes;
+
+  const eligibleAthletesForCategory = (categoryId: string) => {
+    const registeredAthletes = eventAthletes.filter((athlete: any) => (
+      (athlete.categories || []).some((category: any) => category.id === categoryId)
+    ));
+
+    // Dữ liệu cũ có thể chưa gắn hạng cho VĐV; khi đó vẫn cho phép
+    // người dùng chọn từ danh sách VĐV của sự kiện.
+    return registeredAthletes.length ? registeredAthletes : eventAthletes;
+  };
 
   const query = useMemo(() => {
     const params = new URLSearchParams({ page: String(page), limit: '20' });
@@ -90,26 +135,51 @@ export default function MatchesListPage() {
     }
   };
 
-  const generateDraw = async (values: any) => {
+  const generateDraw = async (values: DrawFormValues) => {
     setDrawError(null);
     setDrawGenerating(true);
+    const failures: Array<{ categoryId: string; categoryName: string; message: string }> = [];
+    let generatedCount = 0;
+
     try {
-      await api.post(
-        `/matches/event/${values.eventId}/category/${values.categoryId}/generate-draw`,
-        {
-          athleteIds: values.athleteIds,
-          type: values.type,
-          seedingMode: values.seedingMode,
-          name: values.name || undefined,
-          fop: values.fop || undefined,
-        },
-      );
-      setDrawOpen(false);
-      drawForm.resetFields();
+      // Gửi tuần tự để số trận của các hạng không bị trùng nhau.
+      for (const categoryId of values.categoryIds) {
+        const category = eventCategories.find((item: any) => item.id === categoryId);
+        try {
+          await api.post(
+            `/matches/event/${values.eventId}/category/${categoryId}/generate-draw`,
+            {
+              athleteIds: values.athleteIdsByCategory?.[categoryId] || [],
+              type: values.type,
+              seedingMode: values.seedingMode,
+              name: values.name?.trim() || undefined,
+              fops: values.fops,
+            },
+          );
+          generatedCount += 1;
+        } catch (requestError: any) {
+          const message = requestError.response?.data?.message || 'Không thể sinh cây thi đấu.';
+          failures.push({
+            categoryId,
+            categoryName: category?.name || categoryId,
+            message: Array.isArray(message) ? message.join(', ') : message,
+          });
+        }
+      }
+
       await mutate();
-    } catch (requestError: any) {
-      const message = requestError.response?.data?.message || 'Không thể sinh cây thi đấu.';
-      setDrawError(Array.isArray(message) ? message.join(', ') : message);
+
+      if (!failures.length) {
+        setDrawOpen(false);
+        drawForm.resetFields();
+        return;
+      }
+
+      drawForm.setFieldValue('categoryIds', failures.map((failure) => failure.categoryId));
+      setDrawError([
+        generatedCount ? `Đã sinh ${generatedCount}/${values.categoryIds.length} cây.` : '',
+        ...failures.map((failure) => `${failure.categoryName}: ${failure.message}`),
+      ].filter(Boolean).join(' '));
     } finally {
       setDrawGenerating(false);
     }
@@ -231,11 +301,17 @@ export default function MatchesListPage() {
       <Modal
         title="Sinh cây thi đấu tự động"
         open={drawOpen}
-        width={720}
+        width={840}
         okText="Sinh cây"
         cancelText="Hủy"
         confirmLoading={drawGenerating}
-        onCancel={() => setDrawOpen(false)}
+        maskClosable={!drawGenerating}
+        closable={!drawGenerating}
+        keyboard={!drawGenerating}
+        styles={{ body: { maxHeight: '70vh', overflowY: 'auto' } }}
+        onCancel={() => {
+          if (!drawGenerating) setDrawOpen(false);
+        }}
         onOk={() => drawForm.submit()}
         destroyOnHidden
       >
@@ -244,7 +320,14 @@ export default function MatchesListPage() {
           form={drawForm}
           layout="vertical"
           requiredMark={false}
-          initialValues={{ type: 'MAIN_TREE', seedingMode: 'STANDARD' }}
+          initialValues={{
+            sportIds: [],
+            categoryIds: [],
+            athleteIdsByCategory: {},
+            fops: [],
+            type: 'MAIN_TREE',
+            seedingMode: 'STANDARD',
+          }}
           onFinish={generateDraw}
         >
           <Form.Item name="eventId" label="Sự kiện" rules={[{ required: true, message: 'Chọn sự kiện' }]}>
@@ -252,30 +335,130 @@ export default function MatchesListPage() {
               showSearch
               optionFilterProp="label"
               options={events.map((event: any) => ({ value: event.id, label: event.name }))}
-              onChange={() => drawForm.setFieldsValue({ categoryId: undefined, athleteIds: [] })}
-            />
-          </Form.Item>
-          <Form.Item name="categoryId" label="Hạng thi đấu" rules={[{ required: true, message: 'Chọn hạng thi đấu' }]}>
-            <Select
-              showSearch
-              optionFilterProp="label"
-              options={eventCategories.map((category: any) => ({ value: category.id, label: category.name }))}
-              onChange={() => drawForm.setFieldValue('athleteIds', [])}
+              onChange={() => drawForm.setFieldsValue({
+                sportIds: [],
+                categoryIds: [],
+                athleteIdsByCategory: {},
+                fops: [],
+              })}
             />
           </Form.Item>
           <Form.Item
-            name="athleteIds"
-            label="Vận động viên theo thứ tự hạt giống"
-            rules={[{ required: true, type: 'array', min: 2, message: 'Chọn ít nhất 2 vận động viên' }]}
+            name="sportIds"
+            label="Bộ môn"
+            rules={[{ required: true, type: 'array', min: 1, message: 'Chọn ít nhất 1 bộ môn' }]}
           >
             <Select
               mode="multiple"
               showSearch
               optionFilterProp="label"
-              placeholder="Hạt giống số 1, số 2..."
-              options={eligibleAthletes.map((athlete: any) => ({ value: athlete.id, label: athlete.fullName }))}
+              placeholder={selectedEventId ? 'Chọn một hoặc nhiều bộ môn' : 'Chọn sự kiện trước'}
+              disabled={!selectedEventId}
+              options={eventSports.map((sport: any) => ({ value: sport.id, label: sport.name }))}
+              onChange={(sportIds: string[]) => {
+                const validSportIds = new Set(sportIds);
+                const validCategoryIds = selectedCategoryIds.filter((categoryId) => {
+                  const category = eventCategories.find((item: any) => item.id === categoryId);
+                  return category && validSportIds.has(category.sportId);
+                });
+                const athleteIdsByCategory = drawForm.getFieldValue('athleteIdsByCategory') || {};
+                drawForm.setFieldsValue({
+                  categoryIds: validCategoryIds,
+                  athleteIdsByCategory: Object.fromEntries(
+                    validCategoryIds.map((categoryId) => [categoryId, athleteIdsByCategory[categoryId] || []]),
+                  ),
+                });
+              }}
             />
           </Form.Item>
+          <Form.Item
+            name="categoryIds"
+            label="Hạng thi đấu"
+            rules={[{ required: true, type: 'array', min: 1, message: 'Chọn ít nhất 1 hạng thi đấu' }]}
+          >
+            <Select
+              mode="multiple"
+              showSearch
+              optionFilterProp="label"
+              placeholder={selectedSportIds.length ? 'Chọn một hoặc nhiều hạng thi đấu' : 'Chọn bộ môn trước'}
+              disabled={!selectedSportIds.length}
+              options={selectedSportIds.map((sportId) => {
+                const sport = eventSports.find((item: any) => item.id === sportId);
+                return {
+                  label: sport?.name || 'Bộ môn',
+                  options: availableCategories
+                    .filter((category: any) => category.sportId === sportId)
+                    .map((category: any) => ({ value: category.id, label: category.name })),
+                };
+              })}
+              notFoundContent="Bộ môn này chưa có hạng thi đấu trong sự kiện"
+              onChange={(categoryIds: string[]) => {
+                const athleteIdsByCategory = drawForm.getFieldValue('athleteIdsByCategory') || {};
+                drawForm.setFieldValue(
+                  'athleteIdsByCategory',
+                  Object.fromEntries(categoryIds.map((categoryId) => [
+                    categoryId,
+                    athleteIdsByCategory[categoryId]
+                      || eligibleAthletesForCategory(categoryId).map((athlete: any) => athlete.id),
+                  ])),
+                );
+              }}
+            />
+          </Form.Item>
+
+          {selectedCategories.length > 0 && (
+            <>
+              <Divider className="my-4" titlePlacement="start">Vận động viên theo hạng</Divider>
+              <div className="space-y-3">
+                {selectedCategories.map((category: any) => {
+                  const eligibleAthletes = eligibleAthletesForCategory(category.id);
+                  const minimumAthletes = selectedDrawType === 'DOUBLE_ELIMINATION' ? 4 : 2;
+                  return (
+                    <Card
+                      key={category.id}
+                      size="small"
+                      className="cms-surface"
+                      title={category.name}
+                      extra={<Tag color="blue">{category.sport?.name || '—'}</Tag>}
+                    >
+                      <Form.Item
+                        className="mb-0"
+                        name={['athleteIdsByCategory', category.id]}
+                        label="Thứ tự hạt giống"
+                        rules={[{
+                          validator: (_, athleteIds: string[] = []) => (
+                            athleteIds.length >= minimumAthletes
+                              ? Promise.resolve()
+                              : Promise.reject(new Error(
+                                selectedDrawType === 'DOUBLE_ELIMINATION'
+                                  ? 'Thể thức nhánh thắng/thua cần ít nhất 4 vận động viên'
+                                  : 'Chọn ít nhất 2 vận động viên',
+                              ))
+                          ),
+                        }]}
+                      >
+                        <Select
+                          mode="multiple"
+                          showSearch
+                          optionFilterProp="label"
+                          placeholder="Hạt giống số 1, số 2..."
+                          options={eligibleAthletes.map((athlete: any) => ({
+                            value: athlete.id,
+                            label: athlete.fullName,
+                          }))}
+                        />
+                      </Form.Item>
+                    </Card>
+                  );
+                })}
+              </div>
+              <Typography.Text type="secondary" className="mt-2 block text-xs">
+                Mỗi hạng sẽ sinh một cây riêng. Thứ tự vận động viên trong ô chọn là thứ tự hạt giống.
+              </Typography.Text>
+            </>
+          )}
+
+          <Divider className="my-4" titlePlacement="start">Thiết lập chung</Divider>
           <Flex gap={16} wrap>
             <Form.Item className="min-w-64 flex-1" name="type" label="Thể thức">
               <Select options={[
@@ -297,8 +480,23 @@ export default function MatchesListPage() {
             <Form.Item className="min-w-64 flex-1" name="name" label="Tên cây">
               <Input placeholder="MAIN TREE POOL 1" />
             </Form.Item>
-            <Form.Item className="min-w-64 flex-1" name="fop" label="Sàn / FOP">
-              <Input placeholder="FOP 1" />
+            <Form.Item
+              className="min-w-64 flex-1"
+              name="fops"
+              label="Sàn / FOP"
+              rules={[{ required: true, type: 'array', min: 1, message: 'Chọn ít nhất 1 sàn' }]}
+            >
+              <Select
+                mode="tags"
+                showSearch
+                optionFilterProp="label"
+                tokenSeparators={[',', ';']}
+                placeholder="Chọn hoặc nhập FOP 1, FOP 2..."
+                options={(selectedEvent?.fops || []).map((fop: any) => ({
+                  value: fop.name,
+                  label: fop.name,
+                }))}
+              />
             </Form.Item>
           </Flex>
         </Form>

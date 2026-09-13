@@ -380,29 +380,33 @@ export default function SportsPage() {
         isOpen={categoryOpen}
         onClose={() => setCategoryOpen(false)}
         title={`${editingCategory ? 'Chỉnh sửa' : 'Thêm'} hạng đấu · ${categorySport?.name || ''}`}
-        size="lg"
+        size="xl"
       >
         <Form layout="vertical" requiredMark={false} onFinish={saveCategory}>
-          <Field label="Tên hạng đấu *">
-            <Input
-              required
-              value={categoryForm.name}
-              onChange={(event) => setCategoryForm({ ...categoryForm, name: event.target.value })}
-            />
-          </Field>
-          <Field label="Giới tính">
-            <Select
-              className="w-full"
-              value={categoryForm.gender}
-              options={[
-                { value: 'MALE', label: 'Nam' },
-                { value: 'FEMALE', label: 'Nữ' },
-                { value: 'MIXED', label: 'Hỗn hợp' },
-              ]}
-              onChange={(gender) => setCategoryForm({ ...categoryForm, gender })}
-            />
-          </Field>
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+          <div className="grid grid-cols-1 gap-x-4 md:grid-cols-4">
+            <div className="md:col-span-3">
+              <Field label="Tên hạng đấu *">
+                <Input
+                  required
+                  value={categoryForm.name}
+                  onChange={(event) => setCategoryForm({ ...categoryForm, name: event.target.value })}
+                />
+              </Field>
+            </div>
+            <Field label="Giới tính">
+              <Select
+                className="w-full"
+                value={categoryForm.gender}
+                options={[
+                  { value: 'MALE', label: 'Nam' },
+                  { value: 'FEMALE', label: 'Nữ' },
+                  { value: 'MIXED', label: 'Hỗn hợp' },
+                ]}
+                onChange={(gender) => setCategoryForm({ ...categoryForm, gender })}
+              />
+            </Field>
+          </div>
+          <div className="grid grid-cols-1 gap-x-4 md:grid-cols-3">
             <Field label="Nội dung thi đấu">
               <Select className="w-full" value={categoryForm.discipline} options={disciplineOptions} onChange={(discipline) => setCategoryForm({ ...categoryForm, discipline })} />
             </Field>
@@ -413,7 +417,7 @@ export default function SportsPage() {
               <Select className="w-full" value={categoryForm.beltLevel} options={beltOptions} onChange={(beltLevel) => setCategoryForm({ ...categoryForm, beltLevel })} />
             </Field>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-2 md:grid-cols-5">
             <NumberField label="Tuổi tối thiểu" value={categoryForm.minAge} onChange={(minAge) => setCategoryForm({ ...categoryForm, minAge })} />
             <NumberField label="Tuổi tối đa" value={categoryForm.maxAge} onChange={(maxAge) => setCategoryForm({ ...categoryForm, maxAge })} />
             <NumberField label="Cân nặng tối thiểu" value={categoryForm.minWeight} step={0.1} onChange={(minWeight) => setCategoryForm({ ...categoryForm, minWeight })} />

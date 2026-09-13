@@ -42,6 +42,11 @@ export class UpdateMatchDto implements Partial<CreateMatchDto> {
   fop?: string;
 
   @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  fopId?: string;
+
+  @ApiPropertyOptional()
   @IsDateString()
   @IsOptional()
   matchDate?: string;

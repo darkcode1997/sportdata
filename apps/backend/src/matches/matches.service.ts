@@ -34,6 +34,7 @@ const MATCH_INCLUDE = {
     },
   },
   division: { select: { id: true, name: true } },
+  fopRecord: { select: { id: true, name: true } },
   draw: { select: { id: true, name: true, type: true, bracketSize: true, sortOrder: true } },
   athlete1: {
     select: {
@@ -68,6 +69,11 @@ type SeedAthlete = {
 };
 
 type GeneratedMatch = Prisma.MatchCreateManyInput;
+
+type ScheduledFop = {
+  id: string;
+  name: string;
+};
 
 @Injectable()
 export class MatchesService {
@@ -192,6 +198,9 @@ export class MatchesService {
       }),
       matchNumber: createMatchDto.matchNumber,
       fop: createMatchDto.fop,
+      ...(createMatchDto.fopId && {
+        fopRecord: { connect: { id: createMatchDto.fopId } },
+      }),
       startTime: createMatchDto.startTime
         ? new Date(createMatchDto.startTime)
         : undefined,
@@ -263,6 +272,11 @@ export class MatchesService {
         data.matchNumber = updateMatchDto.matchNumber;
       }
       if (updateMatchDto.fop !== undefined) data.fop = updateMatchDto.fop;
+      if (updateMatchDto.fopId !== undefined) {
+        data.fopRecord = updateMatchDto.fopId
+          ? { connect: { id: updateMatchDto.fopId } }
+          : { disconnect: true };
+      }
       if (updateMatchDto.matchDate) data.matchDate = new Date(updateMatchDto.matchDate);
       if (updateMatchDto.startTime !== undefined) {
         data.startTime = updateMatchDto.startTime
@@ -357,6 +371,9 @@ export class MatchesService {
     const draws = await this.prisma.draw.findMany({
       where: { eventId, categoryId },
       include: {
+        fops: {
+          orderBy: { name: 'asc' },
+        },
         matches: {
           include: MATCH_INCLUDE,
           orderBy: [{ round: 'asc' }, { bracketPosition: 'asc' }, { matchNumber: 'asc' }],
@@ -402,6 +419,11 @@ export class MatchesService {
     const orderedAthletes = dto.athleteIds.map(
       (id) => athletes.find((athlete) => athlete.id === id) as SeedAthlete,
     );
+    const fopNames = Array.from(new Set(
+      (dto.fops?.length ? dto.fops : dto.fop ? [dto.fop] : [])
+        .map((name) => name.trim())
+        .filter(Boolean),
+    ));
     const bracketSize = this.nextPowerOfTwo(orderedAthletes.length);
     const seededSlots = this.seedAthletes(
       orderedAthletes,
@@ -427,37 +449,51 @@ export class MatchesService {
     });
     const number = { value: dto.startMatchNumber || (maximumMatch._max.matchNumber || 0) + 1 };
     const mainDrawId = randomUUID();
-    const mainRounds = this.buildWinnerBracket({
-      drawId: mainDrawId,
-      eventId,
-      categoryId,
-      divisionId: dto.divisionId,
-      matchDate: event.startDate,
-      fop: dto.fop,
-      slots: seededSlots,
-      number,
-    });
-    const generatedMatches = mainRounds.flat();
-    let loserDrawId: string | undefined;
-
-    if (drawType === DrawType.DOUBLE_ELIMINATION) {
-      loserDrawId = randomUUID();
-      generatedMatches.push(
-        ...this.buildDoubleEliminationBracket({
-          drawId: loserDrawId,
-          eventId,
-          categoryId,
-          divisionId: dto.divisionId,
-          matchDate: event.startDate,
-          fop: dto.fop,
-          winnersRounds: mainRounds,
-          number,
-        }),
-      );
-    }
-    this.resolveGeneratedWalkovers(generatedMatches);
 
     await this.prisma.$transaction(async (transaction) => {
+      const fops: ScheduledFop[] = [];
+      for (const name of fopNames) {
+        fops.push(await transaction.fop.upsert({
+          where: { eventId_name: { eventId, name } },
+          update: {},
+          create: { name, eventId },
+          select: { id: true, name: true },
+        }));
+      }
+
+      const fopCursor = { value: 0 };
+      const mainRounds = this.buildWinnerBracket({
+        drawId: mainDrawId,
+        eventId,
+        categoryId,
+        divisionId: dto.divisionId,
+        matchDate: event.startDate,
+        fops,
+        fopCursor,
+        slots: seededSlots,
+        number,
+      });
+      const generatedMatches = mainRounds.flat();
+      let loserDrawId: string | undefined;
+
+      if (drawType === DrawType.DOUBLE_ELIMINATION) {
+        loserDrawId = randomUUID();
+        generatedMatches.push(
+          ...this.buildDoubleEliminationBracket({
+            drawId: loserDrawId,
+            eventId,
+            categoryId,
+            divisionId: dto.divisionId,
+            matchDate: event.startDate,
+            fops,
+            fopCursor,
+            winnersRounds: mainRounds,
+            number,
+          }),
+        );
+      }
+      this.resolveGeneratedWalkovers(generatedMatches);
+
       await transaction.draw.create({
         data: {
           id: mainDrawId,
@@ -468,6 +504,9 @@ export class MatchesService {
           divisionId: dto.divisionId,
           bracketSize,
           sortOrder: 10,
+          fops: fops.length
+            ? { connect: fops.map(({ id }) => ({ id })) }
+            : undefined,
         },
       });
       if (loserDrawId) {
@@ -481,6 +520,9 @@ export class MatchesService {
             divisionId: dto.divisionId,
             bracketSize: Math.max(2, bracketSize / 2),
             sortOrder: 20,
+            fops: fops.length
+              ? { connect: fops.map(({ id }) => ({ id })) }
+              : undefined,
           },
         });
       }
@@ -496,7 +538,8 @@ export class MatchesService {
     categoryId: string;
     divisionId?: string;
     matchDate: Date;
-    fop?: string;
+    fops: ScheduledFop[];
+    fopCursor: { value: number };
     slots: Array<SeedAthlete | null>;
     number: { value: number };
   }) {
@@ -505,23 +548,27 @@ export class MatchesService {
 
     for (let round = 1; round <= roundCount; round += 1) {
       const matchCount = input.slots.length / 2 ** round;
-      const roundMatches = Array.from({ length: matchCount }, (_, position) => ({
-        id: randomUUID(),
-        eventId: input.eventId,
-        categoryId: input.categoryId,
-        divisionId: input.divisionId,
-        drawId: input.drawId,
-        matchNumber: input.number.value++,
-        fop: input.fop,
-        matchDate: input.matchDate,
-        athlete1Id: round === 1 ? input.slots[position * 2]?.id || null : null,
-        athlete2Id: round === 1 ? input.slots[position * 2 + 1]?.id || null : null,
-        status: MatchStatus.SCHEDULED,
-        matchType: this.matchTypeForCount(matchCount),
-        round,
-        bracketPosition: position,
-        notes: `Generated winner bracket · round ${round}`,
-      } satisfies GeneratedMatch));
+      const roundMatches = Array.from({ length: matchCount }, (_, position) => {
+        const fop = this.takeNextFop(input.fops, input.fopCursor);
+        return {
+          id: randomUUID(),
+          eventId: input.eventId,
+          categoryId: input.categoryId,
+          divisionId: input.divisionId,
+          drawId: input.drawId,
+          matchNumber: input.number.value++,
+          fop: fop?.name,
+          fopId: fop?.id,
+          matchDate: input.matchDate,
+          athlete1Id: round === 1 ? input.slots[position * 2]?.id || null : null,
+          athlete2Id: round === 1 ? input.slots[position * 2 + 1]?.id || null : null,
+          status: MatchStatus.SCHEDULED,
+          matchType: this.matchTypeForCount(matchCount),
+          round,
+          bracketPosition: position,
+          notes: `Generated winner bracket · round ${round}`,
+        } satisfies GeneratedMatch;
+      });
       rounds.push(roundMatches);
     }
 
@@ -557,7 +604,8 @@ export class MatchesService {
     categoryId: string;
     divisionId?: string;
     matchDate: Date;
-    fop?: string;
+    fops: ScheduledFop[];
+    fopCursor: { value: number };
     winnersRounds: GeneratedMatch[][];
     number: { value: number };
   }) {
@@ -568,23 +616,28 @@ export class MatchesService {
     for (let stage = 1; stage <= loserRoundCount; stage += 1) {
       const pair = Math.ceil(stage / 2);
       const matchCount = input.winnersRounds[0].length / 2 ** pair;
-      loserRounds.push(Array.from({ length: matchCount }, (_, position) => ({
-        id: randomUUID(),
-        eventId: input.eventId,
-        categoryId: input.categoryId,
-        divisionId: input.divisionId,
-        drawId: input.drawId,
-        matchNumber: input.number.value++,
-        fop: input.fop,
-        matchDate: input.matchDate,
-        status: MatchStatus.SCHEDULED,
-        matchType: MatchType.ELIMINATION,
-        round: stage,
-        bracketPosition: position,
-        notes: `Generated double-elimination loser bracket · round ${stage}`,
-      } satisfies GeneratedMatch)));
+      loserRounds.push(Array.from({ length: matchCount }, (_, position) => {
+        const fop = this.takeNextFop(input.fops, input.fopCursor);
+        return {
+          id: randomUUID(),
+          eventId: input.eventId,
+          categoryId: input.categoryId,
+          divisionId: input.divisionId,
+          drawId: input.drawId,
+          matchNumber: input.number.value++,
+          fop: fop?.name,
+          fopId: fop?.id,
+          matchDate: input.matchDate,
+          status: MatchStatus.SCHEDULED,
+          matchType: MatchType.ELIMINATION,
+          round: stage,
+          bracketPosition: position,
+          notes: `Generated double-elimination loser bracket · round ${stage}`,
+        } satisfies GeneratedMatch;
+      }));
     }
 
+    const finalFop = this.takeNextFop(input.fops, input.fopCursor);
     const grandFinal: GeneratedMatch = {
       id: randomUUID(),
       eventId: input.eventId,
@@ -592,7 +645,8 @@ export class MatchesService {
       divisionId: input.divisionId,
       drawId: input.drawId,
       matchNumber: input.number.value++,
-      fop: input.fop,
+      fop: finalFop?.name,
+      fopId: finalFop?.id,
       matchDate: input.matchDate,
       status: MatchStatus.SCHEDULED,
       matchType: MatchType.FINAL,
@@ -694,6 +748,13 @@ export class MatchesService {
       [result[index], result[swapIndex]] = [result[swapIndex], result[index]];
     }
     return result;
+  }
+
+  private takeNextFop(fops: ScheduledFop[], cursor: { value: number }) {
+    if (!fops.length) return undefined;
+    const fop = fops[cursor.value % fops.length];
+    cursor.value += 1;
+    return fop;
   }
 
   private nextPowerOfTwo(value: number) {

@@ -233,6 +233,7 @@ model Event {
   logoUrl     String?
   matches     Match[]
   draws       Draw[]
+  fops        Fop[]
   athletes    Athlete[]
   categories  Category[]
   statistics  Statistic[]
@@ -284,6 +285,8 @@ model Match {
   draw               Draw?        @relation(fields: [drawId], references: [id], onDelete: SetNull)
   matchNumber        Int?
   fop                String?
+  fopId              String?
+  fopRecord          Fop?         @relation(fields: [fopId], references: [id], onDelete: SetNull)
   matchDate          DateTime
   startTime          DateTime?
   endTime            DateTime?
@@ -320,6 +323,7 @@ model Match {
   @@index([eventId])
   @@index([categoryId])
   @@index([drawId])
+  @@index([fopId])
   @@index([winnerToMatchId])
   @@index([loserToMatchId])
   @@index([matchDate])
@@ -341,6 +345,7 @@ model Draw {
   poolNumber  Int?
   bracketSize Int?
   sortOrder   Int       @default(0)
+  fops        Fop[]     @relation("DrawFops")
   matches     Match[]
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -348,6 +353,20 @@ model Draw {
   @@unique([eventId, categoryId, name])
   @@index([eventId, categoryId])
   @@index([divisionId])
+}
+
+model Fop {
+  id        String   @id @default(cuid())
+  name      String
+  eventId   String
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  draws     Draw[]   @relation("DrawFops")
+  matches   Match[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([eventId, name])
+  @@index([eventId])
 }
 
 model Statistic {

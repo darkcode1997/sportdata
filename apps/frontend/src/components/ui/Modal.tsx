@@ -24,7 +24,7 @@ export default function Modal({
     sm: 384,
     md: 448,
     lg: 512,
-    xl: 672,
+    xl: 960,
   };
 
   return (
