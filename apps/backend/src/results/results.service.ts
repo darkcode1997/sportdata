@@ -238,7 +238,7 @@ export class ResultsService {
     action: string,
     expectedVersion: number,
     reason: string | undefined,
-    data: Prisma.MatchUpdateInput,
+    data: Prisma.MatchUpdateManyMutationInput,
   ) {
     return this.prisma.$transaction(async (transaction) => {
       const before = await this.loadMatch(transaction, matchId);

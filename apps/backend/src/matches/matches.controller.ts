@@ -118,7 +118,7 @@ export class MatchesController {
   @Roles(UserRole.ADMIN, UserRole.CONTENT, UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER, UserRole.VENUE_OPERATOR)
   @ApiOperation({
     summary: 'Create a new match',
-    description: 'Create a new match with athletes, scores, and scheduling details.',
+    description: 'Create an unfinished match with participants and scheduling details. Results use the approval workflow.',
   })
   @HttpCode(HttpStatus.CREATED)
   create(@Body() createMatchDto: CreateMatchDto) {
@@ -131,7 +131,7 @@ export class MatchesController {
   @ApiOperation({
     summary: 'Update a match',
     description:
-      'Update match details including scores, status, winner, athletes, and scheduling information.',
+      'Update participants and scheduling details. Completed results must use the result approval workflow.',
   })
   @ApiParam({ name: 'id', type: String, description: 'Match ID' })
   update(@Param('id') id: string, @Body() updateMatchDto: UpdateMatchDto) {

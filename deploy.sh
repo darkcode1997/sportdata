@@ -102,8 +102,8 @@ fi
 log "Kiểm tra cấu hình Docker Compose"
 "${COMPOSE[@]}" config --quiet
 
-# docker-compose.yml mặc định bật seed cho môi trường phát triển. Khi deploy,
-# chỉ bật lại bằng --seed để tránh làm mới dữ liệu demo ngoài ý muốn.
+# Seed luôn là thao tác chủ động. Chỉ bật bằng --seed khi cài đặt lần đầu
+# hoặc khi người vận hành thực sự muốn đồng bộ lại dữ liệu mẫu.
 if $RUN_SEED; then
   export SEED_DATABASE=true
   log "Seed database được bật cho lần deploy này"
@@ -164,4 +164,3 @@ wait_for_service frontend
 
 log "Deploy SportData thành công"
 "${COMPOSE[@]}" ps
-

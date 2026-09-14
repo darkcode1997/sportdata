@@ -12,10 +12,20 @@ import { JwtStrategy } from './jwt.strategy';
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       imports: [ConfigModule],
-      useFactory: (cfg: ConfigService) => ({
-        secret: cfg.get<string>('JWT_SECRET') || 'sportdata-dev-secret-change-me-please',
-        signOptions: { expiresIn: (cfg.get<string>('JWT_EXPIRES_IN') || '7d') as SignOptions['expiresIn'] },
-      }),
+      useFactory: (cfg: ConfigService) => {
+        const configuredSecret = cfg.get<string>('JWT_SECRET')?.trim();
+        const production = cfg.get<string>('NODE_ENV') === 'production';
+        if (production && (!configuredSecret || configuredSecret.includes('change-me'))) {
+          throw new Error('JWT_SECRET must be explicitly configured for production.');
+        }
+
+        return {
+          secret: configuredSecret || 'sportdata-dev-secret-change-me-please',
+          signOptions: {
+            expiresIn: (cfg.get<string>('JWT_EXPIRES_IN') || '7d') as SignOptions['expiresIn'],
+          },
+        };
+      },
       inject: [ConfigService],
     }),
   ],

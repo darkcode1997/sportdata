@@ -178,7 +178,12 @@ export class SchedulingService {
         },
       }),
       this.prisma.match.count({
-        where: { eventId, status: MatchStatus.FINISHED, resultStatus: ResultStatus.DRAFT },
+        where: {
+          eventId,
+          status: MatchStatus.FINISHED,
+          resultStatus: ResultStatus.DRAFT,
+          winMethod: { not: 'WALKOVVER' },
+        },
       }),
       this.prisma.user.groupBy({
         by: ['role'],

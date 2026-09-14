@@ -1,4 +1,4 @@
-import { MatchStatus, MatchType, PrismaClient } from '@prisma/client';
+import { MatchStatus, MatchType, PrismaClient, SessionStatus } from '@prisma/client';
 
 const EVENT_ID = 'event-sea-games-2026-demo';
 const ATHLETE_PREFIX = 'sea26-ath-';
@@ -12,7 +12,16 @@ async function main() {
       where: { id: EVENT_ID },
       include: {
         categories: { select: { id: true } },
-        fops: { select: { id: true } },
+        venues: { select: { id: true } },
+        fops: { select: { id: true, venueId: true } },
+        sessions: {
+          select: {
+            id: true,
+            status: true,
+            _count: { select: { timeSlots: true } },
+          },
+        },
+        scheduleRules: { select: { sportId: true } },
         _count: { select: { athletes: true, matches: true } },
       },
     });
@@ -50,6 +59,8 @@ async function main() {
           status: true,
           matchType: true,
           winnerToMatchId: true,
+          sessionId: true,
+          timeSlotId: true,
         },
       }),
       prisma.country.findMany({
@@ -118,6 +129,21 @@ async function main() {
     }
 
     const errors = [
+      event.venues.length !== 10 ? `Số venue: ${event.venues.length}/10` : '',
+      event.fops.some((fop) => !fop.venueId) ? 'Có FOP chưa gắn venue' : '',
+      !event.sessions.length ? 'Chưa có session thi đấu' : '',
+      event.sessions.some((session) => session.status !== SessionStatus.PUBLISHED)
+        ? 'Có session chưa được công bố'
+        : '',
+      event.sessions.some((session) => session._count.timeSlots === 0)
+        ? 'Có session chưa có time slot'
+        : '',
+      event.scheduleRules.length !== 10
+        ? `Số quy tắc xếp lịch: ${event.scheduleRules.length}/10`
+        : '',
+      matches.some((match) => !match.sessionId || !match.timeSlotId)
+        ? 'Có trận chưa gắn session/time slot'
+        : '',
       event._count.athletes !== 5_000 ? `Số VĐV: ${event._count.athletes}/5000` : '',
       event.categories.length !== 147 ? `Số hạng cân: ${event.categories.length}/147` : '',
       event.fops.length !== 50 ? `Số sàn: ${event.fops.length}/50` : '',
@@ -146,6 +172,10 @@ async function main() {
       })),
       athletes: event._count.athletes,
       fops: event.fops.length,
+      venues: event.venues.length,
+      sessions: event.sessions.length,
+      timeSlots: event.sessions.reduce((sum, session) => sum + session._count.timeSlots, 0),
+      scheduleRules: event.scheduleRules.length,
       matches: event._count.matches,
       matchStatus: MatchStatus.SCHEDULED,
       fopConflicts,

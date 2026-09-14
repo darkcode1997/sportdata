@@ -271,6 +271,21 @@ export class MatchesService {
   }
 
   async create(createMatchDto: CreateMatchDto) {
+    const createsResult = [
+      'athlete1Score',
+      'athlete2Score',
+      'athlete1Advantages',
+      'athlete2Advantages',
+      'athlete1Penalties',
+      'athlete2Penalties',
+      'winnerId',
+      'winMethod',
+    ].some((field) => (createMatchDto as unknown as Record<string, unknown>)[field] !== undefined);
+    if (createsResult || createMatchDto.status === MatchStatus.FINISHED) {
+      throw new BadRequestException(
+        'Hãy tạo trận ở trạng thái chưa hoàn thành và nhập kết quả qua quy trình Kết quả & phê duyệt',
+      );
+    }
     if (createMatchDto.athlete1Id && createMatchDto.athlete1Id === createMatchDto.athlete2Id) {
       throw new BadRequestException('Hai vận động viên của một trận phải khác nhau');
     }
@@ -411,6 +426,14 @@ export class MatchesService {
         'winnerId',
         'winMethod',
       ].some((field) => (updateMatchDto as Record<string, unknown>)[field] !== undefined);
+      const changesFinishedStatus = updateMatchDto.status !== undefined
+        && updateMatchDto.status !== previous.status
+        && (updateMatchDto.status === MatchStatus.FINISHED || previous.status === MatchStatus.FINISHED);
+      if (changesResult || changesFinishedStatus) {
+        throw new BadRequestException(
+          'Kết quả và trạng thái hoàn thành chỉ được thay đổi qua quy trình Kết quả & phê duyệt',
+        );
+      }
       if (previous.resultStatus === ResultStatus.LOCKED && changesResult) {
         throw new BadRequestException('Kết quả đã khóa; phải mở khóa qua quy trình phê duyệt trước khi sửa');
       }

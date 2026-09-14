@@ -75,7 +75,12 @@ async function bootstrap() {
       server.listen(p, () => server.close(() => res(p)));
     });
   }
-  const listenPort = await portAvailable(port);
+  // A production orchestrator must fail fast when its assigned port is busy;
+  // silently moving to another port makes the load balancer health-check the
+  // wrong process. Auto-increment is kept only for local development.
+  const listenPort = process.env.NODE_ENV === 'production'
+    ? port
+    : await portAvailable(port);
   await app.listen(listenPort);
   // A 2GB backup upload can legitimately take much longer than Node's default
   // request timeout on slower private networks.

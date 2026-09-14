@@ -7,7 +7,7 @@ import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import dayjs from 'dayjs';
-import { Card, Col, DatePicker, Form, Input, Row, Select } from 'antd';
+import { Alert, Card, Col, DatePicker, Form, Input, Row, Select } from 'antd';
 import { api, fetcher } from '@/lib/api';
 import { ErrorMessage, FormActions } from './AthleteForm';
 import { RemoteAthleteSelect } from './RemoteAthleteSelect';
@@ -23,10 +23,6 @@ const matchSchema = z.object({
   fopId: z.string().optional(),
   status: z.enum(['SCHEDULED', 'RUNNING', 'FINISHED', 'CANCELLED']),
   matchType: z.enum(['POOL', 'ELIMINATION', 'FINAL', 'SEMIFINAL', 'QUARTERFINAL', 'ROUND_OF_16', 'ROUND_OF_32', 'GROUP_STAGE']),
-  athlete1Score: z.string().optional(),
-  athlete2Score: z.string().optional(),
-  winnerId: z.string().optional(),
-  winMethod: z.enum(['', 'POINTS', 'SUBMISSION', 'IPPON', 'KNOCKOUT', 'DISQUALIFICATION', 'WALKOVVER', 'DECISION', 'TECHNICAL']),
   round: z.string().optional(),
   pool: z.string().optional(),
   notes: z.string().optional(),
@@ -51,19 +47,8 @@ const matchTypeOptions = [
 const statusOptions = [
   { value: 'SCHEDULED', label: 'Sắp diễn ra' },
   { value: 'RUNNING', label: 'Đang thi đấu' },
-  { value: 'FINISHED', label: 'Hoàn thành' },
+  { value: 'FINISHED', label: 'Hoàn thành · quản lý tại Điều hành', disabled: true },
   { value: 'CANCELLED', label: 'Đã hủy' },
-];
-const winMethodOptions = [
-  { value: '', label: 'Chưa xác định' },
-  { value: 'POINTS', label: 'Điểm' },
-  { value: 'SUBMISSION', label: 'Khóa siết' },
-  { value: 'IPPON', label: 'Ippon' },
-  { value: 'KNOCKOUT', label: 'Knockout' },
-  { value: 'DISQUALIFICATION', label: 'Truất quyền' },
-  { value: 'DECISION', label: 'Quyết định' },
-  { value: 'TECHNICAL', label: 'Kỹ thuật' },
-  { value: 'WALKOVVER', label: 'Bỏ cuộc' },
 ];
 
 export function MatchForm({ matchId, initialData }: { matchId?: string; initialData?: any }) {
@@ -92,10 +77,6 @@ export function MatchForm({ matchId, initialData }: { matchId?: string; initialD
       fopId: initialData?.fopId || '',
       status: initialData?.status || 'SCHEDULED',
       matchType: initialData?.matchType || 'ELIMINATION',
-      athlete1Score: initialData?.athlete1Score != null ? String(initialData.athlete1Score) : '0',
-      athlete2Score: initialData?.athlete2Score != null ? String(initialData.athlete2Score) : '0',
-      winnerId: initialData?.winnerId || '',
-      winMethod: initialData?.winMethod || '',
       round: initialData?.round != null ? String(initialData.round) : '',
       pool: initialData?.pool || '',
       notes: initialData?.notes || '',
@@ -123,10 +104,6 @@ export function MatchForm({ matchId, initialData }: { matchId?: string; initialD
       athlete1Id: values.athlete1Id || undefined,
       athlete2Id: values.athlete2Id || undefined,
       matchNumber: values.matchNumber ? Number(values.matchNumber) : undefined,
-      athlete1Score: values.athlete1Score ? Number(values.athlete1Score) : 0,
-      athlete2Score: values.athlete2Score ? Number(values.athlete2Score) : 0,
-      winnerId: values.winnerId || undefined,
-      winMethod: values.winMethod || undefined,
       round: values.round ? Number(values.round) : undefined,
       fopId: values.fopId || undefined,
       fop: selectedFop?.name || values.fop || undefined,
@@ -150,18 +127,25 @@ export function MatchForm({ matchId, initialData }: { matchId?: string; initialD
     value: category.id,
     label: `${category.name}${category.sport?.name ? ` · ${category.sport.name}` : ''}`,
   }));
-  const initialAthletes = [initialData?.athlete1, initialData?.athlete2, initialData?.winner].filter(Boolean);
+  const initialAthletes = [initialData?.athlete1, initialData?.athlete2].filter(Boolean);
 
   return (
     <Form layout="vertical" requiredMark={false} onFinish={handleSubmit(onSubmit)}>
       {submitError && <ErrorMessage message={submitError} />}
       <Card className="cms-surface" title="Thông tin trận đấu">
+        <Alert
+          className="mb-5"
+          showIcon
+          type="info"
+          message="Trang này chỉ quản lý cấu trúc và lịch thi đấu"
+          description="Điểm số, người thắng và trạng thái hoàn thành phải đi qua Điều hành đại hội → Kết quả & phê duyệt để có lịch sử và chữ ký trách nhiệm."
+        />
         <Row gutter={[20, 2]}>
           <ControlledField name="eventId" control={control} label="Sự kiện" error={errors.eventId?.message} required>
-            {(field) => <Select size="large" showSearch optionFilterProp="label" className="w-full" placeholder="Chọn sự kiện" value={field.value || undefined} onChange={(value) => { field.onChange(value); setValue('categoryId', ''); setValue('athlete1Id', ''); setValue('athlete2Id', ''); setValue('winnerId', ''); setValue('fopId', ''); }} options={eventOptions} />}
+            {(field) => <Select size="large" showSearch optionFilterProp="label" className="w-full" placeholder="Chọn sự kiện" value={field.value || undefined} onChange={(value) => { field.onChange(value); setValue('categoryId', ''); setValue('athlete1Id', ''); setValue('athlete2Id', ''); setValue('fopId', ''); }} options={eventOptions} />}
           </ControlledField>
           <ControlledField name="categoryId" control={control} label="Hạng mục" error={errors.categoryId?.message} required>
-            {(field) => <Select size="large" showSearch optionFilterProp="label" className="w-full" placeholder="Chọn hạng mục" value={field.value || undefined} onChange={(value) => { field.onChange(value); setValue('athlete1Id', ''); setValue('athlete2Id', ''); setValue('winnerId', ''); }} options={categoryOptions} />}
+            {(field) => <Select size="large" showSearch optionFilterProp="label" className="w-full" placeholder="Chọn hạng mục" value={field.value || undefined} onChange={(value) => { field.onChange(value); setValue('athlete1Id', ''); setValue('athlete2Id', ''); }} options={categoryOptions} />}
           </ControlledField>
           <ControlledField name="athlete1Id" control={control} label="Vận động viên 1" error={errors.athlete1Id?.message}>
             {(field) => <RemoteAthleteSelect eventId={selectedEventId} categoryId={selectedCategoryId} initialOptions={initialAthletes} placeholder="Chờ xác định" value={field.value || undefined} excludeIds={[selectedAthlete2Id || '']} onChange={(value) => field.onChange(value || '')} />}
@@ -197,18 +181,6 @@ export function MatchForm({ matchId, initialData }: { matchId?: string; initialD
           </ControlledField>
           <ControlledField name="status" control={control} label="Trạng thái" error={errors.status?.message}>
             {(field) => <Select size="large" className="w-full" value={field.value} onChange={field.onChange} options={statusOptions} />}
-          </ControlledField>
-          <ControlledField name="athlete1Score" control={control} label="Điểm VĐV 1" error={errors.athlete1Score?.message}>
-            {(field) => <Input {...field} size="large" type="number" min={0} step={0.1} />}
-          </ControlledField>
-          <ControlledField name="athlete2Score" control={control} label="Điểm VĐV 2" error={errors.athlete2Score?.message}>
-            {(field) => <Input {...field} size="large" type="number" min={0} step={0.1} />}
-          </ControlledField>
-          <ControlledField name="winnerId" control={control} label="Người chiến thắng" error={errors.winnerId?.message}>
-            {(field) => <RemoteAthleteSelect eventId={selectedEventId} categoryId={selectedCategoryId} initialOptions={initialAthletes} placeholder="Chưa xác định" value={field.value || undefined} onChange={(value) => field.onChange(value || '')} />}
-          </ControlledField>
-          <ControlledField name="winMethod" control={control} label="Cách chiến thắng" error={errors.winMethod?.message}>
-            {(field) => <Select size="large" className="w-full" value={field.value} onChange={field.onChange} options={winMethodOptions} />}
           </ControlledField>
           <ControlledField name="pool" control={control} label="Nhóm / Pool" error={errors.pool?.message}>
             {(field) => <Input {...field} size="large" placeholder="A" />}

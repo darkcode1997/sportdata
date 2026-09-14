@@ -8,6 +8,7 @@ import {
   MatchType,
   Prisma,
   PrismaClient,
+  SessionStatus,
 } from '@prisma/client';
 
 const SEA_GAMES_EVENT_ID = 'event-sea-games-2026-demo';
@@ -711,9 +712,66 @@ export async function seedSeaGamesDemo(prisma: PrismaClient) {
     categoryId: athlete.categoryId,
   }));
 
+  const venueIdsBySport = new Map<string, string>();
+  for (const sport of SPORTS) {
+    const venueId = `sea26-venue-${sport.code.toLowerCase()}`;
+    const venue = await prisma.venue.upsert({
+      where: { code: `SEA26-${sport.code}` },
+      update: {
+        name: sport.venue,
+        timezone: 'Asia/Ho_Chi_Minh',
+        isActive: true,
+        sports: { connect: { id: sportIds.get(sport.code)! } },
+        events: { connect: { id: event.id } },
+      },
+      create: {
+        id: venueId,
+        code: `SEA26-${sport.code}`,
+        name: sport.venue,
+        location: 'Hà Nội, Việt Nam (mô phỏng)',
+        timezone: 'Asia/Ho_Chi_Minh',
+        sports: { connect: { id: sportIds.get(sport.code)! } },
+        events: { connect: { id: event.id } },
+      },
+      select: { id: true },
+    });
+    venueIdsBySport.set(sport.code, venue.id);
+    await prisma.sportSchedulingRule.upsert({
+      where: {
+        eventId_sportId: {
+          eventId: event.id,
+          sportId: sportIds.get(sport.code)!,
+        },
+      },
+      update: {
+        matchDurationMinutes: Math.ceil(sport.matchDurationSeconds / 60),
+        turnaroundMinutes: Math.max(0, sport.slotMinutes - Math.ceil(sport.matchDurationSeconds / 60)),
+        minRestMinutes: 60,
+        earliestStart: '08:00',
+        latestEnd: '21:30',
+        preferredStart: '18:00',
+        preferredEnd: '21:30',
+        outdoor: false,
+      },
+      create: {
+        eventId: event.id,
+        sportId: sportIds.get(sport.code)!,
+        matchDurationMinutes: Math.ceil(sport.matchDurationSeconds / 60),
+        turnaroundMinutes: Math.max(0, sport.slotMinutes - Math.ceil(sport.matchDurationSeconds / 60)),
+        minRestMinutes: 60,
+        earliestStart: '08:00',
+        latestEnd: '21:30',
+        preferredStart: '18:00',
+        preferredEnd: '21:30',
+        outdoor: false,
+      },
+    });
+  }
+
   const fopSeeds = SPORTS.flatMap((sport) => Array.from({ length: sport.fopCount }, (_, index) => ({
     id: `sea26-fop-${sport.code.toLowerCase()}-${index + 1}`,
     eventId: event.id,
+    venueId: venueIdsBySport.get(sport.code)!,
     name: `${sport.venue} - ${sport.surface} ${index + 1}`,
   })));
   const fops = fopSeeds;
@@ -762,16 +820,83 @@ export async function seedSeaGamesDemo(prisma: PrismaClient) {
   scheduleMatches(allMatches, categoryStartDays);
   validateSeed(categories, athletes, allMatches);
 
+  const categoryById = new Map(categories.map((category) => [category.id, category]));
+  const sessionGroups = new Map<string, {
+    id: string;
+    sportCode: string;
+    sportId: string;
+    venueId: string;
+    dayOffset: number;
+    startTime: Date;
+    endTime: Date;
+  }>();
+  for (const match of allMatches) {
+    const category = categoryById.get(match.categoryId)!;
+    const dayOffset = Math.floor(
+      (match.startTime!.getTime() - localDateTime(0, 0).getTime()) / 86_400_000,
+    );
+    const key = `${category.sportCode}:${dayOffset}`;
+    const existing = sessionGroups.get(key);
+    if (existing) {
+      if (match.startTime! < existing.startTime) existing.startTime = match.startTime!;
+      if (match.endTime! > existing.endTime) existing.endTime = match.endTime!;
+    } else {
+      sessionGroups.set(key, {
+        id: `sea26-session-${category.sportCode.toLowerCase()}-${dayOffset + 1}`,
+        sportCode: category.sportCode,
+        sportId: category.sportId,
+        venueId: venueIdsBySport.get(category.sportCode)!,
+        dayOffset,
+        startTime: match.startTime!,
+        endTime: match.endTime!,
+      });
+    }
+  }
+  const sessionSeeds: Prisma.CompetitionSessionCreateManyInput[] = [...sessionGroups.values()]
+    .map((session) => ({
+      id: session.id,
+      eventId: event.id,
+      venueId: session.venueId,
+      sportId: session.sportId,
+      name: `Ngày ${session.dayOffset + 1} · ${SPORTS.find(({ code }) => code === session.sportCode)!.name}`,
+      startTime: session.startTime,
+      endTime: session.endTime,
+      status: SessionStatus.PUBLISHED,
+      notes: 'Ca thi đấu được sinh từ lịch SEA Games mô phỏng',
+    }));
+  const timeSlotSeeds: Prisma.TimeSlotCreateManyInput[] = allMatches.map((match) => {
+    const category = categoryById.get(match.categoryId)!;
+    const dayOffset = Math.floor(
+      (match.startTime!.getTime() - localDateTime(0, 0).getTime()) / 86_400_000,
+    );
+    const sessionId = sessionGroups.get(`${category.sportCode}:${dayOffset}`)!.id;
+    const timeSlotId = `sea26-slot-${match.id}`;
+    match.sessionId = sessionId;
+    match.timeSlotId = timeSlotId;
+    return {
+      id: timeSlotId,
+      sessionId,
+      fopId: match.fopId,
+      startTime: match.startTime!,
+      endTime: match.endTime!,
+    };
+  });
+
   // Only replace the seed-owned schedule after the complete in-memory plan
   // passes all eligibility, progression and resource-conflict checks.
   await prisma.statistic.deleteMany({ where: { eventId: event.id } });
   await prisma.match.deleteMany({ where: { eventId: event.id } });
   await prisma.draw.deleteMany({ where: { eventId: event.id } });
+  await prisma.competitionSession.deleteMany({ where: { eventId: event.id } });
   await prisma.fop.deleteMany({ where: { eventId: event.id } });
   for (let offset = 0; offset < statistics.length; offset += 1_000) {
     await prisma.statistic.createMany({ data: statistics.slice(offset, offset + 1_000) });
   }
   await prisma.fop.createMany({ data: fopSeeds });
+  await prisma.competitionSession.createMany({ data: sessionSeeds });
+  for (let offset = 0; offset < timeSlotSeeds.length; offset += 1_000) {
+    await prisma.timeSlot.createMany({ data: timeSlotSeeds.slice(offset, offset + 1_000) });
+  }
   await prisma.draw.createMany({ data: drawSeeds });
   for (const category of categories) {
     await prisma.draw.update({
