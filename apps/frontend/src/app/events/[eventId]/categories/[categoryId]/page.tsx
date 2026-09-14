@@ -1,16 +1,22 @@
 'use client';
 
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import useSWR from 'swr';
 import useSWRInfinite from 'swr/infinite';
-import { Button, Card, Empty, Skeleton, Table, Tag, type TableProps } from 'antd';
+import { Button, Card, Empty, Skeleton, Table, Tag, Tooltip, type TableProps } from 'antd';
 import {
   ArrowLeft,
+  ChevronDown,
+  ChevronUp,
   Crown,
+  Maximize2,
   Medal,
+  Minus,
+  Plus,
   RefreshCw,
+  RotateCcw,
   Swords,
   Trophy,
 } from 'lucide-react';
@@ -620,8 +626,18 @@ const BRACKET_NODE_HEIGHT = 80;
 const BRACKET_SLOT_PITCH = 116;
 const BRACKET_COLUMN_STEP = 470;
 const BRACKET_HEADER_HEIGHT = 64;
+const BRACKET_MIN_SCALE = 0.35;
+const BRACKET_MAX_SCALE = 1.5;
+
+function clampBracketScale(scale: number) {
+  return Math.min(BRACKET_MAX_SCALE, Math.max(BRACKET_MIN_SCALE, scale));
+}
 
 function SportdataBracket({ draw }: { draw: DrawData }) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(1);
+  const [autoFit, setAutoFit] = useState(true);
+  const [collapsed, setCollapsed] = useState(false);
   const matches = [...draw.matches].sort((left, right) => {
     if ((left.round || 0) !== (right.round || 0)) return (left.round || 0) - (right.round || 0);
     return (left.bracketPosition || 0) - (right.bracketPosition || 0);
@@ -634,6 +650,46 @@ function SportdataBracket({ draw }: { draw: DrawData }) {
   const boardWidth = roundNumbers.length * BRACKET_COLUMN_STEP + BRACKET_NODE_WIDTH + 40;
   const matchById = new Map(matches.map((match) => [match.id, match]));
   const finalMatch = matches.find((match) => (match.round || 1) === roundNumbers.at(-1));
+
+  const fitToContainer = useCallback(() => {
+    const scrollElement = scrollRef.current;
+    if (!scrollElement) return;
+
+    const styles = window.getComputedStyle(scrollElement);
+    const horizontalPadding = Number.parseFloat(styles.paddingLeft)
+      + Number.parseFloat(styles.paddingRight);
+    const availableWidth = Math.max(scrollElement.clientWidth - horizontalPadding, 1);
+    setScale(clampBracketScale(Math.min(1, availableWidth / boardWidth)));
+    scrollElement.scrollTo({ left: 0, top: 0, behavior: 'smooth' });
+  }, [boardWidth]);
+
+  useEffect(() => {
+    if (!autoFit || collapsed) return;
+
+    const scrollElement = scrollRef.current;
+    if (!scrollElement) return;
+
+    fitToContainer();
+    const resizeObserver = new ResizeObserver(fitToContainer);
+    resizeObserver.observe(scrollElement);
+    return () => resizeObserver.disconnect();
+  }, [autoFit, collapsed, fitToContainer]);
+
+  const changeScale = (difference: number) => {
+    setAutoFit(false);
+    setScale((currentScale) => clampBracketScale(currentScale + difference));
+  };
+
+  const enableAutoFit = () => {
+    setAutoFit(true);
+    requestAnimationFrame(fitToContainer);
+  };
+
+  const resetScale = () => {
+    setAutoFit(false);
+    setScale(1);
+    scrollRef.current?.scrollTo({ left: 0, top: 0, behavior: 'smooth' });
+  };
 
   const nodeTop = (ordinal: number, slotIndex: number) => {
     const roundNumber = roundNumbers[ordinal - 1];
@@ -681,11 +737,85 @@ function SportdataBracket({ draw }: { draw: DrawData }) {
   return (
     <Card className="category-bracket-card sportdata-draw" styles={{ body: { padding: 0 } }}>
       <div className="sportdata-draw-title">
-        <span>{draw.name}</span>
-        <Tag bordered={false}>{drawTypeLabel(draw.type)}</Tag>
+        <div className="sportdata-draw-heading">
+          <span>{draw.name}</span>
+          <Tag bordered={false}>{drawTypeLabel(draw.type)}</Tag>
+        </div>
+        <div className="sportdata-draw-controls" role="toolbar" aria-label={`Điều khiển ${draw.name}`}>
+          <Tooltip title="Thu nhỏ cây">
+            <Button
+              aria-label="Thu nhỏ cây"
+              className="sportdata-draw-control"
+              disabled={collapsed || scale <= BRACKET_MIN_SCALE}
+              icon={<Minus className="h-4 w-4" />}
+              onClick={() => changeScale(-0.1)}
+              size="small"
+              type="text"
+            />
+          </Tooltip>
+          <span className="sportdata-zoom-value" aria-live="polite">
+            {Math.round(scale * 100)}%
+          </span>
+          <Tooltip title="Phóng to cây">
+            <Button
+              aria-label="Phóng to cây"
+              className="sportdata-draw-control"
+              disabled={collapsed || scale >= BRACKET_MAX_SCALE}
+              icon={<Plus className="h-4 w-4" />}
+              onClick={() => changeScale(0.1)}
+              size="small"
+              type="text"
+            />
+          </Tooltip>
+          <Button
+            aria-label="Tự động thu cây vừa chiều rộng khung"
+            className={cn('sportdata-draw-control', autoFit && 'is-active')}
+            disabled={collapsed}
+            icon={<Maximize2 className="h-4 w-4" />}
+            onClick={enableAutoFit}
+            size="small"
+            type="text"
+          >
+            Vừa khung
+          </Button>
+          <Tooltip title="Đặt lại tỷ lệ 100%">
+            <Button
+              aria-label="Đặt lại tỷ lệ 100%"
+              className="sportdata-draw-control"
+              disabled={collapsed}
+              icon={<RotateCcw className="h-4 w-4" />}
+              onClick={resetScale}
+              size="small"
+              type="text"
+            />
+          </Tooltip>
+          <Button
+            aria-label={collapsed ? 'Mở cây thi đấu' : 'Thu gọn cây thi đấu'}
+            aria-expanded={!collapsed}
+            className="sportdata-draw-control sportdata-collapse-control"
+            icon={collapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+            onClick={() => setCollapsed((current) => !current)}
+            size="small"
+            type="text"
+          >
+            {collapsed ? 'Mở cây' : 'Thu gọn'}
+          </Button>
+        </div>
       </div>
-      <div className="sportdata-bracket-scroll">
-        <div className="sportdata-bracket-board" style={{ width: boardWidth, height: boardHeight }}>
+      {!collapsed && (
+      <div className="sportdata-bracket-scroll" ref={scrollRef}>
+        <div
+          className="sportdata-bracket-stage"
+          style={{ width: boardWidth * scale, height: boardHeight * scale }}
+        >
+        <div
+          className="sportdata-bracket-board"
+          style={{
+            width: boardWidth,
+            height: boardHeight,
+            transform: `scale(${scale})`,
+          }}
+        >
           {roundNumbers.map((round, index) => (
             <div
               className="sportdata-round-title"
@@ -748,7 +878,9 @@ function SportdataBracket({ draw }: { draw: DrawData }) {
             />
           )}
         </div>
+        </div>
       </div>
+      )}
     </Card>
   );
 }

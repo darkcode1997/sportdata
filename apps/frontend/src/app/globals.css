@@ -2736,16 +2736,77 @@ h3,
   display: flex;
   min-height: 52px;
   align-items: center;
-  justify-content: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
   gap: 0.75rem;
   border-bottom: 1px solid rgba(255, 255, 255, 0.055);
   background: #0a0d17;
+  padding: 0.65rem 1rem;
   color: #29bfff;
   font-size: 0.92rem;
   font-weight: 950;
   letter-spacing: 0.01em;
+}
+
+.sportdata-draw-heading {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 320px;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
   text-align: center;
+}
+
+.sportdata-draw-heading > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
   text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.sportdata-draw-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.25rem;
+  color: #cbd5e1;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: normal;
+  text-align: left;
+  text-transform: none;
+}
+
+.sportdata-draw-control.ant-btn {
+  display: inline-flex;
+  min-width: 30px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(30, 41, 59, 0.62);
+  color: #cbd5e1;
+}
+
+.sportdata-draw-control.ant-btn:hover:not(:disabled),
+.sportdata-draw-control.ant-btn:focus-visible:not(:disabled),
+.sportdata-draw-control.ant-btn.is-active {
+  border-color: rgba(56, 189, 248, 0.6);
+  background: rgba(14, 165, 233, 0.16) !important;
+  color: #7dd3fc !important;
+}
+
+.sportdata-draw-control.ant-btn:disabled {
+  border-color: transparent;
+  background: rgba(30, 41, 59, 0.25);
+  color: #526077;
+}
+
+.sportdata-zoom-value {
+  min-width: 42px;
+  color: #e2e8f0;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
 }
 
 .sportdata-draw-title .ant-tag {
@@ -2761,13 +2822,23 @@ h3,
   overflow: auto;
   background: #111420;
   padding: 0 1.4rem 1.4rem;
+  overscroll-behavior: contain;
   scrollbar-color: #4b5568 #0d1019;
   scrollbar-width: thin;
 }
 
-.sportdata-bracket-board {
+.sportdata-bracket-stage {
   position: relative;
   min-width: 100%;
+  transition: width 180ms ease, height 180ms ease;
+}
+
+.sportdata-bracket-board {
+  position: relative;
+  min-width: 0;
+  transform-origin: left top;
+  transition: transform 180ms ease;
+  will-change: transform;
 }
 
 .sportdata-round-title {
@@ -2934,6 +3005,35 @@ h3,
 
   .category-section-title {
     text-align: left;
+  }
+
+  .sportdata-draw-title {
+    align-items: stretch;
+    padding: 0.75rem;
+  }
+
+  .sportdata-draw-heading {
+    flex-basis: 100%;
+    justify-content: flex-start;
+    text-align: left;
+  }
+
+  .sportdata-draw-controls {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .sportdata-draw-control .ant-btn-icon + span {
+    display: none;
+  }
+
+  .sportdata-collapse-control {
+    margin-left: auto;
+  }
+
+  .sportdata-bracket-scroll {
+    padding-right: 0.75rem;
+    padding-left: 0.75rem;
   }
 }
 
@@ -3701,6 +3801,22 @@ html[data-app-theme="light"] .ant-checkbox-label {
 .public-theme-light .sportdata-bracket-scroll {
   background: #f8fafc;
   scrollbar-color: #94a3b8 #e2e8f0;
+}
+
+.public-theme-light .sportdata-draw-control.ant-btn {
+  border-color: #cbd5e1;
+  background: #ffffff;
+  color: #475569;
+}
+
+.public-theme-light .sportdata-draw-control.ant-btn:disabled {
+  border-color: #e2e8f0;
+  background: #f8fafc;
+  color: #94a3b8;
+}
+
+.public-theme-light .sportdata-zoom-value {
+  color: #334155;
 }
 
 .public-theme-light .sportdata-bracket-lines path {
