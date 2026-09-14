@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import useSWR from 'swr';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -35,6 +35,7 @@ const toLocalInput = (value?: string) => value ? dayjs(value).format('YYYY-MM-DD
 export function EventForm({ eventId, initialData }: { eventId?: string; initialData?: any }) {
   const router = useRouter();
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [athleteCountryId, setAthleteCountryId] = useState<string>();
   const { data: sports = [] } = useSWR<any[]>('/sports', fetcher);
   const { data: categoriesResponse } = useSWR<any>('/categories?limit=500', fetcher);
   const categories = categoriesResponse?.items || [];
@@ -62,7 +63,24 @@ export function EventForm({ eventId, initialData }: { eventId?: string; initialD
   });
   const selectedSportIds = watch('sportIds') || [];
   const selectedCategoryIds = watch('categoryIds') || [];
+  const selectedCategoryIdsKey = selectedCategoryIds.join(',');
+  const { data: athleteFilterOptions } = useSWR<any>(
+    selectedCategoryIdsKey
+      ? `/athletes/filter-options?categoryIds=${encodeURIComponent(selectedCategoryIdsKey)}`
+      : null,
+    fetcher,
+  );
+  const countries = athleteFilterOptions?.countries || [];
   const availableCategories = categories.filter((category: any) => selectedSportIds.includes(category.sportId));
+  const selectedSports = selectedSportIds
+    .map((sportId) => sports.find((sport: any) => sport.id === sportId))
+    .filter(Boolean);
+
+  useEffect(() => {
+    if (athleteCountryId && !countries.some((country: any) => country.id === athleteCountryId)) {
+      setAthleteCountryId(undefined);
+    }
+  }, [athleteCountryId, countries]);
 
   const onSubmit = async (values: EventFormValues) => {
     setSubmitError(null);
@@ -108,6 +126,9 @@ export function EventForm({ eventId, initialData }: { eventId?: string; initialD
                 showSearch
                 optionFilterProp="label"
                 className="w-full"
+                maxTagCount={3}
+                maxTagTextLength={24}
+                maxTagPlaceholder={() => `Đã chọn ${field.value.length} bộ môn`}
                 placeholder="Chọn một hoặc nhiều bộ môn"
                 value={field.value}
                 onChange={(sportIds: string[]) => {
@@ -126,39 +147,59 @@ export function EventForm({ eventId, initialData }: { eventId?: string; initialD
           </ControlledField>
           <ControlledField name="categoryIds" control={control} label="Hạng mục thi đấu" error={errors.categoryIds?.message} wide>
             {(field) => (
-              <Select
-                mode="multiple"
-                size="large"
-                showSearch
-                optionFilterProp="label"
-                className="w-full"
-                placeholder={selectedSportIds.length ? 'Chọn các hạng mục của sự kiện' : 'Chọn bộ môn trước'}
-                disabled={!selectedSportIds.length}
+              <CategoryGroupedSelect
+                sports={selectedSports}
+                categories={availableCategories}
                 value={field.value}
                 onChange={(categoryIds: string[]) => {
                   field.onChange(categoryIds);
                   setValue('athleteIds', [], { shouldValidate: true });
                 }}
-                options={availableCategories.map((category: any) => ({
-                  value: category.id,
-                  label: `${category.name} · ${category.sport?.name || ''}`,
-                }))}
               />
             )}
           </ControlledField>
           <ControlledField name="athleteIds" control={control} label="Vận động viên tham gia" error={errors.athleteIds?.message} wide>
             {(field) => (
-              <RemoteAthleteSelect
-                mode="multiple"
-                categoryIds={selectedCategoryIds}
-                initialOptions={initialData?.athletes || []}
-                placeholder={selectedCategoryIds.length
-                  ? 'Chọn vận động viên đủ điều kiện'
-                  : 'Chọn hạng mục thi đấu trước'}
-                disabled={!selectedCategoryIds.length}
-                value={field.value || []}
-                onChange={field.onChange}
-              />
+              <div className="rounded-xl border border-sdark-700 bg-sdark-950/35 p-3">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-xs font-semibold text-slate-400">
+                    Lọc danh sách theo quốc gia
+                  </span>
+                  <span className="rounded-full bg-sblue-500/10 px-2.5 py-1 text-xs font-bold text-sblue-300">
+                    Đã chọn {(field.value || []).length.toLocaleString()} VĐV
+                  </span>
+                </div>
+                <div className="grid gap-3 lg:grid-cols-[280px_minmax(0,1fr)]">
+                  <Select
+                    allowClear
+                    showSearch
+                    optionFilterProp="label"
+                    size="large"
+                    placeholder="Tất cả quốc gia"
+                    value={athleteCountryId}
+                    onChange={setAthleteCountryId}
+                    options={countries.map((country: any) => ({
+                      value: country.id,
+                      label: `${country.name} · ${country.code} (${country.athleteCount})`,
+                    }))}
+                  />
+                  <RemoteAthleteSelect
+                    mode="multiple"
+                    categoryIds={selectedCategoryIds}
+                    countryId={athleteCountryId}
+                    groupByCountry
+                    maxTagCount={0}
+                    selectionLabel="VĐV"
+                    showPageControls
+                    placeholder={selectedCategoryIds.length
+                      ? 'Tìm và chọn vận động viên đủ điều kiện'
+                      : 'Chọn hạng mục thi đấu trước'}
+                    disabled={!selectedCategoryIds.length}
+                    value={field.value || []}
+                    onChange={field.onChange}
+                  />
+                </div>
+              </div>
             )}
           </ControlledField>
           <ControlledField name="location" control={control} label="Địa điểm" error={errors.location?.message}>
@@ -218,6 +259,91 @@ export function EventForm({ eventId, initialData }: { eventId?: string; initialD
       </Card>
       <FormActions pending={isSubmitting} label={eventId ? 'Lưu thay đổi' : 'Tạo sự kiện'} cancelHref="/cms/events" />
     </Form>
+  );
+}
+
+function CategoryGroupedSelect({
+  sports,
+  categories,
+  value = [],
+  onChange,
+}: {
+  sports: any[];
+  categories: any[];
+  value?: string[];
+  onChange: (value: string[]) => void;
+}) {
+  if (!sports.length) {
+    return (
+      <Select
+        disabled
+        size="large"
+        className="w-full"
+        placeholder="Chọn bộ môn trước"
+      />
+    );
+  }
+
+  return (
+    <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+      {sports.map((sport) => {
+        const sportCategories = categories.filter((category) => category.sportId === sport.id);
+        const sportCategoryIds = new Set(sportCategories.map((category) => category.id));
+        const selectedIds = value.filter((categoryId) => sportCategoryIds.has(categoryId));
+        const replaceSportSelection = (nextIds: string[]) => {
+          onChange([
+            ...value.filter((categoryId) => !sportCategoryIds.has(categoryId)),
+            ...nextIds,
+          ]);
+        };
+
+        return (
+          <div
+            key={sport.id}
+            className="rounded-xl border border-sdark-700 bg-sdark-950/35 p-3"
+          >
+            <div className="mb-2 flex min-w-0 items-center gap-2">
+              <strong className="min-w-0 flex-1 truncate text-sm text-slate-200">
+                {sport.name}
+              </strong>
+              <span className="text-xs tabular-nums text-slate-500">
+                {selectedIds.length}/{sportCategories.length}
+              </span>
+              <button
+                type="button"
+                className="text-xs font-semibold text-sky-400 disabled:text-slate-600"
+                disabled={!sportCategories.length}
+                onClick={() => replaceSportSelection(
+                  selectedIds.length === sportCategories.length
+                    ? []
+                    : sportCategories.map((category) => category.id),
+                )}
+              >
+                {selectedIds.length === sportCategories.length ? 'Bỏ chọn' : 'Chọn tất cả'}
+              </button>
+            </div>
+            <Select
+              mode="multiple"
+              showSearch
+              optionFilterProp="label"
+              size="large"
+              className="w-full"
+              maxTagCount={1}
+              maxTagTextLength={28}
+              maxTagPlaceholder={() => `+${Math.max(0, selectedIds.length - 1)} hạng mục`}
+              placeholder={sportCategories.length ? 'Chọn hạng mục' : 'Chưa có hạng mục'}
+              disabled={!sportCategories.length}
+              value={selectedIds}
+              onChange={replaceSportSelection}
+              options={sportCategories.map((category) => ({
+                value: category.id,
+                label: category.name,
+              }))}
+            />
+          </div>
+        );
+      })}
+    </div>
   );
 }
 

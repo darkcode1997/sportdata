@@ -257,7 +257,7 @@ export class EventsService {
       },
       ...(includeAthletes ? {
         athletes: {
-          select: { id: true, fullName: true, gender: true },
+          select: { id: true },
           orderBy: { fullName: 'asc' as const },
         },
       } : {}),

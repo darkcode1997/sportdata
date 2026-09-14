@@ -41,6 +41,12 @@ export class AthletesController {
     return this.athletesService.findAll(query);
   }
 
+  @Get('filter-options')
+  @ApiOperation({ summary: 'Get country facets for the current athlete filters' })
+  getFilterOptions(@Query() query: QueryAthletesDto) {
+    return this.athletesService.getFilterOptions(query);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get athlete by ID' })
   @ApiResponse({ status: 200, description: 'Athlete found' })

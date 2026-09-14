@@ -100,6 +100,49 @@ export class AthletesService {
     };
   }
 
+  async getFilterOptions(query: QueryAthletesDto) {
+    const selectedCategoryIds = [
+      ...(query.categoryIds || '').split(','),
+      ...(query.categoryId ? [query.categoryId] : []),
+    ].map((id) => id.trim()).filter(Boolean);
+    const where: any = {
+      ...(query.eventId ? { events: { some: { id: query.eventId } } } : {}),
+      ...(query.gender ? { gender: query.gender } : {}),
+      ...(query.sportId || selectedCategoryIds.length
+        ? {
+            categories: {
+              some: {
+                ...(query.sportId ? { sportId: query.sportId } : {}),
+                ...(selectedCategoryIds.length ? { id: { in: selectedCategoryIds } } : {}),
+              },
+            },
+          }
+        : {}),
+    };
+
+    const countryGroups = await this.prisma.athlete.groupBy({
+      by: ['countryId'],
+      where,
+      _count: { _all: true },
+    });
+    const countries = await this.prisma.country.findMany({
+      where: { id: { in: countryGroups.map((group) => group.countryId) } },
+      select: { id: true, code: true, name: true, flagUrl: true },
+      orderBy: { name: 'asc' },
+    });
+    const countByCountry = new Map(
+      countryGroups.map((group) => [group.countryId, group._count._all]),
+    );
+
+    return {
+      countries: countries.map((country) => ({
+        ...country,
+        athleteCount: countByCountry.get(country.id) || 0,
+      })),
+      total: countryGroups.reduce((sum, group) => sum + group._count._all, 0),
+    };
+  }
+
   async findOne(id: string) {
     const athlete = await this.prisma.athlete.findUnique({
       where: { id },
