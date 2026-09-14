@@ -10,6 +10,7 @@ import {
   HttpCode,
   HttpStatus,
   UseGuards,
+  Req,
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { MatchesService } from './matches.service';
@@ -19,6 +20,7 @@ import { QueryMatchDto } from './dto/query-match.dto';
 import { GenerateDrawDto } from './dto/generate-draw.dto';
 import { MatchStatus } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { OptionalJwtAuthGuard } from '../auth/optional-jwt-auth.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { UserRole } from '../common/enums/user-role.enum';
 
@@ -50,8 +52,9 @@ export class MatchesController {
   @ApiQuery({ name: 'limit', required: false, type: Number, example: 20 })
   @ApiQuery({ name: 'pagination', required: false, enum: ['page', 'cursor'] })
   @ApiQuery({ name: 'cursor', required: false, type: String })
-  findAll(@Query() query: QueryMatchDto) {
-    return this.matchesService.findAll(query);
+  @UseGuards(OptionalJwtAuthGuard)
+  findAll(@Query() query: QueryMatchDto, @Req() request: { user?: unknown }) {
+    return this.matchesService.findAll(query, Boolean(request.user));
   }
 
   @Get('event/:eventId/schedule-summary')
@@ -72,16 +75,18 @@ export class MatchesController {
   })
   @ApiParam({ name: 'eventId', type: String, description: 'Event ID' })
   @ApiParam({ name: 'categoryId', type: String, description: 'Category ID' })
+  @UseGuards(OptionalJwtAuthGuard)
   findDraws(
     @Param('eventId') eventId: string,
     @Param('categoryId') categoryId: string,
+    @Req() request: { user?: unknown },
   ) {
-    return this.matchesService.findDraws(eventId, categoryId);
+    return this.matchesService.findDraws(eventId, categoryId, Boolean(request.user));
   }
 
   @Post('event/:eventId/category/:categoryId/generate-draw')
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN, UserRole.CONTENT)
+  @Roles(UserRole.ADMIN, UserRole.CONTENT, UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER)
   @ApiOperation({
     summary: 'Generate a seeded elimination graph',
     description:
@@ -103,13 +108,14 @@ export class MatchesController {
     description: 'Retrieve a match with all related data (event, category, athletes, winner).',
   })
   @ApiParam({ name: 'id', type: String, description: 'Match ID' })
-  findOne(@Param('id') id: string) {
-    return this.matchesService.findOne(id);
+  @UseGuards(OptionalJwtAuthGuard)
+  findOne(@Param('id') id: string, @Req() request: { user?: unknown }) {
+    return this.matchesService.findOne(id, Boolean(request.user));
   }
 
   @Post()
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN, UserRole.CONTENT)
+  @Roles(UserRole.ADMIN, UserRole.CONTENT, UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER, UserRole.VENUE_OPERATOR)
   @ApiOperation({
     summary: 'Create a new match',
     description: 'Create a new match with athletes, scores, and scheduling details.',
@@ -121,7 +127,7 @@ export class MatchesController {
 
   @Patch(':id')
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN, UserRole.CONTENT)
+  @Roles(UserRole.ADMIN, UserRole.CONTENT, UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER, UserRole.VENUE_OPERATOR)
   @ApiOperation({
     summary: 'Update a match',
     description:
@@ -134,7 +140,7 @@ export class MatchesController {
 
   @Delete(':id')
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.GAMES_ADMIN)
   @ApiOperation({
     summary: 'Delete a match',
     description: 'Permanently remove a match by ID.',
@@ -152,7 +158,8 @@ export class MatchesController {
       'Returns all matches for an event organized in a nested structure: date -> category -> matches, similar to sportdata.org schedule view.',
   })
   @ApiParam({ name: 'eventId', type: String, description: 'Event ID' })
-  findGrouped(@Param('eventId') eventId: string) {
-    return this.matchesService.findGroupedByEventId(eventId);
+  @UseGuards(OptionalJwtAuthGuard)
+  findGrouped(@Param('eventId') eventId: string, @Req() request: { user?: unknown }) {
+    return this.matchesService.findGroupedByEventId(eventId, Boolean(request.user));
   }
 }

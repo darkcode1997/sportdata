@@ -60,12 +60,30 @@ const MATCH_INCLUDE = {
       federation: { select: { id: true, name: true } },
     },
   },
+  team1: {
+    select: {
+      id: true,
+      name: true,
+      code: true,
+      country: { select: { code: true, name: true, flagUrl: true } },
+    },
+  },
+  team2: {
+    select: {
+      id: true,
+      name: true,
+      code: true,
+      country: { select: { code: true, name: true, flagUrl: true } },
+    },
+  },
   winner: {
     select: {
       id: true,
       fullName: true,
     },
   },
+  winnerTeam: { select: { id: true, name: true, code: true } },
+  session: { select: { id: true, name: true, startTime: true, endTime: true } },
 };
 
 type SeedAthlete = {
@@ -85,7 +103,7 @@ type ScheduledFop = {
 export class MatchesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findAll(query: QueryMatchDto) {
+  async findAll(query: QueryMatchDto, includeUnpublishedResults = false) {
     const {
       search,
       eventId,
@@ -157,20 +175,23 @@ export class MatchesService {
         orderBy,
       });
       const hasMore = rows.length > limit;
-      const items = hasMore ? rows.slice(0, limit) : rows;
+      const rawItems = hasMore ? rows.slice(0, limit) : rows;
+      const items = includeUnpublishedResults
+        ? rawItems
+        : rawItems.map((match) => this.hideUnpublishedResult(match));
       return {
         items,
         meta: {
           limit,
           hasMore,
-          nextCursor: hasMore ? items.at(-1)?.id || null : null,
+          nextCursor: hasMore ? rawItems.at(-1)?.id || null : null,
         },
       };
     }
 
     const skip = (page - 1) * limit;
 
-    const [items, total] = await Promise.all([
+    const [rawItems, total] = await Promise.all([
       this.prisma.match.findMany({
         where,
         include: MATCH_INCLUDE,
@@ -182,7 +203,9 @@ export class MatchesService {
     ]);
 
     return {
-      items,
+      items: includeUnpublishedResults
+        ? rawItems
+        : rawItems.map((match) => this.hideUnpublishedResult(match)),
       meta: {
         total,
         page,
@@ -234,7 +257,7 @@ export class MatchesService {
     };
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, includeUnpublishedResults = false) {
     const match = await this.prisma.match.findUnique({
       where: { id },
       include: MATCH_INCLUDE,
@@ -244,10 +267,13 @@ export class MatchesService {
       throw new NotFoundException(`Match with ID ${id} not found`);
     }
 
-    return match;
+    return includeUnpublishedResults ? match : this.hideUnpublishedResult(match);
   }
 
   async create(createMatchDto: CreateMatchDto) {
+    if (createMatchDto.athlete1Id && createMatchDto.athlete1Id === createMatchDto.athlete2Id) {
+      throw new BadRequestException('Hai vận động viên của một trận phải khác nhau');
+    }
     const category = await this.prisma.category.findFirst({
       where: {
         id: createMatchDto.categoryId,
@@ -297,6 +323,16 @@ export class MatchesService {
     if (startTime && !endTime) {
       const durationSeconds = category.matchDurationSeconds || 300;
       endTime = new Date(startTime.getTime() + durationSeconds * 1_000);
+    }
+    if (startTime && endTime) {
+      await this.assertParticipantAvailability(
+        this.prisma,
+        createMatchDto.eventId,
+        createMatchDto.categoryId,
+        participantIds,
+        startTime,
+        endTime,
+      );
     }
 
     const data: Prisma.MatchCreateInput = {
@@ -378,9 +414,30 @@ export class MatchesService {
       if (previous.resultStatus === ResultStatus.LOCKED && changesResult) {
         throw new BadRequestException('Kết quả đã khóa; phải mở khóa qua quy trình phê duyệt trước khi sửa');
       }
+      const changesSchedule = [
+        'eventId',
+        'categoryId',
+        'matchDate',
+        'startTime',
+        'endTime',
+        'fopId',
+        'fop',
+      ].some((field) => (updateMatchDto as Record<string, unknown>)[field] !== undefined);
+      if (previous.scheduleLocked && changesSchedule) {
+        throw new BadRequestException('Lịch thi đấu đã khóa; hãy mở khóa lịch trước khi thay đổi');
+      }
 
       const resultingEventId = updateMatchDto.eventId || previous.eventId;
       const resultingCategoryId = updateMatchDto.categoryId || previous.categoryId;
+      const resultingAthlete1Id = updateMatchDto.athlete1Id !== undefined
+        ? updateMatchDto.athlete1Id
+        : previous.athlete1Id;
+      const resultingAthlete2Id = updateMatchDto.athlete2Id !== undefined
+        ? updateMatchDto.athlete2Id
+        : previous.athlete2Id;
+      if (resultingAthlete1Id && resultingAthlete1Id === resultingAthlete2Id) {
+        throw new BadRequestException('Hai vận động viên của một trận phải khác nhau');
+      }
       const category = await transaction.category.findFirst({
         where: {
           id: resultingCategoryId,
@@ -428,6 +485,33 @@ export class MatchesService {
             'Vận động viên chưa đăng ký hạng đấu này trong sự kiện',
           );
         }
+      }
+
+      const resultingStartTime = updateMatchDto.startTime !== undefined
+        ? updateMatchDto.startTime ? new Date(updateMatchDto.startTime) : null
+        : previous.startTime;
+      let resultingEndTime = updateMatchDto.endTime !== undefined
+        ? updateMatchDto.endTime ? new Date(updateMatchDto.endTime) : null
+        : previous.endTime;
+      if (updateMatchDto.startTime && updateMatchDto.endTime === undefined) {
+        resultingEndTime = new Date(
+          new Date(updateMatchDto.startTime).getTime() + (category.matchDurationSeconds || 300) * 1_000,
+        );
+      }
+      if (resultingStartTime && resultingEndTime) {
+        const scheduledAthleteIds = Array.from(new Set([
+          resultingAthlete1Id,
+          resultingAthlete2Id,
+        ].filter((athleteId): athleteId is string => Boolean(athleteId))));
+        await this.assertParticipantAvailability(
+          transaction,
+          resultingEventId,
+          resultingCategoryId,
+          scheduledAthleteIds,
+          resultingStartTime,
+          resultingEndTime,
+          id,
+        );
       }
 
       const data: Prisma.MatchUpdateInput = {};
@@ -530,7 +614,7 @@ export class MatchesService {
     return this.prisma.match.delete({ where: { id } });
   }
 
-  async findGroupedByEventId(eventId: string) {
+  async findGroupedByEventId(eventId: string, includeUnpublishedResults = false) {
     const matches = await this.prisma.match.findMany({
       where: { eventId },
       include: MATCH_INCLUDE,
@@ -549,13 +633,15 @@ export class MatchesService {
       if (!grouped[dateKey][categoryKey]) {
         grouped[dateKey][categoryKey] = [];
       }
-      grouped[dateKey][categoryKey].push(match);
+      grouped[dateKey][categoryKey].push(
+        (includeUnpublishedResults ? match : this.hideUnpublishedResult(match)) as Match,
+      );
     }
 
     return grouped;
   }
 
-  async findDraws(eventId: string, categoryId: string) {
+  async findDraws(eventId: string, categoryId: string, includeUnpublishedResults = false) {
     const draws = await this.prisma.draw.findMany({
       where: { eventId, categoryId },
       include: {
@@ -570,7 +656,16 @@ export class MatchesService {
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
     });
 
-    return { eventId, categoryId, draws };
+    return {
+      eventId,
+      categoryId,
+      draws: includeUnpublishedResults
+        ? draws
+        : draws.map((draw) => ({
+          ...draw,
+          matches: draw.matches.map((match) => this.hideUnpublishedResult(match)),
+        })),
+    };
   }
 
   async generateDraw(eventId: string, categoryId: string, dto: GenerateDrawDto) {
@@ -1170,5 +1265,69 @@ export class MatchesService {
       throw new BadRequestException('Giờ kết thúc phải sau giờ bắt đầu');
     }
     throw error;
+  }
+
+  private hideUnpublishedResult<T extends Record<string, any>>(match: T): T {
+    if (match.resultStatus === ResultStatus.PUBLISHED || match.resultStatus === ResultStatus.LOCKED) {
+      return match;
+    }
+    return {
+      ...match,
+      athlete1Score: 0,
+      athlete2Score: 0,
+      athlete1Advantages: 0,
+      athlete2Advantages: 0,
+      athlete1Penalties: 0,
+      athlete2Penalties: 0,
+      winnerId: null,
+      winner: null,
+      winnerTeamId: null,
+      winnerTeam: null,
+      winMethod: null,
+      resultData: null,
+    };
+  }
+
+  private async assertParticipantAvailability(
+    database: PrismaService | Prisma.TransactionClient,
+    eventId: string,
+    categoryId: string,
+    athleteIds: string[],
+    startTime: Date,
+    endTime: Date,
+    excludeMatchId?: string,
+  ) {
+    if (!athleteIds.length) return;
+    const category = await (database as any).category.findUnique({
+      where: { id: categoryId },
+      select: { sportId: true },
+    });
+    const rule = category
+      ? await (database as any).sportSchedulingRule.findUnique({
+        where: { eventId_sportId: { eventId, sportId: category.sportId } },
+        select: { minRestMinutes: true },
+      })
+      : null;
+    const restMs = (rule?.minRestMinutes ?? 60) * 60_000;
+    const conflict = await (database as any).match.findFirst({
+      where: {
+        eventId,
+        ...(excludeMatchId ? { id: { not: excludeMatchId } } : {}),
+        status: { not: MatchStatus.CANCELLED },
+        startTime: { lt: new Date(endTime.getTime() + restMs) },
+        endTime: { gt: new Date(startTime.getTime() - restMs) },
+        OR: [
+          { athlete1Id: { in: athleteIds } },
+          { athlete2Id: { in: athleteIds } },
+          { participants: { some: { athleteId: { in: athleteIds } } } },
+        ],
+      },
+      select: { id: true, matchNumber: true },
+    });
+    if (conflict) {
+      throw new ConflictException(
+        `Vận động viên chưa đủ thời gian nghỉ so với trận #${conflict.matchNumber || conflict.id}`,
+      );
+    }
   }
 }

@@ -27,7 +27,7 @@ export class AthletesController {
 
   @Post()
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN, UserRole.CONTENT)
+  @Roles(UserRole.ADMIN, UserRole.CONTENT, UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER)
   @ApiOperation({ summary: 'Create a new athlete' })
   @ApiResponse({ status: 201, description: 'Athlete created successfully' })
   create(@Body() createAthleteDto: CreateAthleteDto) {
@@ -57,7 +57,7 @@ export class AthletesController {
 
   @Patch(':id')
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN, UserRole.CONTENT)
+  @Roles(UserRole.ADMIN, UserRole.CONTENT, UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER)
   @ApiOperation({ summary: 'Update athlete by ID' })
   @ApiResponse({ status: 200, description: 'Athlete updated successfully' })
   @ApiResponse({ status: 404, description: 'Athlete not found' })
@@ -70,7 +70,7 @@ export class AthletesController {
 
   @Delete(':id')
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.GAMES_ADMIN)
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Delete athlete by ID' })
   @ApiResponse({ status: 204, description: 'Athlete deleted successfully' })

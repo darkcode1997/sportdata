@@ -32,6 +32,7 @@ import {
   Trophy,
   User,
   Users,
+  Workflow,
 } from 'lucide-react';
 import {
   applyDocumentColorMode,
@@ -41,6 +42,7 @@ import {
 
 const navItems = [
   { label: 'Dashboard', key: '/cms', icon: <LayoutDashboard className="h-5 w-5" /> },
+  { label: 'Điều hành đại hội', key: '/cms/operations', icon: <Workflow className="h-5 w-5" /> },
   { label: 'Sự kiện', key: '/cms/events', icon: <CalendarDays className="h-5 w-5" /> },
   { label: 'Vận động viên', key: '/cms/athletes', icon: <Users className="h-5 w-5" /> },
   { label: 'Bộ môn & hạng đấu', key: '/cms/sports', icon: <Trophy className="h-5 w-5" /> },
@@ -215,7 +217,7 @@ export default function CmsLayout({ children }: { children: React.ReactNode }) {
     return (
       <ConfigProvider theme={cmsTheme}>
         <Flex className={`min-h-screen ${isLight ? 'cms-theme-light bg-[#f4f7fb]' : 'bg-[#070b16]'}`} align="center" justify="center">
-          <Spin size="large" tip="Đang xác thực" />
+          <Spin size="large" tip="Đang tải" />
         </Flex>
       </ConfigProvider>
     );

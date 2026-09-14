@@ -28,7 +28,7 @@ export class EventsController {
 
   @Post()
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN, UserRole.CONTENT)
+  @Roles(UserRole.ADMIN, UserRole.CONTENT, UserRole.GAMES_ADMIN)
   @ApiOperation({ summary: 'Create a new event' })
   @ApiResponse({ status: 201, description: 'Event created successfully' })
   create(@Body() createEventDto: CreateEventDto) {
@@ -54,7 +54,7 @@ export class EventsController {
 
   @Get(':id/admin-detail')
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN, UserRole.CONTENT)
+  @Roles(UserRole.ADMIN, UserRole.CONTENT, UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER, UserRole.READ_ONLY)
   @ApiOperation({ summary: 'Get event details including selected athletes for editing' })
   findAdminDetail(@Param('id') id: string) {
     return this.eventsService.findOne(id, true);
@@ -70,7 +70,7 @@ export class EventsController {
 
   @Patch(':id')
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN, UserRole.CONTENT)
+  @Roles(UserRole.ADMIN, UserRole.CONTENT, UserRole.GAMES_ADMIN)
   @ApiOperation({ summary: 'Update event by ID' })
   @ApiResponse({ status: 200, description: 'Event updated successfully' })
   @ApiResponse({ status: 404, description: 'Event not found' })
@@ -80,7 +80,7 @@ export class EventsController {
 
   @Delete(':id')
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.GAMES_ADMIN)
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Delete event by ID' })
   @ApiResponse({ status: 204, description: 'Event deleted successfully' })

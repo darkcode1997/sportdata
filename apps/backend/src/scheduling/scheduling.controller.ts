@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -29,6 +29,13 @@ export class SchedulingController {
   @Roles(UserRole.GAMES_ADMIN)
   createVenue(@Body() dto: CreateVenueDto) {
     return this.scheduling.createVenue(dto);
+  }
+
+  @Delete('venues/:id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @Roles(UserRole.GAMES_ADMIN)
+  removeVenue(@Param('id') id: string) {
+    return this.scheduling.removeVenue(id);
   }
 
   @Get('events/:eventId/sessions')

@@ -61,6 +61,18 @@ export class SchedulingService {
     });
   }
 
+  async removeVenue(id: string) {
+    const venue = await this.prisma.venue.findUnique({
+      where: { id },
+      include: { _count: { select: { fops: true, sessions: true } } },
+    });
+    if (!venue) throw new NotFoundException('Venue not found');
+    if (venue._count.fops || venue._count.sessions) {
+      throw new BadRequestException('Venue still has FOPs or sessions and cannot be deleted');
+    }
+    await this.prisma.venue.delete({ where: { id } });
+  }
+
   listSessions(eventId: string) {
     return this.prisma.competitionSession.findMany({
       where: { eventId },
