@@ -15,6 +15,7 @@ import {
 import * as bcrypt from 'bcrypt';
 import worldCountries from 'world-countries';
 import { seedSeaGamesDemo } from './sea-games.seed';
+import { seedOperationalDemoAccounts } from './demo-accounts.seed';
 
 const prisma = new PrismaClient();
 
@@ -69,6 +70,11 @@ async function main() {
     },
   });
   console.log(`Admin configured: ${adminUsername} (${adminEmail}) - ${adminRole}`);
+
+  if (process.env.SEED_DEMO_ACCOUNTS === 'true') {
+    const demoAccounts = await seedOperationalDemoAccounts(prisma);
+    console.log(`Operational demo accounts synchronized: ${demoAccounts.length}`);
+  }
 
   const articleSeeds: Prisma.ArticleCreateInput[] = [
     {

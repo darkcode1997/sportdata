@@ -53,7 +53,9 @@ type DrawFormValues = {
 
 export default function MatchesListPage() {
   const { data: currentUser } = useSWR<any>('/auth/profile', fetcher);
-  const canDelete = currentUser?.role === 'ADMIN';
+  const canGenerateDraw = ['ADMIN', 'CONTENT', 'GAMES_ADMIN', 'SPORT_MANAGER'].includes(currentUser?.role);
+  const canManage = canGenerateDraw || currentUser?.role === 'VENUE_OPERATOR';
+  const canDelete = ['ADMIN', 'GAMES_ADMIN'].includes(currentUser?.role);
   const [search, setSearch] = useState('');
   const deferredSearch = useDeferredValue(search);
   const [status, setStatus] = useState('');
@@ -244,14 +246,14 @@ export default function MatchesListPage() {
       width: 112,
       render: (_, match) => (
         <Space size={4}>
-          <Tooltip title="Chỉnh sửa">
+          {canManage && <Tooltip title="Chỉnh sửa">
             <Button
               type="text"
               href={`/cms/matches/${match.id}/edit`}
               aria-label="Chỉnh sửa"
               icon={<Pencil className="h-4 w-4" />}
             />
-          </Tooltip>
+          </Tooltip>}
           {canDelete && <Popconfirm
             title="Xóa trận đấu này?"
             description="Thao tác này không thể hoàn tác."
@@ -274,9 +276,9 @@ export default function MatchesListPage() {
       <CmsPageHeader
         title="Quản lý trận đấu"
         description="Sinh cây theo cấu trúc, xếp lịch và cập nhật kết quả."
-        action={(
+        action={canManage ? (
           <Space wrap>
-            <Button
+            {canGenerateDraw && <Button
               size="large"
               icon={<Network className="h-4 w-4" />}
               onClick={() => {
@@ -285,12 +287,12 @@ export default function MatchesListPage() {
               }}
             >
               Sinh cây tự động
-            </Button>
+            </Button>}
             <Button type="primary" size="large" href="/cms/matches/new" icon={<Plus className="h-4 w-4" />}>
               Tạo trận đấu
             </Button>
           </Space>
-        )}
+        ) : undefined}
       />
 
       <Modal

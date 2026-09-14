@@ -17,6 +17,7 @@ import {
 } from 'antd';
 import {
   BarChart3,
+  BookOpen,
   CalendarDays,
   ChevronsLeft,
   ChevronsRight,
@@ -39,18 +40,25 @@ import {
   createSportdataTheme,
   type SportdataColorMode,
 } from '@/components/AntdProvider';
+import {
+  canAccessCmsPath,
+  CMS_PAGE_ACCESS,
+  CMS_ROLE_INFO,
+  isCmsRole,
+} from '@/lib/cms-access';
 
 const navItems = [
-  { label: 'Dashboard', key: '/cms', icon: <LayoutDashboard className="h-5 w-5" /> },
-  { label: 'Điều hành đại hội', key: '/cms/operations', icon: <Workflow className="h-5 w-5" /> },
-  { label: 'Sự kiện', key: '/cms/events', icon: <CalendarDays className="h-5 w-5" /> },
-  { label: 'Vận động viên', key: '/cms/athletes', icon: <Users className="h-5 w-5" /> },
-  { label: 'Bộ môn & hạng đấu', key: '/cms/sports', icon: <Trophy className="h-5 w-5" /> },
-  { label: 'Trận đấu', key: '/cms/matches', icon: <Swords className="h-5 w-5" /> },
-  { label: 'Thống kê', key: '/cms/statistics', icon: <BarChart3 className="h-5 w-5" /> },
-  { label: 'Tin tức', key: '/cms/news', icon: <Newspaper className="h-5 w-5" /> },
-  { label: 'Liên hệ', key: '/cms/contacts', icon: <Mail className="h-5 w-5" /> },
-  { label: 'Cài đặt', key: '/cms/settings', icon: <Settings className="h-5 w-5" /> },
+  { label: 'Dashboard', key: '/cms', icon: <LayoutDashboard className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms'] },
+  { label: 'Điều hành đại hội', key: '/cms/operations', icon: <Workflow className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/operations'] },
+  { label: 'Sự kiện', key: '/cms/events', icon: <CalendarDays className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/events'] },
+  { label: 'Vận động viên', key: '/cms/athletes', icon: <Users className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/athletes'] },
+  { label: 'Bộ môn & hạng đấu', key: '/cms/sports', icon: <Trophy className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/sports'] },
+  { label: 'Trận đấu', key: '/cms/matches', icon: <Swords className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/matches'] },
+  { label: 'Thống kê', key: '/cms/statistics', icon: <BarChart3 className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/statistics'] },
+  { label: 'Tin tức', key: '/cms/news', icon: <Newspaper className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/news'] },
+  { label: 'Liên hệ', key: '/cms/contacts', icon: <Mail className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/contacts'] },
+  { label: 'Cài đặt', key: '/cms/settings', icon: <Settings className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/settings'] },
+  { label: 'Hướng dẫn sử dụng', key: '/cms/help', icon: <BookOpen className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/help'] },
 ];
 
 const publicAuthPaths = ['/cms/login', '/cms/forgot-password', '/cms/reset-password'];
@@ -125,12 +133,22 @@ export default function CmsLayout({ children }: { children: React.ReactNode }) {
     };
   }, [isPublicAuthPath, router]);
 
+  useEffect(() => {
+    if (!authenticated || isPublicAuthPath || !userRole) return;
+    if (!canAccessCmsPath(pathname, userRole)) router.replace('/cms/help');
+  }, [authenticated, isPublicAuthPath, pathname, router, userRole]);
+
+  const visibleNavItems = useMemo(
+    () => navItems.filter((item) => isCmsRole(userRole) && item.roles.includes(userRole)),
+    [userRole],
+  );
+
   const selectedKey = useMemo(() => {
-    return [...navItems]
+    return [...visibleNavItems]
       .sort((left, right) => right.key.length - left.key.length)
       .find((item) => item.key === '/cms' ? pathname === '/cms' : pathname.startsWith(item.key))
       ?.key || '/cms';
-  }, [pathname]);
+  }, [pathname, visibleNavItems]);
 
   const handleLogout = () => {
     localStorage.removeItem('cms_token');
@@ -190,7 +208,7 @@ export default function CmsLayout({ children }: { children: React.ReactNode }) {
         mode="inline"
         inlineCollapsed={compact}
         selectedKeys={[selectedKey]}
-        items={navItems}
+        items={visibleNavItems.map(({ roles: _roles, ...item }) => item)}
         className={`flex-1 overflow-y-auto border-0 py-5 ${compact ? 'px-2' : 'px-3'}`}
         onClick={({ key }) => {
           router.push(key);
@@ -296,6 +314,11 @@ export default function CmsLayout({ children }: { children: React.ReactNode }) {
             </Flex>
 
             <Flex align="center" gap={8} className="h-full">
+              <Link href="/cms/help" aria-label="Mở hướng dẫn sử dụng CMS">
+                <Button type="text" icon={<BookOpen className="h-5 w-5" />}>
+                  <span className="hidden xl:inline">Hướng dẫn</span>
+                </Button>
+              </Link>
               {renderThemeToggle()}
               <Link
                 href="/cms/settings"
@@ -307,16 +330,7 @@ export default function CmsLayout({ children }: { children: React.ReactNode }) {
                   <div className="hidden sm:block">
                     <Typography.Text strong className="block text-sm group-hover:text-sblue-500">{userLabel || 'Admin'}</Typography.Text>
                     <Typography.Text type="secondary" className="block text-xs">
-                      {{
-                        ADMIN: 'Quản trị viên',
-                        CONTENT: 'Biên tập nội dung',
-                        GAMES_ADMIN: 'Quản trị đại hội',
-                        SPORT_MANAGER: 'Trưởng môn',
-                        VENUE_OPERATOR: 'Điều hành venue',
-                        SCOREKEEPER: 'Nhập điểm',
-                        RESULT_APPROVER: 'Phê duyệt kết quả',
-                        READ_ONLY: 'Chỉ xem',
-                      }[userRole || ''] || 'Người dùng'}
+                      {isCmsRole(userRole) ? CMS_ROLE_INFO[userRole].shortLabel : 'Người dùng'}
                     </Typography.Text>
                   </div>
                 </Flex>

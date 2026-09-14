@@ -70,7 +70,10 @@ const beltOptions = [
 
 export default function SportsPage() {
   const { data: currentUser } = useSWR<any>('/auth/profile', fetcher);
-  const canDelete = currentUser?.role === 'ADMIN';
+  const canManageSports = ['ADMIN', 'CONTENT'].includes(currentUser?.role);
+  const canManageCategories = ['ADMIN', 'CONTENT', 'GAMES_ADMIN', 'SPORT_MANAGER'].includes(currentUser?.role);
+  const canDeleteSport = currentUser?.role === 'ADMIN';
+  const canDeleteCategory = ['ADMIN', 'GAMES_ADMIN'].includes(currentUser?.role);
   const { message: toast } = AntApp.useApp();
   const { data: sports = [], error, isLoading, mutate } = useSWR<any[]>('/sports', fetcher);
   const [sportOpen, setSportOpen] = useState(false);
@@ -215,7 +218,7 @@ export default function SportsPage() {
         title="Bộ môn & hạng đấu"
         description="Cấu hình danh mục dùng khi tạo sự kiện và trận đấu."
         icon={<Dumbbell className="h-6 w-6" />}
-        action={<Button type="primary" size="large" icon={<Plus className="h-4 w-4" />} onClick={() => openSport()}>Thêm bộ môn</Button>}
+        action={canManageSports ? <Button type="primary" size="large" icon={<Plus className="h-4 w-4" />} onClick={() => openSport()}>Thêm bộ môn</Button> : undefined}
       />
 
       {(error || errorMessage) && (
@@ -263,15 +266,15 @@ export default function SportsPage() {
                   </p>
                 </div>
                 <div className="flex gap-1">
-                  <Tooltip title="Sửa bộ môn">
+                  {canManageSports && <Tooltip title="Sửa bộ môn">
                     <Button
                       type="text"
                       aria-label="Sửa bộ môn"
                       icon={<Pencil className="h-4 w-4" />}
                       onClick={() => openSport(sport)}
                     />
-                  </Tooltip>
-                  {canDelete && <Popconfirm
+                  </Tooltip>}
+                  {canDeleteSport && <Popconfirm
                     title="Xóa bộ môn?"
                     description="Các hạng đấu và dữ liệu thi đấu chỉ thuộc bộ môn này cũng sẽ bị xóa."
                     okText="Xóa"
@@ -297,9 +300,9 @@ export default function SportsPage() {
                     <Tags className="h-4 w-4 text-sblue-400" />
                     Hạng đấu ({sport.categories?.length || 0})
                   </h3>
-                  <Button type="link" size="small" onClick={() => openCategory(sport)}>
+                  {canManageCategories && <Button type="link" size="small" onClick={() => openCategory(sport)}>
                     Thêm hạng
-                  </Button>
+                  </Button>}
                 </div>
                 <div className="max-h-[390px] space-y-2 overflow-y-auto pr-1">
                   {(sport.categories || []).map((category: any) => (
@@ -322,14 +325,14 @@ export default function SportsPage() {
                         </p>
                       </div>
                       <div className="flex items-center gap-1">
-                        <Button
+                        {canManageCategories && <Button
                           type="text"
                           size="small"
                           aria-label="Chỉnh sửa hạng đấu"
                           icon={<Pencil className="h-3.5 w-3.5" />}
                           onClick={() => openCategory(sport, category)}
-                        />
-                        {canDelete && <Popconfirm
+                        />}
+                        {canDeleteCategory && <Popconfirm
                           title="Xóa hạng đấu?"
                           description="Các trận đấu và sơ đồ thuộc hạng này cũng sẽ bị xóa."
                           okText="Xóa"

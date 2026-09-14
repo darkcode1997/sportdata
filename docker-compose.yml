@@ -30,6 +30,9 @@ services:
       # draws, matches or schedules that operators may already have edited.
       SEED_DATABASE: ${SEED_DATABASE:-false}
       SEED_SEA_GAMES_DEMO: ${SEED_SEA_GAMES_DEMO:-false}
+      SEED_DEMO_ACCOUNTS: ${SEED_DEMO_ACCOUNTS:-false}
+      DEMO_ACCOUNT_PASSWORD: ${DEMO_ACCOUNT_PASSWORD:-}
+      ALLOW_DEMO_ACCOUNTS_IN_PRODUCTION: "false"
       NODE_ENV: ${NODE_ENV:-development}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@sportdata.vn}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}

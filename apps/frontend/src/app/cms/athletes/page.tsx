@@ -31,7 +31,8 @@ const genderLabels: Record<string, string> = {
 
 export default function AthletesListPage() {
   const { data: currentUser } = useSWR<any>('/auth/profile', fetcher);
-  const canDelete = currentUser?.role === 'ADMIN';
+  const canManage = ['ADMIN', 'CONTENT', 'GAMES_ADMIN', 'SPORT_MANAGER'].includes(currentUser?.role);
+  const canDelete = ['ADMIN', 'GAMES_ADMIN'].includes(currentUser?.role);
   const [search, setSearch] = useState('');
   const [gender, setGender] = useState('');
   const [page, setPage] = useState(1);
@@ -177,14 +178,14 @@ export default function AthletesListPage() {
       width: 112,
       render: (_, athlete) => (
         <Space size={4}>
-          <Tooltip title="Chỉnh sửa">
+          {canManage && <Tooltip title="Chỉnh sửa">
             <Button
               type="text"
               href={`/cms/athletes/${athlete.id}/edit`}
               aria-label="Chỉnh sửa"
               icon={<Pencil className="h-4 w-4" />}
             />
-          </Tooltip>
+          </Tooltip>}
           {canDelete && <Popconfirm
             title={`Xóa “${athlete.fullName}”?`}
             description="Thao tác này không thể hoàn tác."
@@ -212,8 +213,8 @@ export default function AthletesListPage() {
       <CmsPageHeader
         title="Quản lý vận động viên"
         description="Tạo và cập nhật hồ sơ hiển thị trên trang người dùng."
-        actionHref="/cms/athletes/new"
-        actionLabel="Thêm VĐV"
+        actionHref={canManage ? '/cms/athletes/new' : undefined}
+        actionLabel={canManage ? 'Thêm VĐV' : undefined}
       />
 
       {(error || deleteError) && (

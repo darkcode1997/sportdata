@@ -40,7 +40,8 @@ function eventStatus(event: any) {
 
 export default function EventsListPage() {
   const { data: currentUser } = useSWR<any>('/auth/profile', fetcher);
-  const canDelete = currentUser?.role === 'ADMIN';
+  const canManage = ['ADMIN', 'CONTENT', 'GAMES_ADMIN'].includes(currentUser?.role);
+  const canDelete = ['ADMIN', 'GAMES_ADMIN'].includes(currentUser?.role);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -142,14 +143,14 @@ export default function EventsListPage() {
       width: 112,
       render: (_, event) => (
         <Space size={4}>
-          <Tooltip title="Chỉnh sửa">
+          {canManage && <Tooltip title="Chỉnh sửa">
             <Button
               type="text"
               href={`/cms/events/${event.id}/edit`}
               aria-label="Chỉnh sửa"
               icon={<Pencil className="h-4 w-4" />}
             />
-          </Tooltip>
+          </Tooltip>}
           {canDelete && <Popconfirm
             title={`Xóa “${event.name}”?`}
             description="Toàn bộ trận đấu, sơ đồ và thống kê của sự kiện cũng sẽ bị xóa."
@@ -177,8 +178,8 @@ export default function EventsListPage() {
       <CmsPageHeader
         title="Quản lý sự kiện"
         description="Quản lý giải đấu, thời gian và trạng thái công khai."
-        actionHref="/cms/events/new"
-        actionLabel="Tạo sự kiện"
+        actionHref={canManage ? '/cms/events/new' : undefined}
+        actionLabel={canManage ? 'Tạo sự kiện' : undefined}
       />
 
       {(error || deleteError) && (
