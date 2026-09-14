@@ -4,28 +4,57 @@ import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
 import { QueryEventsDto } from './dto/query-events.dto';
 import { QueryEligibleAthletesDto } from './dto/query-eligible-athletes.dto';
-import { Prisma } from '@prisma/client';
+import { EventLevel, Prisma } from '@prisma/client';
 
 @Injectable()
 export class EventsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(createEventDto: CreateEventDto) {
-    const { categoryIds, athleteIds, sportIds, sportId, ...data } = createEventDto;
+    const {
+      categoryIds,
+      athleteIds,
+      sportIds,
+      sportId,
+      organizerId,
+      participatingFederationIds,
+      level = EventLevel.INTERNATIONAL,
+      allowIndependentAthletes = true,
+      ...data
+    } = createEventDto;
     const selectedSportIds = Array.from(new Set(sportIds?.length ? sportIds : sportId ? [sportId] : []));
     if (!selectedSportIds.length) {
       throw new BadRequestException('Sự kiện phải có ít nhất một bộ môn');
     }
     const selectedCategoryIds = Array.from(new Set(categoryIds || []));
     const selectedAthleteIds = Array.from(new Set(athleteIds || []));
+    const selectedFederationIds = this.normalizeParticipatingFederations(
+      participatingFederationIds,
+      organizerId,
+      level,
+    );
+    this.validateOrganizerRequirement(level, organizerId);
     await this.validateCategories(selectedCategoryIds, selectedSportIds);
-    await this.validateAthletes(selectedAthleteIds, selectedCategoryIds, selectedSportIds);
+    await this.validateFederations(organizerId, selectedFederationIds);
+    await this.validateAthletes(
+      selectedAthleteIds,
+      selectedCategoryIds,
+      selectedSportIds,
+      selectedFederationIds,
+      allowIndependentAthletes,
+    );
 
     return this.prisma.event.create({
       data: {
         ...data,
-        sportId: selectedSportIds[0],
+        level,
+        allowIndependentAthletes,
+        sport: { connect: { id: selectedSportIds[0] } },
         sports: { connect: selectedSportIds.map((id) => ({ id })) },
+        organizer: organizerId ? { connect: { id: organizerId } } : undefined,
+        participatingFederations: selectedFederationIds.length
+          ? { connect: selectedFederationIds.map((id) => ({ id })) }
+          : undefined,
         categories: selectedCategoryIds.length
           ? { connect: selectedCategoryIds.map((id) => ({ id })) }
           : undefined,
@@ -40,6 +69,8 @@ export class EventsService {
   async findAll(query: QueryEventsDto) {
     const {
       sportId,
+      level,
+      organizerId,
       startDateFrom,
       startDateTo,
       isPublished,
@@ -56,6 +87,9 @@ export class EventsService {
         { sports: { some: { id: sportId } } },
       ];
     }
+
+    if (level) where.level = level;
+    if (organizerId) where.organizerId = organizerId;
 
     if (startDateFrom || startDateTo) {
       where.startDate = {};
@@ -78,6 +112,8 @@ export class EventsService {
             { name: { contains: search, mode: 'insensitive' } },
             { description: { contains: search, mode: 'insensitive' } },
             { location: { contains: search, mode: 'insensitive' } },
+            { organizer: { is: { name: { contains: search, mode: 'insensitive' } } } },
+            { participatingFederations: { some: { name: { contains: search, mode: 'insensitive' } } } },
           ],
         },
       ];
@@ -112,7 +148,7 @@ export class EventsService {
     });
 
     if (!event) {
-      throw new NotFoundException(`Event with ID ${id} not found`);
+      throw new NotFoundException(`Không tìm thấy sự kiện có mã ${id}`);
     }
 
     return event;
@@ -127,23 +163,35 @@ export class EventsService {
       where: { id: eventId },
       select: {
         id: true,
+        allowIndependentAthletes: true,
         categories: {
           where: { id: categoryId },
           select: { id: true },
         },
+        participatingFederations: { select: { id: true } },
       },
     });
-    if (!event) throw new NotFoundException(`Event with ID ${eventId} not found`);
+    if (!event) throw new NotFoundException(`Không tìm thấy sự kiện có mã ${eventId}`);
     if (!event.categories.length) {
       throw new NotFoundException('Hạng đấu không thuộc sự kiện này');
     }
 
-    const { search, countryId, page = 1, limit = 30 } = query;
+    const { search, countryId, federationId, page = 1, limit = 30 } = query;
+    const participatingFederationIds = event.participatingFederations.map((item) => item.id);
     const where: any = {
       events: { some: { id: eventId } },
       categories: { some: { id: categoryId } },
       ...(countryId ? { countryId } : {}),
+      ...(federationId ? { federationId } : {}),
     };
+    if (participatingFederationIds.length) {
+      where.AND = [{
+        OR: [
+          { federationId: { in: participatingFederationIds } },
+          ...(event.allowIndependentAthletes ? [{ federationId: null }] : []),
+        ],
+      }];
+    }
     if (search?.trim()) {
       const value = search.trim();
       where.OR = [
@@ -170,7 +218,7 @@ export class EventsService {
             select: { id: true, code: true, name: true, flagUrl: true },
           },
           federation: {
-            select: { id: true, name: true },
+            select: { id: true, code: true, name: true, type: true },
           },
         },
       }),
@@ -187,7 +235,17 @@ export class EventsService {
   }
 
   async update(id: string, updateEventDto: UpdateEventDto) {
-    const { categoryIds, athleteIds, sportIds, sportId, ...data } = updateEventDto;
+    const {
+      categoryIds,
+      athleteIds,
+      sportIds,
+      sportId,
+      organizerId,
+      participatingFederationIds,
+      level,
+      allowIndependentAthletes,
+      ...data
+    } = updateEventDto;
     if (sportIds && !sportIds.length) {
       throw new BadRequestException('Sự kiện phải có ít nhất một bộ môn');
     }
@@ -205,18 +263,57 @@ export class EventsService {
     const resultingAthleteIds = athleteIds !== undefined
       ? Array.from(new Set(athleteIds))
       : existingEvent.athletes.map((athlete) => athlete.id);
+    const resultingLevel = level || existingEvent.level;
+    const resultingOrganizerId = organizerId === undefined
+      ? existingEvent.organizerId
+      : organizerId;
+    const resultingFederationIds = this.normalizeParticipatingFederations(
+      participatingFederationIds === undefined
+        ? existingEvent.participatingFederations.map((item) => item.id)
+        : participatingFederationIds,
+      resultingOrganizerId || undefined,
+      resultingLevel,
+    );
+    const resultingAllowIndependent = allowIndependentAthletes
+      ?? existingEvent.allowIndependentAthletes;
+    this.validateOrganizerRequirement(resultingLevel, resultingOrganizerId || undefined);
     await this.validateCategories(resultingCategoryIds, resultingSportIds);
-    if (athleteIds !== undefined || categoryIds !== undefined || selectedSportIds !== undefined) {
-      await this.validateAthletes(resultingAthleteIds, resultingCategoryIds, resultingSportIds);
+    await this.validateFederations(resultingOrganizerId || undefined, resultingFederationIds);
+    if (
+      athleteIds !== undefined
+      || categoryIds !== undefined
+      || selectedSportIds !== undefined
+      || participatingFederationIds !== undefined
+      || organizerId !== undefined
+      || level !== undefined
+      || allowIndependentAthletes !== undefined
+    ) {
+      await this.validateAthletes(
+        resultingAthleteIds,
+        resultingCategoryIds,
+        resultingSportIds,
+        resultingFederationIds,
+        resultingAllowIndependent,
+      );
     }
 
     return this.prisma.event.update({
       where: { id },
       data: {
         ...data,
+        ...(level !== undefined ? { level } : {}),
+        ...(allowIndependentAthletes !== undefined ? { allowIndependentAthletes } : {}),
+        ...(organizerId !== undefined
+          ? organizerId
+            ? { organizer: { connect: { id: organizerId } } }
+            : { organizer: { disconnect: true } }
+          : {}),
+        participatingFederations: {
+          set: resultingFederationIds.map((fedId) => ({ id: fedId })),
+        },
         ...(selectedSportIds
           ? {
-              sportId: selectedSportIds[0],
+              sport: { connect: { id: selectedSportIds[0] } },
               sports: { set: selectedSportIds.map((id) => ({ id })) },
             }
           : {}),
@@ -248,6 +345,11 @@ export class EventsService {
     return {
       sport: true,
       sports: true,
+      organizer: { include: { country: true } },
+      participatingFederations: {
+        include: { country: true },
+        orderBy: { name: 'asc' as const },
+      },
       fops: {
         orderBy: { name: 'asc' as const },
       },
@@ -282,6 +384,15 @@ export class EventsService {
       bannerUrl: true,
       logoUrl: true,
       isPublished: true,
+      level: true,
+      allowIndependentAthletes: true,
+      organizerId: true,
+      organizer: {
+        select: { id: true, code: true, name: true, type: true },
+      },
+      participatingFederations: {
+        select: { id: true, code: true, name: true, type: true },
+      },
       createdAt: true,
       updatedAt: true,
       sport: true,
@@ -314,6 +425,8 @@ export class EventsService {
     athleteIds: string[],
     categoryIds: string[],
     sportIds: string[],
+    participatingFederationIds: string[] = [],
+    allowIndependentAthletes = true,
   ) {
     if (!athleteIds.length) return;
     if (!categoryIds.length) {
@@ -327,6 +440,7 @@ export class EventsService {
       select: {
         id: true,
         fullName: true,
+        federationId: true,
         categories: {
           where: {
             id: { in: categoryIds },
@@ -339,7 +453,11 @@ export class EventsService {
     const athleteById = new Map(athletes.map((athlete) => [athlete.id, athlete]));
     const invalidAthletes = athleteIds.filter((athleteId) => {
       const athlete = athleteById.get(athleteId);
-      return !athlete || athlete.categories.length === 0;
+      if (!athlete || athlete.categories.length === 0) return true;
+      if (!participatingFederationIds.length) return false;
+      return athlete.federationId
+        ? !participatingFederationIds.includes(athlete.federationId)
+        : !allowIndependentAthletes;
     });
 
     if (invalidAthletes.length) {
@@ -347,8 +465,39 @@ export class EventsService {
         (athleteId) => athleteById.get(athleteId)?.fullName || athleteId,
       );
       throw new BadRequestException(
-        `Vận động viên chưa đăng ký bộ môn/hạng mục đã chọn: ${names.join(', ')}`,
+        `Vận động viên không thuộc hạng mục hoặc đơn vị được tham gia: ${names.join(', ')}`,
       );
+    }
+  }
+
+  private normalizeParticipatingFederations(
+    federationIds: string[] | undefined,
+    organizerId: string | undefined,
+    level: EventLevel,
+  ) {
+    const ids = new Set((federationIds || []).filter(Boolean));
+    if (level === EventLevel.CENTER_INTERNAL && organizerId) ids.add(organizerId);
+    return [...ids];
+  }
+
+  private async validateFederations(
+    organizerId: string | undefined,
+    participatingFederationIds: string[],
+  ) {
+    const ids = [...new Set([
+      ...(organizerId ? [organizerId] : []),
+      ...participatingFederationIds,
+    ])];
+    if (!ids.length) return;
+    const count = await this.prisma.federation.count({ where: { id: { in: ids } } });
+    if (count !== ids.length) {
+      throw new BadRequestException('Đơn vị tổ chức hoặc đơn vị tham gia không tồn tại');
+    }
+  }
+
+  private validateOrganizerRequirement(level: EventLevel, organizerId?: string) {
+    if (level === EventLevel.CENTER_INTERNAL && !organizerId) {
+      throw new BadRequestException('Sự kiện nội bộ phải chọn trung tâm, CLB hoặc đơn vị tổ chức');
     }
   }
 }

@@ -459,7 +459,7 @@ export default function SportsPage() {
               onChange={(laneCount) => setCategoryForm({ ...categoryForm, laneCount })}
             />
             <NumberField
-              label="Entry tối đa mỗi quốc gia"
+              label="Số lượt đăng ký tối đa mỗi quốc gia"
               value={categoryForm.maxEntriesPerCountry}
               min={1}
               max={100}

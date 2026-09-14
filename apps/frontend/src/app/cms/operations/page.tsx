@@ -41,15 +41,16 @@ import {
 import { CmsPageHeader } from '@/components/cms/CmsPageHeader';
 import { CompetitionEntriesPanel } from '@/components/cms/CompetitionEntriesPanel';
 import { api, fetcher } from '@/lib/api';
+import {
+  CONFLICT_SEVERITY_META,
+  CONFLICT_TYPE_LABELS,
+  RESULT_ACTION_LABELS,
+  RESULT_STATUS_META,
+  labelOf,
+  statusMeta,
+} from '@/lib/vi-labels';
 
-const resultLabels: Record<string, { label: string; color: string }> = {
-  DRAFT: { label: 'Bản nháp', color: 'default' },
-  ENTERED: { label: 'Đã nhập', color: 'processing' },
-  REFEREE_CONFIRMED: { label: 'Trọng tài xác nhận', color: 'cyan' },
-  APPROVED: { label: 'Đã phê duyệt', color: 'blue' },
-  PUBLISHED: { label: 'Đã công bố', color: 'green' },
-  LOCKED: { label: 'Đã khóa', color: 'gold' },
-};
+const resultLabels = RESULT_STATUS_META;
 
 function requestMessage(error: any, fallback: string) {
   const value = error?.response?.data?.message;
@@ -161,8 +162,8 @@ export default function OperationsPage() {
     const published = (counts.results?.PUBLISHED || 0) + (counts.results?.LOCKED || 0);
     const resultReady = formatReady && published === counts.matches;
     return [
-      { title: 'Tài nguyên', description: resourceReady ? 'Đủ sân, ca và quy tắc' : 'Venue · FOP · Session · Slot', ready: resourceReady, tab: 'resources' },
-      { title: 'Đăng ký', description: `${counts.entries || 0} entry · ${counts.teams || 0} đội`, ready: registrationReady, tab: 'entries' },
+      { title: 'Tài nguyên', description: resourceReady ? 'Đủ sân, ca và quy tắc' : 'Địa điểm · Sân/sàn · Ca · Khung giờ', ready: resourceReady, tab: 'resources' },
+      { title: 'Đăng ký', description: `${counts.entries || 0} lượt đăng ký · ${counts.teams || 0} đội`, ready: registrationReady, tab: 'entries' },
       { title: 'Thể thức', description: `${counts.matches || 0} trận đã sinh`, ready: formatReady, tab: 'entries' },
       { title: 'Xếp lịch', description: scheduleReady ? 'Đã xếp toàn bộ' : `${counts.unscheduledMatches || 0} trận chưa xếp`, ready: scheduleReady, tab: 'schedule' },
       { title: 'Kết quả', description: `${published}/${counts.matches || 0} đã công bố`, ready: resultReady, tab: 'results' },
@@ -231,13 +232,13 @@ export default function OperationsPage() {
     try {
       const values = await slotForm.validateFields();
       const response = await api.post(`/scheduling/sessions/${slotSession.id}/time-slots/generate`, values);
-      message.success(`Đã tạo ${response.data.created} time slot`);
+      message.success(`Đã tạo ${response.data.created} khung giờ thi đấu`);
       setSlotSession(undefined);
       slotForm.resetFields();
       await Promise.all([mutateSessions(), mutateOverview(), mutateReadiness()]);
     } catch (error: any) {
       if (error?.errorFields) return;
-      message.error(requestMessage(error, 'Không thể tạo time slot'));
+      message.error(requestMessage(error, 'Không thể tạo khung giờ thi đấu'));
     }
   };
 
@@ -318,8 +319,8 @@ export default function OperationsPage() {
     { title: 'Địa điểm', render: (_: any, row: any) => row.venue?.name },
     { title: 'Bộ môn', render: (_: any, row: any) => row.sport?.name || 'Dùng chung' },
     { title: 'Thời gian', render: (_: any, row: any) => `${dayjs(row.startTime).format('DD/MM HH:mm')} – ${dayjs(row.endTime).format('HH:mm')}` },
-    { title: 'Time slot', render: (_: any, row: any) => row._count?.timeSlots || 0 },
-    { title: '', render: (_: any, row: any) => <Button disabled={!canManageSessions || !event?.fops?.length} onClick={() => openSlotGenerator(row)}>Tạo time slot</Button> },
+    { title: 'Khung giờ', render: (_: any, row: any) => row._count?.timeSlots || 0 },
+    { title: '', render: (_: any, row: any) => <Button disabled={!canManageSessions || !event?.fops?.length} onClick={() => openSlotGenerator(row)}>Tạo khung giờ</Button> },
   ];
 
   const matchColumns = [
@@ -329,7 +330,7 @@ export default function OperationsPage() {
         <div>
           <Typography.Text strong>#{row.matchNumber || '—'} · {row.category?.name}</Typography.Text>
           <Typography.Text type="secondary" className="block text-xs">
-            {row.athlete1?.fullName || row.team1?.name || 'Chờ xác định'} vs {row.athlete2?.fullName || row.team2?.name || 'Chờ xác định'}
+            {row.athlete1?.fullName || row.team1?.name || 'Chờ xác định'} gặp {row.athlete2?.fullName || row.team2?.name || 'Chờ xác định'}
           </Typography.Text>
         </div>
       ),
@@ -340,7 +341,7 @@ export default function OperationsPage() {
   ];
 
   const scheduleColumns = [
-    { title: 'Trận', render: (_: any, row: any) => <><Typography.Text strong>#{row.matchNumber || '—'} · {row.category?.name}</Typography.Text><Typography.Text type="secondary" className="block text-xs">{row.athlete1?.fullName || row.team1?.name || 'Chờ xác định'} vs {row.athlete2?.fullName || row.team2?.name || 'Chờ xác định'}</Typography.Text></> },
+    { title: 'Trận', render: (_: any, row: any) => <><Typography.Text strong>#{row.matchNumber || '—'} · {row.category?.name}</Typography.Text><Typography.Text type="secondary" className="block text-xs">{row.athlete1?.fullName || row.team1?.name || 'Chờ xác định'} gặp {row.athlete2?.fullName || row.team2?.name || 'Chờ xác định'}</Typography.Text></> },
     { title: 'Thời gian', render: (_: any, row: any) => row.startTime ? dayjs(row.startTime).format('DD/MM/YYYY HH:mm') : <Tag>Chưa xếp</Tag> },
     { title: 'Sàn/FOP', render: (_: any, row: any) => row.fop || '—' },
     { title: 'Khóa thủ công', render: (_: any, row: any) => row.scheduleLocked ? <Tag color="gold" icon={<LockKeyhole className="h-3 w-3" />}>Đã khóa</Tag> : <Tag>Chưa khóa</Tag> },
@@ -348,15 +349,15 @@ export default function OperationsPage() {
   ];
 
   const conflictColumns = [
-    { title: 'Loại', dataIndex: 'type' },
-    { title: 'Mức', dataIndex: 'severity', render: (value: string) => <Tag color={value === 'ERROR' ? 'red' : 'orange'}>{value}</Tag> },
+    { title: 'Loại xung đột', dataIndex: 'type', render: (value: string) => labelOf(CONFLICT_TYPE_LABELS, value, 'Xung đột lịch') },
+    { title: 'Mức độ', dataIndex: 'severity', render: (value: string) => { const state = statusMeta(CONFLICT_SEVERITY_META, value); return <Tag color={state.color}>{state.label}</Tag>; } },
     { title: 'Trận liên quan', dataIndex: 'matchIds', render: (value: string[]) => value?.join(', ') || '—' },
     { title: 'Chi tiết', render: (_: any, row: any) => row.participant || (row.requiredMinutes ? `Nghỉ tối thiểu ${row.requiredMinutes} phút` : '—') },
   ];
 
   return (
     <div className="space-y-6">
-      <CmsPageHeader title="Điều hành đại hội" description="Venue, ca thi đấu, time slot, xếp lịch có ràng buộc và quy trình công bố kết quả." />
+      <CmsPageHeader title="Điều hành giải đấu" description="Quản lý địa điểm, sân/sàn, ca thi đấu, khung giờ, xếp lịch và công bố kết quả." />
 
       <Card className="cms-surface">
         <Row gutter={[20, 16]} align="middle">
@@ -475,8 +476,8 @@ export default function OperationsPage() {
                   <Col xs={12} lg={6}><Card><Statistic title="Quy tắc môn" value={rules.length} /></Card></Col>
                   <Col xs={12} lg={6}><Card><Statistic title="Xung đột" value={conflictReport?.conflictCount || 0} valueStyle={{ color: conflictReport?.valid ? '#22c55e' : '#ef4444' }} /></Card></Col>
                 </Row>
-                <Card title="Venue → FOP → Ca thi đấu → Time slot" extra={<Space wrap><Button icon={<MapPin className="h-4 w-4" />} disabled={!canCreateVenue} onClick={() => setVenueOpen(true)}>Thêm địa điểm</Button><Button icon={<CalendarClock className="h-4 w-4" />} disabled={!canManageSessions || !venues.length} onClick={openSessionForm}>Thêm ca</Button><Button disabled={!canManageRules || !sports.length} onClick={openRuleForm}>Quy tắc bộ môn</Button></Space>}>
-                  {!event?.fops?.length && <Alert className="mb-4" showIcon type="warning" message="Sự kiện chưa có Sàn/FOP" description="Tạo FOP ở trang Sự kiện trước khi sinh time slot." />}
+                <Card title="Địa điểm → Sân/sàn → Ca thi đấu → Khung giờ" extra={<Space wrap><Button icon={<MapPin className="h-4 w-4" />} disabled={!canCreateVenue} onClick={() => setVenueOpen(true)}>Thêm địa điểm</Button><Button icon={<CalendarClock className="h-4 w-4" />} disabled={!canManageSessions || !venues.length} onClick={openSessionForm}>Thêm ca</Button><Button disabled={!canManageRules || !sports.length} onClick={openRuleForm}>Quy tắc bộ môn</Button></Space>}>
+                  {!event?.fops?.length && <Alert className="mb-4" showIcon type="warning" message="Sự kiện chưa có sân/sàn thi đấu" description="Tạo sân/sàn tại trang Sự kiện trước khi sinh khung giờ." />}
                   <Table rowKey="id" size="small" pagination={false} columns={sessionColumns} dataSource={sessions} scroll={{ x: 800 }} />
                 </Card>
               </Space>
@@ -493,7 +494,7 @@ export default function OperationsPage() {
             children: (
               <Space direction="vertical" size="large" className="w-full">
                 <Card title="Bộ xếp lịch" extra={<Space wrap><Button icon={<ScanSearch className="h-4 w-4" />} disabled={!canSchedule || !counts.timeSlots || !counts.matches} loading={scheduling} onClick={() => autoSchedule(true)}>1. Mô phỏng</Button><Button type="primary" icon={<Play className="h-4 w-4" />} disabled={!canSchedule || !scheduleResult?.dryRun || scheduleResult?.unscheduled > 0} loading={scheduling} onClick={confirmApplySchedule}>2. Áp dụng lịch</Button></Space>}>
-                  {!counts.timeSlots && <Alert className="mb-4" showIcon type="warning" message="Chưa có time slot" description="Hoàn thành bước Tài nguyên trước khi xếp lịch." action={<Button onClick={() => setActiveTab('resources')}>Sang bước 1</Button>} />}
+                  {!counts.timeSlots && <Alert className="mb-4" showIcon type="warning" message="Chưa có khung giờ thi đấu" description="Hoàn thành bước Tài nguyên trước khi xếp lịch." action={<Button onClick={() => setActiveTab('resources')}>Sang bước 1</Button>} />}
                   {scheduleResult ? <Descriptions bordered size="small" column={{ xs: 1, sm: 4 }}><Descriptions.Item label="Chế độ">{scheduleResult.dryRun ? 'Mô phỏng' : 'Đã ghi lịch'}</Descriptions.Item><Descriptions.Item label="Yêu cầu">{scheduleResult.requested}</Descriptions.Item><Descriptions.Item label="Đã xếp">{scheduleResult.scheduled}</Descriptions.Item><Descriptions.Item label="Chưa xếp">{scheduleResult.unscheduled}</Descriptions.Item></Descriptions> : <Typography.Text type="secondary">Bước 1: Mô phỏng. Bước 2: kiểm tra số trận chưa xếp. Bước 3: áp dụng lịch.</Typography.Text>}
                 </Card>
                 <Card title="Lịch đã xếp và khóa thủ công" extra={<Tag color="gold">{counts.lockedSchedules || 0} trận đã khóa</Tag>}>
@@ -522,7 +523,7 @@ export default function OperationsPage() {
         <Form form={sessionForm} layout="vertical"><Form.Item name="name" label="Tên ca" rules={[{ required: true }]}><Input placeholder="Ca sáng · Boxing" /></Form.Item><Form.Item name="venueId" label="Địa điểm" rules={[{ required: true }]}><Select options={venues.map((venue: any) => ({ value: venue.id, label: venue.name }))} /></Form.Item><Form.Item name="sportId" label="Bộ môn"><Select allowClear options={sports.map((sport: any) => ({ value: sport.id, label: sport.name }))} /></Form.Item><Form.Item name="window" label="Bắt đầu – kết thúc" rules={[{ required: true }]}><DatePicker.RangePicker showTime format="DD/MM/YYYY HH:mm" className="w-full" /></Form.Item></Form>
       </Modal>
 
-      <Modal title={`Tạo time slot · ${slotSession?.name || ''}`} open={Boolean(slotSession)} onCancel={() => setSlotSession(undefined)} onOk={generateSlots} destroyOnHidden>
+      <Modal title={`Tạo khung giờ · ${slotSession?.name || ''}`} open={Boolean(slotSession)} onCancel={() => setSlotSession(undefined)} onOk={generateSlots} destroyOnHidden>
         <Form form={slotForm} layout="vertical" initialValues={{ durationMinutes: 10, turnaroundMinutes: 5 }}><Form.Item name="fopIds" label="Sàn/FOP" rules={[{ required: true, type: 'array', min: 1 }]}><Select mode="multiple" options={(event?.fops || []).map((fop: any) => ({ value: fop.id, label: fop.name }))} /></Form.Item><Row gutter={12}><Col span={12}><Form.Item name="durationMinutes" label="Thời lượng (phút)"><InputNumber min={1} className="w-full" /></Form.Item></Col><Col span={12}><Form.Item name="turnaroundMinutes" label="Chuyển sân (phút)"><InputNumber min={0} className="w-full" /></Form.Item></Col></Row></Form>
       </Modal>
 
@@ -589,13 +590,67 @@ function ResultWorkflowModal({ match, role, open, onClose, onChanged }: { match:
   };
 
   return (
-    <Modal title={`Quy trình kết quả · Trận #${match.matchNumber || '—'}`} open={open} onCancel={onClose} footer={null} width={760} destroyOnHidden>
+    <Modal
+      title={`Quy trình kết quả · Trận #${match.matchNumber || '—'}`}
+      open={open}
+      onCancel={onClose}
+      footer={null}
+      width={920}
+      centered
+      destroyOnHidden
+    >
       <Space direction="vertical" size="large" className="w-full">
-        <Steps size="small" current={Math.max(0, resultStages.indexOf(state))} items={resultStages.map((status) => ({ title: resultLabels[status].label }))} />
-        <Alert showIcon type={state === 'LOCKED' ? 'success' : 'info'} message={resultLabels[state]?.label || state} />
+        <Steps
+          size="small"
+          responsive
+          current={Math.max(0, resultStages.indexOf(state))}
+          items={resultStages.map((status) => ({
+            title: resultLabels[status].shortLabel || resultLabels[status].label,
+          }))}
+        />
+        <Alert
+          showIcon
+          type={state === 'LOCKED' ? 'success' : 'info'}
+          message={resultLabels[state]?.label || 'Chưa xác định trạng thái'}
+          description={state === 'LOCKED' ? 'Kết quả đã được chốt và không thể sửa nếu chưa mở lại.' : undefined}
+        />
         {(state === 'DRAFT' || state === 'ENTERED') && <Form form={form} layout="vertical" disabled={!canEnter} initialValues={{ athlete1Score: data?.athlete1Score ?? match.athlete1Score ?? 0, athlete2Score: data?.athlete2Score ?? match.athlete2Score ?? 0, winnerId: data?.winnerId || match.winnerId }}><Row gutter={12}><Col span={12}><Form.Item name="athlete1Score" label={`Điểm ${match.athlete1?.fullName || 'VĐV 1'}`}><InputNumber className="w-full" /></Form.Item></Col><Col span={12}><Form.Item name="athlete2Score" label={`Điểm ${match.athlete2?.fullName || 'VĐV 2'}`}><InputNumber className="w-full" /></Form.Item></Col></Row><Form.Item name="winnerId" label="Người thắng"><Select allowClear options={athletes.map((athlete: any) => ({ value: athlete.id, label: athlete.fullName }))} /></Form.Item>{state === 'ENTERED' && <Form.Item name="reason" label="Lý do hiệu chỉnh" rules={[{ required: true }]}><Input.TextArea rows={2} /></Form.Item>}<Button type="primary" disabled={!canEnter} loading={pending} onClick={enter}>Lưu kết quả</Button></Form>}
         <Space wrap>{nextAction && <Button type="primary" icon={<CheckCircle2 className="h-4 w-4" />} disabled={!nextAction.allowed} loading={pending} onClick={() => act(nextAction.action)}>{nextAction.label}</Button>}{isAdmin && state !== 'DRAFT' && state !== 'ENTERED' && <Button danger icon={<LockKeyhole className="h-4 w-4" />} loading={pending} onClick={confirmReopen}>Mở lại để hiệu chỉnh</Button>}</Space>
-        <Card size="small" title="Lịch sử phiên bản"><Table rowKey="id" size="small" pagination={false} dataSource={data?.resultRevisions || []} columns={[{ title: 'Phiên bản', dataIndex: 'version' }, { title: 'Thao tác', dataIndex: 'action' }, { title: 'Trạng thái', dataIndex: 'status' }, { title: 'Thời gian', dataIndex: 'createdAt', render: (value: string) => dayjs(value).format('DD/MM/YYYY HH:mm:ss') }, { title: 'Lý do', dataIndex: 'reason' }]} /></Card>
+        <Card size="small" title="Lịch sử thay đổi">
+          <Table
+            rowKey="id"
+            size="small"
+            dataSource={data?.resultRevisions || []}
+            pagination={(data?.resultRevisions || []).length > 8 ? { pageSize: 8, hideOnSinglePage: true } : false}
+            scroll={{ x: 760 }}
+            locale={{ emptyText: 'Chưa có thay đổi nào.' }}
+            columns={[
+              { title: 'Phiên bản', dataIndex: 'version', width: 90 },
+              {
+                title: 'Thao tác',
+                dataIndex: 'action',
+                width: 190,
+                render: (value: string) => labelOf(RESULT_ACTION_LABELS, value, 'Cập nhật kết quả'),
+              },
+              {
+                title: 'Trạng thái sau thay đổi',
+                dataIndex: 'status',
+                width: 180,
+                render: (value: string) => {
+                  const item = statusMeta(RESULT_STATUS_META, value);
+                  return <Tag color={item.color}>{item.label}</Tag>;
+                },
+              },
+              {
+                title: 'Thời gian',
+                dataIndex: 'createdAt',
+                width: 180,
+                render: (value: string) => dayjs(value).format('DD/MM/YYYY HH:mm:ss'),
+              },
+              { title: 'Lý do', dataIndex: 'reason', render: (value: string) => value || '—' },
+            ]}
+          />
+        </Card>
       </Space>
     </Modal>
   );

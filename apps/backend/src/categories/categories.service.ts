@@ -75,7 +75,7 @@ export class CategoriesService {
     });
 
     if (!category) {
-      throw new NotFoundException(`Category with ID ${id} not found`);
+      throw new NotFoundException(`Không tìm thấy hạng mục có mã ${id}`);
     }
 
     return category;
@@ -180,7 +180,7 @@ export class CategoriesService {
     });
 
     if (!division) {
-      throw new NotFoundException(`Division with ID ${id} not found`);
+      throw new NotFoundException(`Không tìm thấy phân hạng có mã ${id}`);
     }
 
     return division;

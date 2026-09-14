@@ -96,6 +96,7 @@ export default function AthletesListPage() {
       render: (_, athlete) => (
         <Tag className="inline-flex items-center gap-1.5">
           {athlete.country?.flagUrl && (
+            // eslint-disable-next-line @next/next/no-img-element
             <img
               src={athlete.country.flagUrl}
               alt={`Cờ ${athlete.country.name || athlete.country.code}`}

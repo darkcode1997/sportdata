@@ -456,7 +456,7 @@ export default function MatchesListPage() {
             <Form.Item className="min-w-64 flex-1" name="type" label="Thể thức">
               <Select options={[
                 { value: 'MAIN_TREE', label: 'Loại trực tiếp · Main tree' },
-                { value: 'DOUBLE_ELIMINATION', label: 'Double elimination · Nhánh thắng/thua' },
+                { value: 'DOUBLE_ELIMINATION', label: 'Loại kép · Nhánh thắng/thua' },
               ]} />
             </Form.Item>
             <Form.Item className="min-w-64 flex-1" name="seedingMode" label="Chế độ seeding">

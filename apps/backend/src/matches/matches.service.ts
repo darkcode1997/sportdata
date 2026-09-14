@@ -220,7 +220,7 @@ export class MatchesService {
       where: { id: eventId },
       select: { id: true },
     });
-    if (!event) throw new NotFoundException(`Event with ID ${eventId} not found`);
+    if (!event) throw new NotFoundException(`Không tìm thấy sự kiện có mã ${eventId}`);
 
     const dates = await this.prisma.$queryRaw<Array<{ date: string; count: number }>>(Prisma.sql`
       SELECT (("matchDate" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Ho_Chi_Minh')::date::text AS "date",
@@ -264,7 +264,7 @@ export class MatchesService {
     });
 
     if (!match) {
-      throw new NotFoundException(`Match with ID ${id} not found`);
+      throw new NotFoundException(`Không tìm thấy trận đấu có mã ${id}`);
     }
 
     return includeUnpublishedResults ? match : this.hideUnpublishedResult(match);
@@ -414,7 +414,7 @@ export class MatchesService {
       return await this.prisma.$transaction(async (transaction) => {
       const previous = await transaction.match.findUnique({ where: { id } });
       if (!previous) {
-        throw new NotFoundException(`Match with ID ${id} not found`);
+        throw new NotFoundException(`Không tìm thấy trận đấu có mã ${id}`);
       }
       const changesResult = [
         'athlete1Score',
@@ -694,10 +694,10 @@ export class MatchesService {
   async generateDraw(eventId: string, categoryId: string, dto: GenerateDrawDto) {
     const drawType = dto.type || DrawType.MAIN_TREE;
     if (drawType !== DrawType.MAIN_TREE && drawType !== DrawType.DOUBLE_ELIMINATION) {
-      throw new BadRequestException('Automatic generation supports MAIN_TREE and DOUBLE_ELIMINATION');
+      throw new BadRequestException('Sinh cây tự động chỉ hỗ trợ nhánh chính và loại kép');
     }
     if (drawType === DrawType.DOUBLE_ELIMINATION && dto.athleteIds.length < 4) {
-      throw new BadRequestException('Double elimination requires at least 4 athletes');
+      throw new BadRequestException('Thể thức loại kép cần ít nhất 4 vận động viên');
     }
 
     const [event, category, athletes] = await Promise.all([
@@ -716,8 +716,8 @@ export class MatchesService {
       }),
     ]);
 
-    if (!event) throw new NotFoundException(`Event with ID ${eventId} not found`);
-    if (!category) throw new NotFoundException(`Category with ID ${categoryId} not found`);
+    if (!event) throw new NotFoundException(`Không tìm thấy sự kiện có mã ${eventId}`);
+    if (!category) throw new NotFoundException(`Không tìm thấy hạng mục có mã ${categoryId}`);
     if (athletes.length !== dto.athleteIds.length) {
       throw new BadRequestException(
         'Một hoặc nhiều vận động viên chưa đăng ký hạng đấu này trong sự kiện',
@@ -728,7 +728,7 @@ export class MatchesService {
         where: { id: dto.divisionId, categoryId },
         select: { id: true },
       });
-      if (!division) throw new BadRequestException('Division does not belong to this category');
+      if (!division) throw new BadRequestException('Phân hạng không thuộc hạng mục này');
     }
 
     const orderedAthletes = dto.athleteIds.map(

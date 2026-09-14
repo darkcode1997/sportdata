@@ -18,11 +18,14 @@ export class FederationsService {
     });
     if (!country) {
       throw new BadRequestException(
-        `Country with id '${createFederationDto.countryId}' not found`,
+        `Không tìm thấy quốc gia có mã '${createFederationDto.countryId}'`,
       );
     }
     return this.prisma.federation.create({
-      data: createFederationDto,
+      data: {
+        ...createFederationDto,
+        code: createFederationDto.code?.trim().toUpperCase() || undefined,
+      },
       include: { country: true },
     });
   }
@@ -40,7 +43,7 @@ export class FederationsService {
       include: { country: true },
     });
     if (!federation) {
-      throw new NotFoundException(`Federation with id '${id}' not found`);
+      throw new NotFoundException(`Không tìm thấy đơn vị thể thao có mã '${id}'`);
     }
     return federation;
   }
@@ -53,13 +56,18 @@ export class FederationsService {
       });
       if (!country) {
         throw new BadRequestException(
-          `Country with id '${updateFederationDto.countryId}' not found`,
+          `Không tìm thấy quốc gia có mã '${updateFederationDto.countryId}'`,
         );
       }
     }
     return this.prisma.federation.update({
       where: { id },
-      data: updateFederationDto,
+      data: {
+        ...updateFederationDto,
+        code: updateFederationDto.code === null
+          ? null
+          : updateFederationDto.code?.trim().toUpperCase() || undefined,
+      },
       include: { country: true },
     });
   }
@@ -67,12 +75,20 @@ export class FederationsService {
   async remove(id: string) {
     await this.findOne(id);
 
-    const athleteCount = await this.prisma.athlete.count({
-      where: { federationId: id },
-    });
-    if (athleteCount > 0) {
+    const [athleteCount, eventCount] = await Promise.all([
+      this.prisma.athlete.count({ where: { federationId: id } }),
+      this.prisma.event.count({
+        where: {
+          OR: [
+            { organizerId: id },
+            { participatingFederations: { some: { id } } },
+          ],
+        },
+      }),
+    ]);
+    if (athleteCount > 0 || eventCount > 0) {
       throw new ConflictException(
-        `Không thể xóa liên đoàn đang được ${athleteCount} vận động viên sử dụng`,
+        `Không thể xóa đơn vị đang được ${athleteCount} vận động viên và ${eventCount} sự kiện sử dụng`,
       );
     }
 

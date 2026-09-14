@@ -1,6 +1,7 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { MatchStatus, MatchType, WinMethod, Gender } from "./types";
+import { MATCH_STATUS_META, MATCH_TYPE_LABELS, WIN_METHOD_LABELS, labelOf, statusMeta } from "./vi-labels";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -75,18 +76,7 @@ export function formatTime(date: Date | string | null | undefined): string {
 }
 
 export function getStatusLabel(status: MatchStatus): string {
-  switch (status) {
-    case MatchStatus.SCHEDULED:
-      return "Lịch";
-    case MatchStatus.RUNNING:
-      return "Đang thi đấu";
-    case MatchStatus.FINISHED:
-      return "Hoàn thành";
-    case MatchStatus.CANCELLED:
-      return "Hủy";
-    default:
-      return status;
-  }
+  return statusMeta(MATCH_STATUS_META, status).label;
 }
 
 export function getStatusBgColor(status: MatchStatus): string {
@@ -120,48 +110,14 @@ export function getStatusTextColor(status: MatchStatus): string {
 }
 
 export function getMatchTypeLabel(type: MatchType): string {
-  switch (type) {
-    case MatchType.ELIMINATION:
-      return "Loại trực tiếp";
-    case MatchType.ROUND_ROBIN:
-      return "Vòng tròn";
-    case MatchType.SEMI_FINAL:
-      return "Bán kết";
-    case MatchType.FINAL:
-      return "Chung kết";
-    case MatchType.QUARTER_FINAL:
-      return "Tứ kết";
-    case MatchType.PRELIMINARY:
-      return "Vòng loại";
-    default:
-      return type;
-  }
+  return labelOf(MATCH_TYPE_LABELS, type, 'Vòng đấu');
 }
 
 export function getWinMethodLabel(
   method: WinMethod | undefined | null,
 ): string {
   if (!method) return "-";
-  switch (method) {
-    case WinMethod.DECISION:
-      return "Quyết định trọng tài";
-    case WinMethod.KO:
-      return "KO";
-    case WinMethod.TKO:
-      return "TKO";
-    case WinMethod.SUBMISSION:
-      return "Đầu hàng";
-    case WinMethod.IPPON:
-      return "Ippon";
-    case WinMethod.DISQUALIFICATION:
-      return "Bị loại";
-    case WinMethod.WITHDRAWAL:
-      return "Rút cuộc";
-    case WinMethod.POINTS:
-      return "Điểm";
-    default:
-      return method;
-  }
+  return labelOf(WIN_METHOD_LABELS, method, 'Chưa xác định');
 }
 
 export function getGenderLabel(gender: Gender): string {

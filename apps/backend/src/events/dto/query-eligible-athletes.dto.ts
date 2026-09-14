@@ -13,6 +13,11 @@ export class QueryEligibleAthletesDto {
   @IsString()
   countryId?: string;
 
+  @ApiPropertyOptional({ description: 'Lọc theo liên đoàn, trung tâm hoặc CLB' })
+  @IsOptional()
+  @IsString()
+  federationId?: string;
+
   @ApiPropertyOptional({ default: 1 })
   @IsOptional()
   @IsInt()

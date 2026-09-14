@@ -11,6 +11,7 @@ import {
   Input,
   Pagination,
   Popconfirm,
+  Select,
   Space,
   Table,
   Tag,
@@ -28,6 +29,20 @@ const dateFormat = new Intl.DateTimeFormat('vi-VN', {
   year: 'numeric',
 });
 
+const eventLevelOptions = [
+  { value: '', label: 'Tất cả quy mô' },
+  { value: 'INTERNATIONAL', label: 'Quốc tế' },
+  { value: 'NATIONAL', label: 'Toàn quốc' },
+  { value: 'REGIONAL', label: 'Khu vực' },
+  { value: 'PROVINCIAL', label: 'Tỉnh / thành' },
+  { value: 'CENTER_INTERNAL', label: 'Nội bộ trung tâm' },
+  { value: 'OPEN', label: 'Mở rộng' },
+];
+
+function eventLevelLabel(level?: string) {
+  return eventLevelOptions.find((option) => option.value === level)?.label || 'Chưa phân loại';
+}
+
 function eventStatus(event: any) {
   const now = Date.now();
   const start = new Date(event.startDate).getTime();
@@ -43,14 +58,16 @@ export default function EventsListPage() {
   const canManage = ['ADMIN', 'CONTENT', 'GAMES_ADMIN'].includes(currentUser?.role);
   const canDelete = ['ADMIN', 'GAMES_ADMIN'].includes(currentUser?.role);
   const [search, setSearch] = useState('');
+  const [level, setLevel] = useState('');
   const [page, setPage] = useState(1);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const query = useMemo(() => {
     const params = new URLSearchParams({ page: String(page), limit: '10' });
     if (search.trim()) params.set('search', search.trim());
+    if (level) params.set('level', level);
     return `/events?${params}`;
-  }, [search, page]);
+  }, [search, level, page]);
 
   const { data, error, isLoading, mutate } = useSWR<any>(query, fetcher);
   const events = data?.items || [];
@@ -87,8 +104,11 @@ export default function EventsListPage() {
               {event.name}
             </Typography.Text>
             <Typography.Text type="secondary" className="block max-w-56 truncate text-xs">
-              {event.location || 'Chưa cập nhật địa điểm'}
+              {event.organizer?.name || event.location || 'Chưa cập nhật đơn vị tổ chức'}
             </Typography.Text>
+            <Tag className="mt-1" color={event.level === 'INTERNATIONAL' ? 'purple' : 'cyan'}>
+              {eventLevelLabel(event.level)}
+            </Tag>
           </div>
         </Flex>
       ),
@@ -193,17 +213,30 @@ export default function EventsListPage() {
       )}
 
       <Card className="cms-toolbar" styles={{ body: { padding: 16 } }}>
-        <Input
-          allowClear
-          size="large"
-          prefix={<Search className="h-4 w-4 text-slate-500" />}
-          placeholder="Tìm theo tên hoặc địa điểm..."
-          value={search}
-          onChange={(event) => {
-            setSearch(event.target.value);
-            setPage(1);
-          }}
-        />
+        <Flex gap={12} wrap>
+          <Input
+            allowClear
+            size="large"
+            prefix={<Search className="h-4 w-4 text-slate-500" />}
+            placeholder="Tìm theo tên hoặc địa điểm..."
+            value={search}
+            className="min-w-64 flex-1"
+            onChange={(event) => {
+              setSearch(event.target.value);
+              setPage(1);
+            }}
+          />
+          <Select
+            size="large"
+            className="w-full sm:w-56"
+            value={level}
+            options={eventLevelOptions}
+            onChange={(value) => {
+              setLevel(value);
+              setPage(1);
+            }}
+          />
+        </Flex>
       </Card>
 
       <Card className="cms-table" styles={{ body: { padding: 0 } }}>

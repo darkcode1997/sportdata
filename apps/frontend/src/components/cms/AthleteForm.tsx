@@ -39,9 +39,30 @@ type CountryOption = {
 type FederationOption = {
   id: string;
   name: string;
+  code?: string | null;
+  type?: FederationType;
   countryId: string;
   country?: CountryOption;
 };
+
+type FederationType =
+  | 'INTERNATIONAL_FEDERATION'
+  | 'NATIONAL_FEDERATION'
+  | 'SPORTS_CENTER'
+  | 'CLUB'
+  | 'SCHOOL'
+  | 'ACADEMY'
+  | 'OTHER';
+
+const federationTypeOptions: Array<{ value: FederationType; label: string }> = [
+  { value: 'SPORTS_CENTER', label: 'Trung tâm thể thao' },
+  { value: 'CLUB', label: 'Câu lạc bộ' },
+  { value: 'ACADEMY', label: 'Học viện' },
+  { value: 'SCHOOL', label: 'Trường học' },
+  { value: 'NATIONAL_FEDERATION', label: 'Liên đoàn quốc gia' },
+  { value: 'INTERNATIONAL_FEDERATION', label: 'Liên đoàn quốc tế' },
+  { value: 'OTHER', label: 'Đơn vị khác' },
+];
 
 const athleteSchema = z.object({
   firstName: z.string().min(1, 'Vui lòng nhập họ'),
@@ -109,6 +130,17 @@ export function AthleteForm({ athleteId, initialData }: { athleteId?: string; in
   const selectedFederationId = watch('federationId');
   const selectedSportIds = watch('sportIds') || [];
   const selectedCategoryIds = watch('categoryIds') || [];
+  const countryFederations = federations.filter(
+    (federation) => !selectedCountryId || federation.countryId === selectedCountryId,
+  );
+
+  useEffect(() => {
+    if (!selectedFederationId || !selectedCountryId) return;
+    const selectedFederation = federations.find((item) => item.id === selectedFederationId);
+    if (selectedFederation && selectedFederation.countryId !== selectedCountryId) {
+      setValue('federationId', '', { shouldDirty: true, shouldValidate: true });
+    }
+  }, [federations, selectedCountryId, selectedFederationId, setValue]);
 
   const selectedSports = sports
     .filter((sport: any) => selectedSportIds.includes(sport.id))
@@ -152,7 +184,7 @@ export function AthleteForm({ athleteId, initialData }: { athleteId?: string; in
       ...formValues,
       categoryIds: Array.from(new Set(formValues.categoryIds)),
       birthDate: values.birthDate || undefined,
-      federationId: values.federationId || undefined,
+      federationId: athleteId ? values.federationId || null : values.federationId || undefined,
       height: values.height ? Number(values.height) : undefined,
       weight: values.weight ? Number(values.weight) : undefined,
       photoUrl: values.photoUrl || undefined,
@@ -223,13 +255,13 @@ export function AthleteForm({ athleteId, initialData }: { athleteId?: string; in
             control={control}
             label={(
               <Space size={4}>
-                <span>Liên đoàn / đơn vị</span>
-                <Tooltip title="Thêm, sửa hoặc xóa liên đoàn">
+                <span>Đơn vị chủ quản</span>
+                <Tooltip title="Thêm, sửa hoặc xóa liên đoàn, trung tâm, CLB">
                   <Button
                     type="text"
                     size="small"
                     htmlType="button"
-                    aria-label="Quản lý liên đoàn"
+                    aria-label="Quản lý đơn vị chủ quản"
                     icon={<Plus className="h-4 w-4" />}
                     onClick={() => setFederationManagerOpen(true)}
                   />
@@ -238,7 +270,7 @@ export function AthleteForm({ athleteId, initialData }: { athleteId?: string; in
             )}
             error={errors.federationId?.message}
           >
-            {(field) => <Select size="large" allowClear showSearch optionFilterProp="label" className="w-full" placeholder="Chưa xác định" value={field.value || undefined} onChange={(value) => field.onChange(value || '')} options={federations.map((federation) => ({ value: federation.id, label: federation.name }))} />}
+            {(field) => <Select size="large" allowClear showSearch optionFilterProp="label" className="w-full" placeholder={selectedCountryId ? 'Liên đoàn, trung tâm, CLB...' : 'Chọn quốc gia trước'} disabled={!selectedCountryId} value={field.value || undefined} onChange={(value) => field.onChange(value || '')} options={countryFederations.map((federation) => ({ value: federation.id, label: federation.code ? `${federation.code} · ${federation.name}` : federation.name }))} />}
           </ControlledField>
           <ControlledField name="height" control={control} label="Chiều cao (cm)" error={errors.height?.message}>
             {(field) => <Input {...field} size="large" type="number" min={0} step={0.1} placeholder="170" />}
@@ -347,6 +379,7 @@ function CountryLabel({ country }: { country: CountryOption }) {
   return (
     <span className="inline-flex min-w-0 items-center gap-2">
       {country.flagUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
         <img
           src={country.flagUrl}
           alt={`Cờ ${country.name}`}
@@ -385,6 +418,8 @@ function FederationManager({
 }) {
   const [countryId, setCountryId] = useState('');
   const [name, setName] = useState('');
+  const [code, setCode] = useState('');
+  const [type, setType] = useState<FederationType>('SPORTS_CENTER');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -400,6 +435,8 @@ function FederationManager({
       selectedFederation?.countryId || preferredCountryId || countries[0]?.id || '',
     );
     setName('');
+    setCode('');
+    setType('SPORTS_CENTER');
     setEditingId(null);
     setError(null);
   }, [countries, federations, open, preferredCountryId, selectedFederationId]);
@@ -410,6 +447,8 @@ function FederationManager({
 
   const resetEditor = () => {
     setName('');
+    setCode('');
+    setType('SPORTS_CENTER');
     setEditingId(null);
   };
 
@@ -431,10 +470,14 @@ function FederationManager({
         ? await api.patch<FederationOption>(`/federations/${editingId}`, {
             name: normalizedName,
             countryId,
+            code: code.trim() || null,
+            type,
           })
         : await api.post<FederationOption>('/federations', {
             name: normalizedName,
             countryId,
+            code: code.trim() || undefined,
+            type,
           });
       await onChanged();
       onSelect(response.data.id);
@@ -464,7 +507,7 @@ function FederationManager({
   return (
     <Modal
       open={open}
-      title="Quản lý liên đoàn / đơn vị"
+      title="Quản lý đơn vị thể thao"
       footer={null}
       width={680}
       maskClosable={!saving && !deletingId}
@@ -505,18 +548,40 @@ function FederationManager({
 
         <div>
           <Typography.Text strong>
-            {editingId ? 'Sửa tên liên đoàn' : 'Thêm liên đoàn mới'}
+            {editingId ? 'Sửa đơn vị' : 'Thêm đơn vị mới'}
           </Typography.Text>
-          <Space.Compact className="mt-2 flex w-full">
+          <Row gutter={[10, 10]} className="mt-2">
+            <Col xs={24} sm={9}>
+              <Select
+                size="large"
+                className="w-full"
+                value={type}
+                options={federationTypeOptions}
+                onChange={setType}
+              />
+            </Col>
+            <Col xs={24} sm={5}>
+              <Input
+                size="large"
+                value={code}
+                placeholder="Mã đơn vị"
+                maxLength={24}
+                disabled={!countryId}
+                onChange={(event) => setCode(event.target.value.toUpperCase())}
+              />
+            </Col>
+            <Col xs={24} sm={10}>
             <Input
               size="large"
               value={name}
-              placeholder="Nhập tên liên đoàn / đơn vị"
+              placeholder="Tên liên đoàn / trung tâm / CLB"
               maxLength={180}
               disabled={!countryId}
               onChange={(event) => setName(event.target.value)}
               onPressEnter={saveFederation}
             />
+            </Col>
+            <Col span={24} className="flex justify-end gap-2">
             {editingId && (
               <Tooltip title="Hủy sửa">
                 <Button
@@ -539,11 +604,12 @@ function FederationManager({
             >
               {editingId ? 'Lưu' : 'Thêm'}
             </Button>
-          </Space.Compact>
+            </Col>
+          </Row>
         </div>
 
         <div>
-          <Typography.Text strong>Danh sách liên đoàn</Typography.Text>
+          <Typography.Text strong>Danh sách đơn vị</Typography.Text>
           <List
             className="mt-2 max-h-72 overflow-y-auto rounded-lg border border-sdark-700 px-3"
             loading={loading}
@@ -552,7 +618,7 @@ function FederationManager({
               emptyText: (
                 <Empty
                   image={Empty.PRESENTED_IMAGE_SIMPLE}
-                  description="Quốc gia này chưa có liên đoàn"
+                  description="Quốc gia này chưa có đơn vị thể thao"
                 />
               ),
             }}
@@ -561,12 +627,12 @@ function FederationManager({
               return (
                 <List.Item
                   actions={[
-                    <Tooltip key="select" title={selected ? 'Đang được chọn' : 'Chọn liên đoàn này'}>
+                    <Tooltip key="select" title={selected ? 'Đang được chọn' : 'Chọn đơn vị này'}>
                       <Button
                         type={selected ? 'primary' : 'text'}
                         size="small"
                         htmlType="button"
-                        aria-label="Chọn liên đoàn"
+                        aria-label="Chọn đơn vị"
                         icon={<Check className="h-4 w-4" />}
                         onClick={() => onSelect(federation.id)}
                       />
@@ -581,6 +647,8 @@ function FederationManager({
                         onClick={() => {
                           setEditingId(federation.id);
                           setName(federation.name);
+                          setCode(federation.code || '');
+                          setType(federation.type || 'NATIONAL_FEDERATION');
                           setError(null);
                         }}
                       />
@@ -588,7 +656,7 @@ function FederationManager({
                     canDelete ? <Popconfirm
                       key="delete"
                       title={`Xóa “${federation.name}”?`}
-                      description="Chỉ có thể xóa liên đoàn chưa được vận động viên sử dụng."
+                      description="Chỉ có thể xóa đơn vị chưa được VĐV hoặc sự kiện sử dụng."
                       okText="Xóa"
                       cancelText="Hủy"
                       okButtonProps={{ danger: true }}
@@ -608,7 +676,13 @@ function FederationManager({
                     </Popconfirm> : null,
                   ]}
                 >
-                  <Typography.Text>{federation.name}</Typography.Text>
+                  <Space size={6} wrap>
+                    <Typography.Text>{federation.name}</Typography.Text>
+                    {federation.code && <Tag>{federation.code}</Tag>}
+                    <Tag color="geekblue">
+                      {federationTypeOptions.find((option) => option.value === federation.type)?.label || 'Đơn vị'}
+                    </Tag>
+                  </Space>
                   {selected && <Tag color="blue">Đang chọn</Tag>}
                 </List.Item>
               );

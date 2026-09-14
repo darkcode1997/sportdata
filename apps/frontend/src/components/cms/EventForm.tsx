@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import useSWR from 'swr';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -17,6 +17,10 @@ const eventSchema = z.object({
   sportIds: z.array(z.string()).min(1, 'Vui lòng chọn ít nhất một bộ môn'),
   categoryIds: z.array(z.string()),
   athleteIds: z.array(z.string()),
+  level: z.enum(['INTERNATIONAL', 'NATIONAL', 'REGIONAL', 'PROVINCIAL', 'CENTER_INTERNAL', 'OPEN']),
+  organizerId: z.string().optional(),
+  participatingFederationIds: z.array(z.string()),
+  allowIndependentAthletes: z.boolean(),
   description: z.string().optional(),
   startDate: z.string().min(1, 'Vui lòng chọn thời gian bắt đầu'),
   endDate: z.string().min(1, 'Vui lòng chọn thời gian kết thúc'),
@@ -27,6 +31,9 @@ const eventSchema = z.object({
 }).refine((values) => new Date(values.endDate) >= new Date(values.startDate), {
   message: 'Thời gian kết thúc phải sau thời gian bắt đầu',
   path: ['endDate'],
+}).refine((values) => values.level !== 'CENTER_INTERNAL' || Boolean(values.organizerId), {
+  message: 'Sự kiện nội bộ phải chọn đơn vị tổ chức',
+  path: ['organizerId'],
 });
 
 type EventFormValues = z.infer<typeof eventSchema>;
@@ -36,7 +43,9 @@ export function EventForm({ eventId, initialData }: { eventId?: string; initialD
   const router = useRouter();
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [athleteCountryId, setAthleteCountryId] = useState<string>();
+  const [athleteFederationId, setAthleteFederationId] = useState<string>();
   const { data: sports = [] } = useSWR<any[]>('/sports', fetcher);
+  const { data: federations = [] } = useSWR<any[]>('/federations', fetcher);
   const { data: categoriesResponse } = useSWR<any>('/categories?limit=500', fetcher);
   const categories = categoriesResponse?.items || [];
   const {
@@ -52,6 +61,10 @@ export function EventForm({ eventId, initialData }: { eventId?: string; initialD
       sportIds: initialData?.sports?.map((sport: any) => sport.id) || (initialData?.sportId ? [initialData.sportId] : []),
       categoryIds: initialData?.categories?.map((category: any) => category.id) || [],
       athleteIds: initialData?.athletes?.map((athlete: any) => athlete.id) || [],
+      level: initialData?.level || 'INTERNATIONAL',
+      organizerId: initialData?.organizerId || '',
+      participatingFederationIds: initialData?.participatingFederations?.map((item: any) => item.id) || [],
+      allowIndependentAthletes: initialData?.allowIndependentAthletes ?? true,
       description: initialData?.description || '',
       startDate: toLocalInput(initialData?.startDate),
       endDate: toLocalInput(initialData?.endDate),
@@ -63,14 +76,22 @@ export function EventForm({ eventId, initialData }: { eventId?: string; initialD
   });
   const selectedSportIds = watch('sportIds') || [];
   const selectedCategoryIds = watch('categoryIds') || [];
+  const selectedLevel = watch('level');
+  const selectedFederationIds = watch('participatingFederationIds') || [];
+  const allowIndependentAthletes = watch('allowIndependentAthletes');
   const selectedCategoryIdsKey = selectedCategoryIds.join(',');
+  const selectedFederationIdsKey = selectedFederationIds.join(',');
   const { data: athleteFilterOptions } = useSWR<any>(
     selectedCategoryIdsKey
-      ? `/athletes/filter-options?categoryIds=${encodeURIComponent(selectedCategoryIdsKey)}`
+      ? `/athletes/filter-options?categoryIds=${encodeURIComponent(selectedCategoryIdsKey)}${selectedFederationIdsKey ? `&federationIds=${encodeURIComponent(selectedFederationIdsKey)}` : ''}${allowIndependentAthletes ? '&includeIndependent=true' : ''}`
       : null,
     fetcher,
   );
-  const countries = athleteFilterOptions?.countries || [];
+  const countries = useMemo(() => athleteFilterOptions?.countries || [], [athleteFilterOptions?.countries]);
+  const eligibleFederations = useMemo(
+    () => athleteFilterOptions?.federations || [],
+    [athleteFilterOptions?.federations],
+  );
   const availableCategories = categories.filter((category: any) => selectedSportIds.includes(category.sportId));
   const selectedSports = selectedSportIds
     .map((sportId) => sports.find((sport: any) => sport.id === sportId))
@@ -81,6 +102,15 @@ export function EventForm({ eventId, initialData }: { eventId?: string; initialD
       setAthleteCountryId(undefined);
     }
   }, [athleteCountryId, countries]);
+
+  useEffect(() => {
+    if (
+      athleteFederationId
+      && !eligibleFederations.some((federation: any) => federation.id === athleteFederationId)
+    ) {
+      setAthleteFederationId(undefined);
+    }
+  }, [athleteFederationId, eligibleFederations]);
 
   const onSubmit = async (values: EventFormValues) => {
     setSubmitError(null);
@@ -115,10 +145,96 @@ export function EventForm({ eventId, initialData }: { eventId?: string; initialD
       {submitError && <ErrorMessage message={submitError} />}
       <Card className="cms-surface" title="Thông tin sự kiện">
         <Row gutter={[20, 2]}>
-          <ControlledField name="name" control={control} label="Tên sự kiện" error={errors.name?.message} wide>
+          <ControlledField name="name" control={control} label="Tên sự kiện" error={errors.name?.message} wide required>
             {(field) => <Input {...field} size="large" placeholder="Tên giải đấu hoặc sự kiện" />}
           </ControlledField>
-          <ControlledField name="sportIds" control={control} label="Bộ môn" error={errors.sportIds?.message} wide>
+          <ControlledField name="level" control={control} label="Quy mô sự kiện" error={errors.level?.message} required>
+            {(field) => (
+              <Select
+                size="large"
+                className="w-full"
+                value={field.value}
+                onChange={field.onChange}
+                options={[
+                  { value: 'INTERNATIONAL', label: 'Quốc tế / Đại hội đa quốc gia' },
+                  { value: 'NATIONAL', label: 'Toàn quốc' },
+                  { value: 'REGIONAL', label: 'Khu vực' },
+                  { value: 'PROVINCIAL', label: 'Tỉnh / thành phố' },
+                  { value: 'CENTER_INTERNAL', label: 'Nội bộ trung tâm / CLB' },
+                  { value: 'OPEN', label: 'Mở rộng' },
+                ]}
+              />
+            )}
+          </ControlledField>
+          <ControlledField name="organizerId" control={control} label="Đơn vị tổ chức" error={errors.organizerId?.message}>
+            {(field) => (
+              <Select
+                allowClear
+                showSearch
+                optionFilterProp="label"
+                size="large"
+                className="w-full"
+                placeholder="Liên đoàn, trung tâm hoặc CLB"
+                value={field.value || undefined}
+                onChange={(organizerId) => {
+                  field.onChange(organizerId || '');
+                  if (selectedLevel === 'CENTER_INTERNAL' && organizerId) {
+                    setValue(
+                      'participatingFederationIds',
+                      Array.from(new Set([...selectedFederationIds, organizerId])),
+                    );
+                  }
+                }}
+                options={federations.map((item: any) => ({
+                  value: item.id,
+                  label: `${item.name}${item.code ? ` · ${item.code}` : ''}`,
+                }))}
+              />
+            )}
+          </ControlledField>
+          <ControlledField
+            name="participatingFederationIds"
+            control={control}
+            label="Đơn vị / trung tâm / CLB tham gia"
+            error={errors.participatingFederationIds?.message}
+            wide
+          >
+            {(field) => (
+              <Select
+                mode="multiple"
+                allowClear
+                showSearch
+                optionFilterProp="label"
+                maxTagCount="responsive"
+                size="large"
+                className="w-full"
+                placeholder="Để trống nếu giải mở cho mọi đơn vị"
+                value={field.value}
+                onChange={(ids) => {
+                  field.onChange(ids);
+                  setValue('athleteIds', [], { shouldValidate: true });
+                }}
+                options={federations.map((item: any) => ({
+                  value: item.id,
+                  label: `${item.name}${item.code ? ` · ${item.code}` : ''}`,
+                }))}
+              />
+            )}
+          </ControlledField>
+          <Col span={24}>
+            <Form.Item>
+              <Controller
+                name="allowIndependentAthletes"
+                control={control}
+                render={({ field }) => (
+                  <Checkbox checked={field.value} onChange={(event) => field.onChange(event.target.checked)}>
+                    Cho phép VĐV tự do, không trực thuộc đơn vị
+                  </Checkbox>
+                )}
+              />
+            </Form.Item>
+          </Col>
+          <ControlledField name="sportIds" control={control} label="Bộ môn" error={errors.sportIds?.message} wide required>
             {(field) => (
               <Select
                 mode="multiple"
@@ -145,7 +261,7 @@ export function EventForm({ eventId, initialData }: { eventId?: string; initialD
               />
             )}
           </ControlledField>
-          <ControlledField name="categoryIds" control={control} label="Hạng mục thi đấu" error={errors.categoryIds?.message} wide>
+          <ControlledField name="categoryIds" control={control} label="Hạng mục thi đấu" error={errors.categoryIds?.message} wide required>
             {(field) => (
               <CategoryGroupedSelect
                 sports={selectedSports}
@@ -169,7 +285,7 @@ export function EventForm({ eventId, initialData }: { eventId?: string; initialD
                     Đã chọn {(field.value || []).length.toLocaleString()} VĐV
                   </span>
                 </div>
-                <div className="grid gap-3 lg:grid-cols-[280px_minmax(0,1fr)]">
+                <div className="grid gap-3 xl:grid-cols-[260px_300px_minmax(0,1fr)]">
                   <Select
                     allowClear
                     showSearch
@@ -183,11 +299,28 @@ export function EventForm({ eventId, initialData }: { eventId?: string; initialD
                       label: `${country.name} · ${country.code} (${country.athleteCount})`,
                     }))}
                   />
+                  <Select
+                    allowClear
+                    showSearch
+                    optionFilterProp="label"
+                    size="large"
+                    placeholder="Tất cả đơn vị"
+                    value={athleteFederationId}
+                    onChange={setAthleteFederationId}
+                    options={eligibleFederations.map((federation: any) => ({
+                      value: federation.id,
+                      label: `${federation.name} (${federation.athleteCount})`,
+                    }))}
+                  />
                   <RemoteAthleteSelect
                     mode="multiple"
                     categoryIds={selectedCategoryIds}
                     countryId={athleteCountryId}
-                    groupByCountry
+                    federationId={athleteFederationId}
+                    federationIds={selectedFederationIds}
+                    includeIndependent={allowIndependentAthletes}
+                    groupByCountry={!selectedFederationIds.length}
+                    groupByFederation={Boolean(selectedFederationIds.length)}
                     maxTagCount={0}
                     selectionLabel="VĐV"
                     showPageControls
@@ -205,7 +338,7 @@ export function EventForm({ eventId, initialData }: { eventId?: string; initialD
           <ControlledField name="location" control={control} label="Địa điểm" error={errors.location?.message}>
             {(field) => <Input {...field} size="large" placeholder="Nhà thi đấu, thành phố" />}
           </ControlledField>
-          <ControlledField name="startDate" control={control} label="Bắt đầu" error={errors.startDate?.message}>
+          <ControlledField name="startDate" control={control} label="Bắt đầu" error={errors.startDate?.message} required>
             {(field) => (
               <DatePicker
                 showTime={{ format: 'HH:mm' }}
@@ -219,7 +352,7 @@ export function EventForm({ eventId, initialData }: { eventId?: string; initialD
               />
             )}
           </ControlledField>
-          <ControlledField name="endDate" control={control} label="Kết thúc" error={errors.endDate?.message}>
+          <ControlledField name="endDate" control={control} label="Kết thúc" error={errors.endDate?.message} required>
             {(field) => (
               <DatePicker
                 showTime={{ format: 'HH:mm' }}
@@ -347,10 +480,10 @@ function CategoryGroupedSelect({
   );
 }
 
-function ControlledField({ name, control, label, error, children, wide = false }: { name: keyof EventFormValues; control: any; label: string; error?: string; children: (field: any) => React.ReactElement; wide?: boolean }) {
+function ControlledField({ name, control, label, error, children, wide = false, required = false }: { name: keyof EventFormValues; control: any; label: string; error?: string; children: (field: any) => React.ReactElement; wide?: boolean; required?: boolean }) {
   return (
     <Col xs={24} md={wide ? 24 : 12}>
-      <Form.Item label={label} validateStatus={error ? 'error' : undefined} help={error} required>
+      <Form.Item label={label} validateStatus={error ? 'error' : undefined} help={error} required={required}>
         <Controller name={name} control={control} render={({ field }) => children(field)} />
       </Form.Item>
     </Col>

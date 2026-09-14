@@ -76,7 +76,7 @@ export default function DashboardPage() {
   const maxChartValue = Math.max(1, ...eventChart.map((item: any) => Math.max(item.events, item.matches)));
 
   const statusBadge = (status: string) => {
-    if (status === 'live') return <Tag color="error" icon={<Radio className="h-3 w-3" />}>LIVE</Tag>;
+    if (status === 'live') return <Tag color="error" icon={<Radio className="h-3 w-3" />}>TRỰC TIẾP</Tag>;
     if (status === 'finished') return <Tag color="success">Hoàn thành</Tag>;
     return <Tag color="blue">Sắp diễn ra</Tag>;
   };

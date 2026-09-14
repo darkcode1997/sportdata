@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateAthleteDto } from './dto/create-athlete.dto';
 import { UpdateAthleteDto } from './dto/update-athlete.dto';
@@ -10,6 +10,7 @@ export class AthletesService {
 
   async create(createAthleteDto: CreateAthleteDto) {
     const { eventIds, categoryIds, birthDate, ...data } = createAthleteDto;
+    await this.validateAffiliation(data.countryId, data.federationId);
 
     return this.prisma.athlete.create({
       data: {
@@ -30,6 +31,9 @@ export class AthletesService {
     const {
       search,
       countryId,
+      federationId,
+      federationIds,
+      includeIndependent,
       sportId,
       categoryId,
       categoryIds,
@@ -51,6 +55,23 @@ export class AthletesService {
 
     if (countryId) {
       where.countryId = countryId;
+    }
+
+    const selectedFederationIds = [
+      ...(federationIds || '').split(','),
+      ...(federationId ? [federationId] : []),
+    ].map((id) => id.trim()).filter(Boolean);
+    if (selectedFederationIds.length) {
+      if (includeIndependent) {
+        where.AND = [{
+          OR: [
+            { federationId: { in: [...new Set(selectedFederationIds)] } },
+            { federationId: null },
+          ],
+        }];
+      } else {
+        where.federationId = { in: [...new Set(selectedFederationIds)] };
+      }
     }
 
     if (gender) {
@@ -105,9 +126,26 @@ export class AthletesService {
       ...(query.categoryIds || '').split(','),
       ...(query.categoryId ? [query.categoryId] : []),
     ].map((id) => id.trim()).filter(Boolean);
+    const selectedFederationIds = [
+      ...(query.federationIds || '').split(','),
+      ...(query.federationId ? [query.federationId] : []),
+    ].map((id) => id.trim()).filter(Boolean);
     const where: any = {
       ...(query.eventId ? { events: { some: { id: query.eventId } } } : {}),
       ...(query.gender ? { gender: query.gender } : {}),
+      ...(selectedFederationIds.length && !query.includeIndependent
+        ? { federationId: { in: [...new Set(selectedFederationIds)] } }
+        : {}),
+      ...(selectedFederationIds.length && query.includeIndependent
+        ? {
+            AND: [{
+              OR: [
+                { federationId: { in: [...new Set(selectedFederationIds)] } },
+                { federationId: null },
+              ],
+            }],
+          }
+        : {}),
       ...(query.sportId || selectedCategoryIds.length
         ? {
             categories: {
@@ -120,24 +158,48 @@ export class AthletesService {
         : {}),
     };
 
-    const countryGroups = await this.prisma.athlete.groupBy({
-      by: ['countryId'],
-      where,
-      _count: { _all: true },
-    });
-    const countries = await this.prisma.country.findMany({
-      where: { id: { in: countryGroups.map((group) => group.countryId) } },
-      select: { id: true, code: true, name: true, flagUrl: true },
-      orderBy: { name: 'asc' },
-    });
+    const [countryGroups, federationGroups] = await Promise.all([
+      this.prisma.athlete.groupBy({
+        by: ['countryId'],
+        where,
+        _count: { _all: true },
+      }),
+      this.prisma.athlete.groupBy({
+        by: ['federationId'],
+        where,
+        _count: { _all: true },
+      }),
+    ]);
+    const federationGroupIds = federationGroups
+      .map((group) => group.federationId)
+      .filter((id): id is string => Boolean(id));
+    const [countries, federations] = await Promise.all([
+      this.prisma.country.findMany({
+        where: { id: { in: countryGroups.map((group) => group.countryId) } },
+        select: { id: true, code: true, name: true, flagUrl: true },
+        orderBy: { name: 'asc' },
+      }),
+      this.prisma.federation.findMany({
+        where: { id: { in: federationGroupIds } },
+        select: { id: true, code: true, name: true, type: true, countryId: true },
+        orderBy: { name: 'asc' },
+      }),
+    ]);
     const countByCountry = new Map(
       countryGroups.map((group) => [group.countryId, group._count._all]),
+    );
+    const countByFederation = new Map(
+      federationGroups.map((group) => [group.federationId, group._count._all]),
     );
 
     return {
       countries: countries.map((country) => ({
         ...country,
         athleteCount: countByCountry.get(country.id) || 0,
+      })),
+      federations: federations.map((federation) => ({
+        ...federation,
+        athleteCount: countByFederation.get(federation.id) || 0,
       })),
       total: countryGroups.reduce((sum, group) => sum + group._count._all, 0),
     };
@@ -158,7 +220,7 @@ export class AthletesService {
     });
 
     if (!athlete) {
-      throw new NotFoundException(`Athlete with ID ${id} not found`);
+      throw new NotFoundException(`Không tìm thấy vận động viên có mã ${id}`);
     }
 
     return athlete;
@@ -167,7 +229,13 @@ export class AthletesService {
   async update(id: string, updateAthleteDto: UpdateAthleteDto) {
     const { eventIds, categoryIds, birthDate, ...data } = updateAthleteDto;
 
-    await this.findOne(id);
+    const existingAthlete = await this.findOne(id);
+    await this.validateAffiliation(
+      data.countryId || existingAthlete.countryId,
+      data.federationId === undefined
+        ? existingAthlete.federationId || undefined
+        : data.federationId || undefined,
+    );
 
     return this.prisma.athlete.update({
       where: { id },
@@ -241,5 +309,21 @@ export class AthletesService {
         },
       },
     };
+  }
+
+  private async validateAffiliation(countryId: string, federationId?: string) {
+    if (!federationId) return;
+    const federation = await this.prisma.federation.findUnique({
+      where: { id: federationId },
+      select: { countryId: true, name: true },
+    });
+    if (!federation) {
+      throw new BadRequestException('Đơn vị chủ quản không tồn tại');
+    }
+    if (federation.countryId !== countryId) {
+      throw new BadRequestException(
+        `Vận động viên và đơn vị “${federation.name}” phải cùng quốc gia`,
+      );
+    }
   }
 }

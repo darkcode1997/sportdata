@@ -1,12 +1,24 @@
 import { IsOptional, IsString, IsDateString, IsBoolean, IsInt, Min } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
+import { EventLevel } from '@prisma/client';
+import { IsEnum } from 'class-validator';
 
 export class QueryEventsDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   sportId?: string;
+
+  @ApiPropertyOptional({ enum: EventLevel })
+  @IsOptional()
+  @IsEnum(EventLevel)
+  level?: EventLevel;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  organizerId?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -21,7 +33,7 @@ export class QueryEventsDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsBoolean()
-  @Type(() => Boolean)
+  @Transform(({ value }) => value === 'true' ? true : value === 'false' ? false : value)
   isPublished?: boolean;
 
   @ApiPropertyOptional()

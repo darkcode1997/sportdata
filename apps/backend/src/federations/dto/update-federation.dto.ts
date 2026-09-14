@@ -1,7 +1,12 @@
-import { IsOptional, IsString } from 'class-validator';
-import { CreateFederationDto } from './create-federation.dto';
+import { FederationType } from '@prisma/client';
+import { IsEnum, IsOptional, IsString, MaxLength } from 'class-validator';
 
-export class UpdateFederationDto implements Partial<CreateFederationDto> {
+export class UpdateFederationDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  code?: string | null;
+
   @IsOptional()
   @IsString()
   name?: string;
@@ -9,4 +14,8 @@ export class UpdateFederationDto implements Partial<CreateFederationDto> {
   @IsOptional()
   @IsString()
   countryId?: string;
+
+  @IsOptional()
+  @IsEnum(FederationType)
+  type?: FederationType;
 }

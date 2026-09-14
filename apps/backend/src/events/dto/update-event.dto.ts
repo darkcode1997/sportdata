@@ -1,8 +1,9 @@
 import { IsString, IsOptional, IsBoolean, IsDateString, IsArray } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { CreateEventDto } from './create-event.dto';
+import { EventLevel } from '@prisma/client';
+import { IsEnum } from 'class-validator';
 
-export class UpdateEventDto implements Partial<CreateEventDto> {
+export class UpdateEventDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
@@ -65,4 +66,25 @@ export class UpdateEventDto implements Partial<CreateEventDto> {
   @IsArray()
   @IsString({ each: true })
   athleteIds?: string[];
+
+  @ApiPropertyOptional({ enum: EventLevel })
+  @IsOptional()
+  @IsEnum(EventLevel)
+  level?: EventLevel;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  organizerId?: string | null;
+
+  @ApiPropertyOptional({ type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  participatingFederationIds?: string[];
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  allowIndependentAthletes?: boolean;
 }

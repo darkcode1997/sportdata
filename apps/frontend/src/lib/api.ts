@@ -24,7 +24,7 @@ api.interceptors.response.use(
     if (error.response?.status === 401) {
       clearAuthToken();
       if (typeof window !== 'undefined') {
-        window.location.href = '/cms/login';
+        window.location.replace('/cms/login');
       }
     }
     return Promise.reject(error);

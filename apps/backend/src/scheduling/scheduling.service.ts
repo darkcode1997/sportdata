@@ -66,7 +66,7 @@ export class SchedulingService {
         },
       },
     });
-    if (!event) throw new NotFoundException('Event not found');
+    if (!event) throw new NotFoundException('Không tìm thấy sự kiện');
 
     const [timeSlots, scheduledMatches, lockedSchedules, resultGroups] = await Promise.all([
       this.prisma.timeSlot.count({ where: { session: { eventId } } }),
@@ -111,7 +111,7 @@ export class SchedulingService {
         fops: { select: { id: true, name: true, venueId: true } },
       },
     });
-    if (!event) throw new NotFoundException('Event not found');
+    if (!event) throw new NotFoundException('Không tìm thấy sự kiện');
 
     const eventSports = event.sports.length ? event.sports : [event.sport];
     const activeEntryStatuses = [EntryStatus.REGISTERED, EntryStatus.VERIFIED];
@@ -416,9 +416,9 @@ export class SchedulingService {
       where: { id },
       include: { _count: { select: { fops: true, sessions: true } } },
     });
-    if (!venue) throw new NotFoundException('Venue not found');
+    if (!venue) throw new NotFoundException('Không tìm thấy địa điểm');
     if (venue._count.fops || venue._count.sessions) {
-      throw new BadRequestException('Venue still has FOPs or sessions and cannot be deleted');
+      throw new BadRequestException('Không thể xóa địa điểm đang có sân/sàn hoặc ca thi đấu');
     }
     await this.prisma.venue.delete({ where: { id } });
   }
@@ -438,22 +438,22 @@ export class SchedulingService {
   async createSession(eventId: string, dto: CreateSessionDto) {
     const startTime = new Date(dto.startTime);
     const endTime = new Date(dto.endTime);
-    if (endTime <= startTime) throw new BadRequestException('Session endTime must be after startTime');
+    if (endTime <= startTime) throw new BadRequestException('Thời gian kết thúc ca phải sau thời gian bắt đầu');
 
     const event = await this.prisma.event.findUnique({
       where: { id: eventId },
       select: { id: true, startDate: true, endDate: true, sports: { select: { id: true } } },
     });
-    if (!event) throw new NotFoundException('Event not found');
+    if (!event) throw new NotFoundException('Không tìm thấy sự kiện');
     if (startTime < event.startDate || endTime > new Date(event.endDate.getTime() + 86_400_000)) {
-      throw new BadRequestException('Session must be inside the event date window');
+      throw new BadRequestException('Ca thi đấu phải nằm trong thời gian diễn ra sự kiện');
     }
     if (dto.sportId && !event.sports.some(({ id }) => id === dto.sportId)) {
-      throw new BadRequestException('Sport does not belong to this event');
+      throw new BadRequestException('Bộ môn không thuộc sự kiện này');
     }
 
     const venue = await this.prisma.venue.findUnique({ where: { id: dto.venueId }, select: { id: true } });
-    if (!venue) throw new NotFoundException('Venue not found');
+    if (!venue) throw new NotFoundException('Không tìm thấy địa điểm');
 
     return this.prisma.$transaction(async (transaction) => {
       await transaction.event.update({
@@ -481,15 +481,15 @@ export class SchedulingService {
       where: { id: sessionId },
       include: { venue: true },
     });
-    if (!session) throw new NotFoundException('Session not found');
-    if (session.status === SessionStatus.LOCKED) throw new BadRequestException('Session is locked');
+    if (!session) throw new NotFoundException('Không tìm thấy ca thi đấu');
+    if (session.status === SessionStatus.LOCKED) throw new BadRequestException('Ca thi đấu đã bị khóa');
 
     const fops = await this.prisma.fop.findMany({
       where: { id: { in: dto.fopIds }, eventId: session.eventId },
     });
-    if (fops.length !== dto.fopIds.length) throw new BadRequestException('One or more FOPs do not belong to the event');
+    if (fops.length !== dto.fopIds.length) throw new BadRequestException('Có sân/sàn không thuộc sự kiện này');
     const invalidVenue = fops.find((fop) => fop.venueId && fop.venueId !== session.venueId);
-    if (invalidVenue) throw new BadRequestException(`FOP ${invalidVenue.name} belongs to another venue`);
+    if (invalidVenue) throw new BadRequestException(`Sân/sàn ${invalidVenue.name} thuộc một địa điểm khác`);
 
     const durationMs = (dto.durationMinutes || 10) * 60_000;
     const stepMs = durationMs + (dto.turnaroundMinutes ?? 5) * 60_000;
@@ -520,7 +520,7 @@ export class SchedulingService {
 
   async upsertRule(eventId: string, sportId: string, dto: UpsertSchedulingRuleDto) {
     const membership = await this.prisma.event.count({ where: { id: eventId, sports: { some: { id: sportId } } } });
-    if (!membership) throw new BadRequestException('Sport does not belong to this event');
+    if (!membership) throw new BadRequestException('Bộ môn không thuộc sự kiện này');
     return this.prisma.sportSchedulingRule.upsert({
       where: { eventId_sportId: { eventId, sportId } },
       update: dto,
@@ -539,7 +539,7 @@ export class SchedulingService {
 
   async lockMatch(matchId: string, userId: string, dto: LockScheduleDto) {
     const match = await this.prisma.match.findUnique({ where: { id: matchId }, select: { id: true } });
-    if (!match) throw new NotFoundException('Match not found');
+    if (!match) throw new NotFoundException('Không tìm thấy trận đấu');
     return this.prisma.match.update({
       where: { id: matchId },
       data: {
@@ -560,7 +560,7 @@ export class SchedulingService {
 
   async autoSchedule(eventId: string, dto: AutoScheduleDto) {
     const event = await this.prisma.event.findUnique({ where: { id: eventId }, select: { id: true } });
-    if (!event) throw new NotFoundException('Event not found');
+    if (!event) throw new NotFoundException('Không tìm thấy sự kiện');
     const onlyUnscheduled = dto.onlyUnscheduled !== false;
     const dryRun = dto.dryRun !== false;
 

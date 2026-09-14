@@ -43,6 +43,22 @@ const RESULT_SELECT = {
   },
 } satisfies Prisma.MatchSelect;
 
+const RESULT_STATUS_LABELS: Record<ResultStatus, string> = {
+  DRAFT: 'Bản nháp',
+  ENTERED: 'Đã nhập kết quả',
+  REFEREE_CONFIRMED: 'Trọng tài đã xác nhận',
+  APPROVED: 'Đã phê duyệt',
+  PUBLISHED: 'Đã công bố',
+  LOCKED: 'Đã khóa kết quả',
+};
+
+const RESULT_ACTION_LABELS: Record<string, string> = {
+  REFEREE_CONFIRM: 'trọng tài xác nhận',
+  APPROVE_RESULT: 'phê duyệt',
+  PUBLISH_RESULT: 'công bố',
+  LOCK_RESULT: 'khóa kết quả',
+};
+
 @Injectable()
 export class ResultsService {
   constructor(
@@ -58,7 +74,7 @@ export class ResultsService {
         resultRevisions: { orderBy: { version: 'desc' as const }, take: 50 },
       },
     });
-    if (!match) throw new NotFoundException('Match not found');
+    if (!match) throw new NotFoundException('Không tìm thấy trận đấu');
     return match;
   }
 
@@ -66,12 +82,12 @@ export class ResultsService {
     return this.prisma.$transaction(async (transaction) => {
       const before = await this.loadMatch(transaction, matchId);
       this.assertExpectedVersion(before.resultVersion, dto.expectedVersion);
-      if (before.resultStatus === ResultStatus.LOCKED) throw new BadRequestException('Result is locked');
+      if (before.resultStatus === ResultStatus.LOCKED) throw new BadRequestException('Kết quả đã khóa và không thể chỉnh sửa');
       if (before.resultStatus === ResultStatus.APPROVED || before.resultStatus === ResultStatus.PUBLISHED) {
-        throw new BadRequestException('Approved or published result must be reopened before editing');
+        throw new BadRequestException('Phải mở lại kết quả đã phê duyệt hoặc công bố trước khi chỉnh sửa');
       }
       if (before.resultVersion > 0 && !dto.reason?.trim()) {
-        throw new BadRequestException('A reason is required when correcting an existing result');
+        throw new BadRequestException('Bắt buộc nhập lý do khi hiệu chỉnh kết quả đã có');
       }
 
       const validAthletes = new Set([
@@ -85,15 +101,15 @@ export class ResultsService {
         ...before.participants.map((participant) => participant.teamId),
       ].filter(Boolean));
       if (dto.winnerId && !validAthletes.has(dto.winnerId)) {
-        throw new BadRequestException('Winner athlete is not a match participant');
+        throw new BadRequestException('Vận động viên thắng không thuộc trận đấu này');
       }
       if (dto.winnerTeamId && !validTeams.has(dto.winnerTeamId)) {
-        throw new BadRequestException('Winner team is not a match participant');
+        throw new BadRequestException('Đội thắng không thuộc trận đấu này');
       }
       if (dto.participantResults?.length) {
         const participantIds = new Set(before.participants.map(({ id }) => id));
         if (dto.participantResults.some(({ matchParticipantId }) => !participantIds.has(matchParticipantId))) {
-          throw new BadRequestException('One or more participant results do not belong to this match');
+          throw new BadRequestException('Có kết quả của người tham dự không thuộc trận đấu này');
         }
       }
 
@@ -196,7 +212,7 @@ export class ResultsService {
   }
 
   async reopen(matchId: string, userId: string, expectedVersion: number, reason?: string) {
-    if (!reason?.trim()) throw new BadRequestException('A reason is required to reopen a result');
+    if (!reason?.trim()) throw new BadRequestException('Bắt buộc nhập lý do mở lại kết quả');
     return this.prisma.$transaction(async (transaction) => {
       const before = await this.loadMatch(transaction, matchId);
       this.assertExpectedVersion(before.resultVersion, expectedVersion);
@@ -206,7 +222,7 @@ export class ResultsService {
         || before.resultStatus === ResultStatus.PUBLISHED
         || before.resultStatus === ResultStatus.LOCKED
       )) {
-        throw new BadRequestException('Only confirmed, approved, published or locked results can be reopened');
+        throw new BadRequestException('Chỉ có thể mở lại kết quả đã xác nhận, phê duyệt, công bố hoặc khóa');
       }
       const writeResult = await transaction.match.updateMany({
         where: { id: matchId, resultVersion: before.resultVersion },
@@ -244,7 +260,9 @@ export class ResultsService {
       const before = await this.loadMatch(transaction, matchId);
       this.assertExpectedVersion(before.resultVersion, expectedVersion);
       if (before.resultStatus !== expected) {
-        throw new BadRequestException(`Result must be ${expected} before ${action}`);
+      throw new BadRequestException(
+        `Kết quả phải ở trạng thái “${RESULT_STATUS_LABELS[expected]}” trước khi ${RESULT_ACTION_LABELS[action] || 'thực hiện thao tác này'}`,
+      );
       }
       const writeResult = await transaction.match.updateMany({
         where: {
@@ -263,7 +281,7 @@ export class ResultsService {
 
   private async loadMatch(transaction: Prisma.TransactionClient, matchId: string) {
     const match = await transaction.match.findUnique({ where: { id: matchId }, select: RESULT_SELECT });
-    if (!match) throw new NotFoundException('Match not found');
+    if (!match) throw new NotFoundException('Không tìm thấy trận đấu');
     return match;
   }
 

@@ -32,7 +32,7 @@ export class CountriesService {
   async findOne(id: string) {
     const country = await this.prisma.country.findUnique({ where: { id } });
     if (!country) {
-      throw new NotFoundException(`Country with id '${id}' not found`);
+      throw new NotFoundException(`Không tìm thấy quốc gia có mã '${id}'`);
     }
     return country;
   }

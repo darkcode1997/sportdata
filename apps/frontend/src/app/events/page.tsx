@@ -41,6 +41,8 @@ interface EventData {
   totalMatches?: number;
   days?: number;
   _count?: { matches?: number; athletes?: number };
+  level?: string;
+  organizer?: { id: string; name: string } | null;
 }
 
 interface EventResponse {
@@ -56,6 +58,20 @@ const dateOptions = [
   { value: 'tomorrow', label: 'Ngày mai' },
   { value: 'week', label: '7 ngày tới' },
 ];
+
+const eventLevelOptions = [
+  { value: '', label: 'Mọi quy mô' },
+  { value: 'INTERNATIONAL', label: 'Quốc tế' },
+  { value: 'NATIONAL', label: 'Toàn quốc' },
+  { value: 'REGIONAL', label: 'Khu vực' },
+  { value: 'PROVINCIAL', label: 'Tỉnh / thành' },
+  { value: 'CENTER_INTERNAL', label: 'Nội bộ trung tâm' },
+  { value: 'OPEN', label: 'Mở rộng' },
+];
+
+function eventLevelLabel(level?: string) {
+  return eventLevelOptions.find((option) => option.value === level)?.label || 'Sự kiện';
+}
 
 const sportColors: Record<string, string> = {
   BOX: '#ef4444',
@@ -128,6 +144,7 @@ function sportAccent(code?: string) {
 export default function EventsPage() {
   const [sportId, setSportId] = useState('');
   const [search, setSearch] = useState('');
+  const [level, setLevel] = useState('');
   const [dateFilter, setDateFilter] = useState<DateFilter>('all');
 
   const { data: sportResponse, isLoading: sportsLoading } = useSWR<Sport[] | SportResponse>(
@@ -171,16 +188,18 @@ export default function EventsPage() {
         event.name,
         event.description,
         event.location,
+        event.organizer?.name,
         ...sportsForEvent.map((sport) => `${sport.name} ${sport.code}`),
       ].filter(Boolean).join(' ').toLocaleLowerCase('vi');
       return hasSport
+        && (!level || event.level === level)
         && (!normalizedSearch || searchable.includes(normalizedSearch))
         && matchesDateFilter(event, dateFilter);
     });
-  }, [allEvents, dateFilter, search, sportId]);
+  }, [allEvents, dateFilter, level, search, sportId]);
 
   const selectedSport = sports.find((sport) => sport.id === sportId);
-  const hasFilters = Boolean(sportId || search || dateFilter !== 'all');
+  const hasFilters = Boolean(sportId || level || search || dateFilter !== 'all');
   const isLoading = (eventsLoading && !eventResponse) || (sportsLoading && !sportResponse);
 
   const selectSport = (id: string) => {
@@ -194,6 +213,7 @@ export default function EventsPage() {
 
   const clearFilters = () => {
     setSearch('');
+    setLevel('');
     setDateFilter('all');
     selectSport('');
   };
@@ -277,6 +297,13 @@ export default function EventsPage() {
                 { value: '', label: 'Tất cả bộ môn' },
                 ...sports.map((sport) => ({ value: sport.id, label: sport.name })),
               ]}
+            />
+            <Select
+              size="large"
+              value={level}
+              onChange={setLevel}
+              className="schedule-sport-select"
+              options={eventLevelOptions}
             />
             {hasFilters && (
               <Button
@@ -373,6 +400,9 @@ function EventRow({ event }: { event: EventData }) {
               <span className="schedule-event-sport" key={sport.id}>{sport.code}</span>
             ))}
             <Tag bordered={false} color={status.color}>{status.label}</Tag>
+            <Tag bordered={false} color={event.level === 'INTERNATIONAL' ? 'purple' : 'cyan'}>
+              {eventLevelLabel(event.level)}
+            </Tag>
           </div>
           <h3>{event.name}</h3>
           {event.description && <p>{event.description}</p>}
@@ -380,6 +410,7 @@ function EventRow({ event }: { event: EventData }) {
             <span><CalendarDays className="h-4 w-4" />{formatDateRange(event.startDate, event.endDate)}</span>
             <span><Clock3 className="h-4 w-4" />{eventDays(event)} ngày</span>
             {event.location && <span><MapPin className="h-4 w-4" />{event.location}</span>}
+            {event.organizer?.name && <span><Users className="h-4 w-4" />{event.organizer.name}</span>}
           </div>
         </div>
 

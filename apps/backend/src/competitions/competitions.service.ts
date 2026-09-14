@@ -55,19 +55,19 @@ export class CompetitionsService {
       where: { id: eventId },
       select: { sports: { where: { id: dto.sportId }, select: { id: true } } },
     });
-    if (!event) throw new NotFoundException('Event not found');
-    if (!event.sports.length) throw new BadRequestException('Sport does not belong to this event');
+    if (!event) throw new NotFoundException('Không tìm thấy sự kiện');
+    if (!event.sports.length) throw new BadRequestException('Bộ môn không thuộc sự kiện này');
     const memberIds = dto.members.map(({ athleteId }) => athleteId);
-    if (new Set(memberIds).size !== memberIds.length) throw new BadRequestException('Team members must be unique');
+    if (new Set(memberIds).size !== memberIds.length) throw new BadRequestException('Danh sách thành viên đội không được trùng lặp');
     const athletes = await this.prisma.athlete.findMany({
       where: { id: { in: memberIds }, countryId: dto.countryId },
       select: { id: true },
     });
     if (athletes.length !== memberIds.length) {
-      throw new BadRequestException('All team members must exist and represent the selected country');
+      throw new BadRequestException('Mọi thành viên phải tồn tại và đại diện đúng quốc gia đã chọn');
     }
     const relayLegs = dto.members.map(({ relayLeg }) => relayLeg).filter((leg): leg is number => Boolean(leg));
-    if (new Set(relayLegs).size !== relayLegs.length) throw new BadRequestException('Relay legs must be unique');
+    if (new Set(relayLegs).size !== relayLegs.length) throw new BadRequestException('Thứ tự thi đấu tiếp sức không được trùng lặp');
 
     return this.prisma.$transaction(async (transaction) => {
       await transaction.event.update({
@@ -105,10 +105,10 @@ export class CompetitionsService {
 
   async createEntry(eventId: string, categoryId: string, dto: CreateEntryDto) {
     if (dto.type === EntryType.INDIVIDUAL && (!dto.athleteId || dto.teamId)) {
-      throw new BadRequestException('Individual entry requires athleteId only');
+      throw new BadRequestException('Lượt đăng ký cá nhân chỉ được chọn một vận động viên');
     }
     if ((dto.type === EntryType.TEAM || dto.type === EntryType.RELAY) && (!dto.teamId || dto.athleteId)) {
-      throw new BadRequestException('Team or relay entry requires teamId only');
+      throw new BadRequestException('Lượt đăng ký đội hoặc tiếp sức phải chọn một đội');
     }
     const category = await this.prisma.category.findFirst({
       where: { id: categoryId, events: { some: { id: eventId } } },
@@ -121,21 +121,21 @@ export class CompetitionsService {
         },
       },
     });
-    if (!category) throw new NotFoundException('Category does not belong to this event');
+    if (!category) throw new NotFoundException('Hạng mục không thuộc sự kiện này');
 
     let countryId: string;
     if (dto.athleteId) {
       const athlete = await this.prisma.athlete.findUnique({ where: { id: dto.athleteId } });
-      if (!athlete) throw new NotFoundException('Athlete not found');
+      if (!athlete) throw new NotFoundException('Không tìm thấy vận động viên');
       this.assertAthleteEligibility(athlete, category, category.events[0].startDate);
       countryId = athlete.countryId;
     } else {
       const team = await this.prisma.team.findFirst({
         where: { id: dto.teamId, eventId, sportId: category.sportId },
       });
-      if (!team) throw new BadRequestException('Team does not belong to this event and sport');
+      if (!team) throw new BadRequestException('Đội không thuộc sự kiện hoặc bộ môn này');
       if (category.gender !== 'MIXED' && team.gender && team.gender !== category.gender) {
-        throw new BadRequestException('Team gender does not meet the category requirement');
+        throw new BadRequestException('Giới tính của đội không đáp ứng điều kiện hạng mục');
       }
       countryId = team.countryId;
     }
@@ -192,7 +192,7 @@ export class CompetitionsService {
       }),
       this.loadEntries(eventId, categoryId, dto.entryIds),
     ]);
-    if (!event || !category) throw new NotFoundException('Event/category not found');
+    if (!event || !category) throw new NotFoundException('Không tìm thấy sự kiện hoặc hạng mục');
     const laneCount = dto.laneCount || category.laneCount || 8;
     const ordered = [...entries].sort((a, b) => (a.seed || Number.MAX_SAFE_INTEGER) - (b.seed || Number.MAX_SAFE_INTEGER));
     const heatCount = Math.ceil(ordered.length / laneCount);
@@ -266,9 +266,9 @@ export class CompetitionsService {
       this.prisma.category.findFirst({ where: { id: categoryId, events: { some: { id: eventId } } }, select: { id: true } }),
       this.loadEntries(eventId, categoryId, dto.entryIds),
     ]);
-    if (!event || !category) throw new NotFoundException('Event/category not found');
+    if (!event || !category) throw new NotFoundException('Không tìm thấy sự kiện hoặc hạng mục');
     const groupCount = dto.groupCount || 1;
-    if (groupCount > Math.floor(entries.length / 2)) throw new BadRequestException('Each round-robin group requires at least two entries');
+    if (groupCount > Math.floor(entries.length / 2)) throw new BadRequestException('Mỗi bảng vòng tròn phải có ít nhất hai lượt đăng ký');
     const ordered = [...entries].sort((a, b) => (a.seed || Number.MAX_SAFE_INTEGER) - (b.seed || Number.MAX_SAFE_INTEGER));
     const groups: EntryRow[][] = Array.from({ length: groupCount }, () => []);
     ordered.forEach((entry, index) => {
@@ -339,7 +339,7 @@ export class CompetitionsService {
       },
       include: ENTRY_INCLUDE,
     });
-    if (entries.length !== entryIds.length) throw new BadRequestException('One or more entries are invalid or inactive');
+    if (entries.length !== entryIds.length) throw new BadRequestException('Có lượt đăng ký không hợp lệ hoặc đã ngừng tham gia');
     const byId = new Map(entries.map((entry) => [entry.id, entry]));
     return entryIds.map((id) => byId.get(id) as EntryRow);
   }
@@ -350,21 +350,21 @@ export class CompetitionsService {
     referenceDate: Date,
   ) {
     if (category.gender !== 'MIXED' && athlete.gender !== category.gender) {
-      throw new BadRequestException('Athlete gender does not meet the category requirement');
+      throw new BadRequestException('Giới tính vận động viên không đáp ứng điều kiện hạng mục');
     }
     if ((category.minWeight !== null || category.maxWeight !== null) && athlete.weight === null) {
-      throw new BadRequestException('Athlete weight is required for this category');
+      throw new BadRequestException('Hạng mục này bắt buộc có cân nặng vận động viên');
     }
-    if (category.minWeight !== null && athlete.weight! < category.minWeight) throw new BadRequestException('Athlete is below the minimum weight');
-    if (category.maxWeight !== null && athlete.weight! > category.maxWeight) throw new BadRequestException('Athlete exceeds the maximum weight');
+    if (category.minWeight !== null && athlete.weight! < category.minWeight) throw new BadRequestException('Vận động viên chưa đạt cân nặng tối thiểu');
+    if (category.maxWeight !== null && athlete.weight! > category.maxWeight) throw new BadRequestException('Vận động viên vượt quá cân nặng tối đa');
     if (category.minAge !== null || category.maxAge !== null) {
-      if (!athlete.birthDate) throw new BadRequestException('Athlete birth date is required for this category');
+      if (!athlete.birthDate) throw new BadRequestException('Hạng mục này bắt buộc có ngày sinh vận động viên');
       let age = referenceDate.getUTCFullYear() - athlete.birthDate.getUTCFullYear();
       const birthdayPassed = referenceDate.getUTCMonth() > athlete.birthDate.getUTCMonth()
         || (referenceDate.getUTCMonth() === athlete.birthDate.getUTCMonth() && referenceDate.getUTCDate() >= athlete.birthDate.getUTCDate());
       if (!birthdayPassed) age -= 1;
-      if (category.minAge !== null && age < category.minAge) throw new BadRequestException('Athlete is below the minimum age');
-      if (category.maxAge !== null && age > category.maxAge) throw new BadRequestException('Athlete exceeds the maximum age');
+      if (category.minAge !== null && age < category.minAge) throw new BadRequestException('Vận động viên chưa đạt độ tuổi tối thiểu');
+      if (category.maxAge !== null && age > category.maxAge) throw new BadRequestException('Vận động viên vượt quá độ tuổi tối đa');
     }
   }
 

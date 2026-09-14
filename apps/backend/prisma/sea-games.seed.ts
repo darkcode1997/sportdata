@@ -3,6 +3,8 @@ import {
   DrawType,
   EntryStatus,
   EntryType,
+  EventLevel,
+  FederationType,
   Gender,
   MatchStatus,
   MatchType,
@@ -574,12 +576,16 @@ export async function seedSeaGamesDemo(prisma: PrismaClient) {
     const federation = await prisma.federation.upsert({
       where: { id: `sea26-fed-${delegation.code.toLowerCase()}` },
       update: {
+        code: delegation.code,
         name: delegation.federationName,
+        type: FederationType.NATIONAL_FEDERATION,
         countryId: countryIds.get(delegation.code)!,
       },
       create: {
         id: `sea26-fed-${delegation.code.toLowerCase()}`,
+        code: delegation.code,
         name: delegation.federationName,
+        type: FederationType.NATIONAL_FEDERATION,
         countryId: countryIds.get(delegation.code)!,
       },
     });
@@ -636,7 +642,9 @@ export async function seedSeaGamesDemo(prisma: PrismaClient) {
     where: { id: SEA_GAMES_EVENT_ID },
     update: {
       name: 'SEA Games 2026 - Dữ liệu mô phỏng',
+      level: EventLevel.INTERNATIONAL,
       sportId: primarySportId,
+      organizerId: federationIds.get('VIE'),
       description: 'Bộ dữ liệu kiểm thử quy mô lớn: 11 quốc gia Đông Nam Á, 5.000 VĐV và lịch thi đấu tự động không trùng sàn.',
       startDate: localDateTime(0, 0),
       endDate: localDateTime(SEA_GAMES_DURATION_DAYS - 1, 23 * 60 + 59),
@@ -644,11 +652,16 @@ export async function seedSeaGamesDemo(prisma: PrismaClient) {
       isPublished: true,
       sports: { set: SPORTS.map((sport) => ({ id: sportIds.get(sport.code)! })) },
       categories: { set: categories.map((category) => ({ id: category.id })) },
+      participatingFederations: {
+        set: DELEGATIONS.map((delegation) => ({ id: federationIds.get(delegation.code)! })),
+      },
     },
     create: {
       id: SEA_GAMES_EVENT_ID,
       name: 'SEA Games 2026 - Dữ liệu mô phỏng',
+      level: EventLevel.INTERNATIONAL,
       sportId: primarySportId,
+      organizerId: federationIds.get('VIE'),
       description: 'Bộ dữ liệu kiểm thử quy mô lớn: 11 quốc gia Đông Nam Á, 5.000 VĐV và lịch thi đấu tự động không trùng sàn.',
       startDate: localDateTime(0, 0),
       endDate: localDateTime(SEA_GAMES_DURATION_DAYS - 1, 23 * 60 + 59),
@@ -656,6 +669,9 @@ export async function seedSeaGamesDemo(prisma: PrismaClient) {
       isPublished: true,
       sports: { connect: SPORTS.map((sport) => ({ id: sportIds.get(sport.code)! })) },
       categories: { connect: categories.map((category) => ({ id: category.id })) },
+      participatingFederations: {
+        connect: DELEGATIONS.map((delegation) => ({ id: federationIds.get(delegation.code)! })),
+      },
     },
   });
 

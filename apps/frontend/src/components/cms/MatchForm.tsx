@@ -138,7 +138,7 @@ export function MatchForm({ matchId, initialData }: { matchId?: string; initialD
           showIcon
           type="info"
           message="Trang này chỉ quản lý cấu trúc và lịch thi đấu"
-          description="Điểm số, người thắng và trạng thái hoàn thành phải đi qua Điều hành đại hội → Kết quả & phê duyệt để có lịch sử và chữ ký trách nhiệm."
+          description="Điểm số, người thắng và trạng thái hoàn thành phải đi qua Điều hành giải đấu → Kết quả & phê duyệt để có lịch sử và người chịu trách nhiệm."
         />
         <Row gutter={[20, 2]}>
           <ControlledField name="eventId" control={control} label="Sự kiện" error={errors.eventId?.message} required>

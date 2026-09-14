@@ -249,7 +249,7 @@ export default function SettingsPage() {
             />
           </Popconfirm>
           <Tag color={account.isActive ? 'success' : 'default'}>
-            {account.isActive ? 'Active' : 'Inactive'}
+            {account.isActive ? 'Đang hoạt động' : 'Đã vô hiệu hóa'}
           </Tag>
         </Space>
       ),
@@ -306,12 +306,12 @@ export default function SettingsPage() {
               <Typography.Title level={4} className="!mb-1">{profile?.name || 'Tài khoản'}</Typography.Title>
               <Space size={6} wrap>
                 <Tag color={isAdmin ? 'blue' : 'cyan'}>{profile ? roleLabels[profile.role] : ''}</Tag>
-                <Tag color="success">ACTIVE</Tag>
+                <Tag color="success">Đang hoạt động</Tag>
               </Space>
             </div>
           </Space>
           <Descriptions column={1} size="small" colon={false}>
-            <Descriptions.Item label="Username">@{profile?.username || '—'}</Descriptions.Item>
+            <Descriptions.Item label="Tên đăng nhập">@{profile?.username || '—'}</Descriptions.Item>
             <Descriptions.Item label="Email">{profile?.email || '—'}</Descriptions.Item>
             <Descriptions.Item label="Quyền hạn">{profile ? roleLabels[profile.role] : ''}</Descriptions.Item>
           </Descriptions>
@@ -377,7 +377,7 @@ export default function SettingsPage() {
         type="info"
         showIcon
         message="Phân quyền tài khoản"
-        description="Admin có toàn quyền quản lý tài khoản. Tài khoản Inactive sẽ bị đăng xuất khỏi phiên cũ và không thể đăng nhập cho đến khi được kích hoạt lại."
+        description="Quản trị viên có toàn quyền quản lý tài khoản. Tài khoản bị vô hiệu hóa sẽ được đăng xuất khỏi phiên cũ và không thể đăng nhập cho đến khi được kích hoạt lại."
       />
       <Card
         className="border-sdark-700 bg-sdark-900"
@@ -458,11 +458,11 @@ export default function SettingsPage() {
             name="isActive"
             label="Trạng thái tài khoản"
             valuePropName="checked"
-            extra={editingAccount?.id === profile?.id ? 'Không thể tự vô hiệu hóa tài khoản đang đăng nhập.' : 'Tài khoản Inactive không thể đăng nhập hoặc tiếp tục sử dụng phiên cũ.'}
+            extra={editingAccount?.id === profile?.id ? 'Không thể tự vô hiệu hóa tài khoản đang đăng nhập.' : 'Tài khoản bị vô hiệu hóa không thể đăng nhập hoặc tiếp tục sử dụng phiên cũ.'}
           >
             <Switch
-              checkedChildren="Active"
-              unCheckedChildren="Inactive"
+              checkedChildren="Hoạt động"
+              unCheckedChildren="Vô hiệu"
               disabled={editingAccount?.id === profile?.id}
             />
           </Form.Item>

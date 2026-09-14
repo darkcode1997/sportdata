@@ -49,7 +49,7 @@ import {
 
 const navItems = [
   { label: 'Dashboard', key: '/cms', icon: <LayoutDashboard className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms'] },
-  { label: 'Điều hành đại hội', key: '/cms/operations', icon: <Workflow className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/operations'] },
+  { label: 'Điều hành giải đấu', key: '/cms/operations', icon: <Workflow className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/operations'] },
   { label: 'Sự kiện', key: '/cms/events', icon: <CalendarDays className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/events'] },
   { label: 'Vận động viên', key: '/cms/athletes', icon: <Users className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/athletes'] },
   { label: 'Bộ môn & hạng đấu', key: '/cms/sports', icon: <Trophy className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/sports'] },

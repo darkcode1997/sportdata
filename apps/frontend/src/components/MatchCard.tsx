@@ -4,6 +4,13 @@ import Link from 'next/link';
 import { Card, Tag } from 'antd';
 import { AlertTriangle, ChevronRight, Clock3, UserRound } from 'lucide-react';
 import { cn, formatTime } from '@/lib/utils';
+import {
+  MATCH_STATUS_META,
+  MATCH_TYPE_LABELS,
+  WIN_METHOD_LABELS,
+  labelOf,
+  statusMeta,
+} from '@/lib/vi-labels';
 
 interface Athlete {
   id: string;
@@ -39,35 +46,6 @@ interface MatchCardProps {
   round?: number | null;
 }
 
-const statusLabel = {
-  SCHEDULED: 'SCHEDULED',
-  RUNNING: 'RUNNING',
-  FINISHED: 'FINISHED',
-  CANCELLED: 'CANCELLED',
-} as const;
-
-const stageLabel: Record<string, string> = {
-  GROUP_STAGE: 'GROUP PHASE',
-  QUARTERFINAL: 'QUARTER-FINAL',
-  SEMIFINAL: 'SEMI-FINAL',
-  ROUND_OF_16: 'ROUND OF 16',
-  ROUND_OF_32: 'ROUND OF 32',
-  ELIMINATION: 'ELIMINATION',
-  FINAL: 'FINAL',
-  POOL: '',
-};
-
-const methodLabel: Record<string, string> = {
-  POINTS: 'Win by Points',
-  SUBMISSION: 'Win by Submission',
-  IPPON: 'Win by Ippon',
-  KNOCKOUT: 'Win by Knockout',
-  DISQUALIFICATION: 'Win by Disqualification',
-  WALKOVVER: 'Win by Walkover',
-  DECISION: 'Win by Decision',
-  TECHNICAL: 'Technical win',
-};
-
 export function MatchCard({
   id,
   eventId,
@@ -94,7 +72,8 @@ export function MatchCard({
   const showScore = status === 'FINISHED' || isRunning;
   const winner1 = Boolean(winnerId && winnerId === athlete1?.id);
   const winner2 = Boolean(winnerId && winnerId === athlete2?.id);
-  const stage = stageLabel[matchType || ''] ?? (matchType || '').replaceAll('_', ' ');
+  const stage = labelOf(MATCH_TYPE_LABELS, matchType, '');
+  const statusInfo = statusMeta(MATCH_STATUS_META, status);
 
   return (
     <Card
@@ -114,10 +93,10 @@ export function MatchCard({
                   href={`/events/${eventId}/categories/${categoryId}`}
                   className="match-category-link"
                 >
-                  {categoryName || 'MATCH'}
+                  {categoryName || 'TRẬN ĐẤU'}
                 </Link>
               ) : (
-                <span className="match-category-link">{categoryName || 'MATCH'}</span>
+                <span className="match-category-link">{categoryName || 'TRẬN ĐẤU'}</span>
               )}
             </div>
             {stage && <div className="match-stage-label">{stage}</div>}
@@ -135,7 +114,7 @@ export function MatchCard({
               {formatTime(startTime)}
             </div>
             <Tag className={cn('match-status-tag mt-1.5', `is-${status.toLowerCase()}`)} bordered={false}>
-              {statusLabel[status]}
+              {statusInfo.shortLabel || statusInfo.label}
             </Tag>
           </div>
 
@@ -155,7 +134,7 @@ export function MatchCard({
               {showScore ? `${athlete1Score} : ${athlete2Score}` : '— : —'}
             </div>
             <div className="mt-1 min-h-4 text-[0.62rem] font-semibold text-slate-400">
-              {winMethod ? methodLabel[winMethod] || winMethod.replaceAll('_', ' ') : '-'}
+              {winMethod ? labelOf(WIN_METHOD_LABELS, winMethod, 'Chưa xác định') : '—'}
             </div>
           </div>
 
@@ -213,15 +192,15 @@ function AthleteSlot({
       <div className="min-w-0 flex-1">
         <div className="truncate text-[0.82rem] font-black text-slate-100">{athlete.fullName}</div>
         <div className="mt-0.5 truncate text-[0.55rem] font-bold uppercase text-slate-400">
-          {athlete.federation?.name || athlete.country?.name || 'Independent athlete'}
+          {athlete.federation?.name || athlete.country?.name || 'VĐV tự do'}
         </div>
         {(advantages > 0 || penalties > 0) && (
           <div className={cn('mt-1.5 flex flex-wrap gap-1', reverse && 'justify-end')}>
             {advantages > 0 && (
-              <span className="score-detail-chip"><AlertTriangle className="h-2.5 w-2.5" /> Advantages:{advantages}</span>
+              <span className="score-detail-chip"><AlertTriangle className="h-2.5 w-2.5" /> Lợi thế: {advantages}</span>
             )}
             {penalties > 0 && (
-              <span className="score-detail-chip"><AlertTriangle className="h-2.5 w-2.5" /> Penalties:{penalties}</span>
+              <span className="score-detail-chip"><AlertTriangle className="h-2.5 w-2.5" /> Phạt: {penalties}</span>
             )}
           </div>
         )}

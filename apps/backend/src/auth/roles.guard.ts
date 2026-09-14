@@ -30,7 +30,7 @@ export class RolesGuard implements CanActivate {
       || requiredRoles.some((role) => user.role === role);
     if (!hasRole) {
       throw new ForbiddenException(
-        `Access denied: requires one of roles: ${requiredRoles.join(', ')}`,
+        `Bạn không có quyền thực hiện thao tác này. Vai trò được phép: ${requiredRoles.join(', ')}`,
       );
     }
     return true;

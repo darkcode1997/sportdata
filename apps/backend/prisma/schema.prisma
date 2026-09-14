@@ -21,6 +21,25 @@ enum UserRole {
   READ_ONLY
 }
 
+enum FederationType {
+  INTERNATIONAL_FEDERATION
+  NATIONAL_FEDERATION
+  SPORTS_CENTER
+  CLUB
+  SCHOOL
+  ACADEMY
+  OTHER
+}
+
+enum EventLevel {
+  INTERNATIONAL
+  NATIONAL
+  REGIONAL
+  PROVINCIAL
+  CENTER_INTERNAL
+  OPEN
+}
+
 enum CompetitionFormat {
   HEAD_TO_HEAD
   ROUND_ROBIN
@@ -159,15 +178,21 @@ model Country {
 }
 
 model Federation {
-  id        String    @id @default(cuid())
-  name      String
-  countryId String
-  country   Country   @relation(fields: [countryId], references: [id])
-  athletes  Athlete[]
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  id                  String         @id @default(cuid())
+  code                String?
+  name                String
+  type                FederationType @default(NATIONAL_FEDERATION)
+  countryId           String
+  country             Country        @relation(fields: [countryId], references: [id])
+  athletes            Athlete[]
+  organizedEvents     Event[]        @relation("EventOrganizer")
+  participatingEvents Event[]        @relation("EventParticipatingFederations")
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
 
+  @@unique([countryId, code])
   @@index([countryId])
+  @@index([type])
 }
 
 model User {
@@ -286,36 +311,43 @@ model Division {
 }
 
 model Event {
-  id               String                @id @default(cuid())
-  name             String
-  sportId          String
-  sport            Sport                 @relation("PrimarySportEvents", fields: [sportId], references: [id])
-  sports           Sport[]               @relation("EventSports")
-  description      String?
-  startDate        DateTime
-  endDate          DateTime
-  location         String?
-  bannerUrl        String?
-  logoUrl          String?
-  matches          Match[]
-  draws            Draw[]
-  fops             Fop[]
-  athletes         Athlete[]
-  categories       Category[]
-  statistics       Statistic[]
-  venues           Venue[]               @relation("EventVenues")
-  sessions         CompetitionSession[]
-  entries          CompetitionEntry[]
-  teams            Team[]
-  scheduleRules    SportSchedulingRule[]
-  heats            Heat[]
-  roundRobinGroups RoundRobinGroup[]
-  isPublished      Boolean               @default(false)
-  createdAt        DateTime              @default(now())
-  updatedAt        DateTime              @updatedAt
+  id                       String                @id @default(cuid())
+  name                     String
+  sportId                  String
+  sport                    Sport                 @relation("PrimarySportEvents", fields: [sportId], references: [id])
+  sports                   Sport[]               @relation("EventSports")
+  description              String?
+  startDate                DateTime
+  endDate                  DateTime
+  location                 String?
+  bannerUrl                String?
+  logoUrl                  String?
+  matches                  Match[]
+  draws                    Draw[]
+  fops                     Fop[]
+  athletes                 Athlete[]
+  categories               Category[]
+  level                    EventLevel            @default(INTERNATIONAL)
+  organizerId              String?
+  organizer                Federation?           @relation("EventOrganizer", fields: [organizerId], references: [id], onDelete: SetNull)
+  participatingFederations Federation[]          @relation("EventParticipatingFederations")
+  allowIndependentAthletes Boolean               @default(true)
+  statistics               Statistic[]
+  venues                   Venue[]               @relation("EventVenues")
+  sessions                 CompetitionSession[]
+  entries                  CompetitionEntry[]
+  teams                    Team[]
+  scheduleRules            SportSchedulingRule[]
+  heats                    Heat[]
+  roundRobinGroups         RoundRobinGroup[]
+  isPublished              Boolean               @default(false)
+  createdAt                DateTime              @default(now())
+  updatedAt                DateTime              @updatedAt
 
   @@index([sportId])
   @@index([startDate])
+  @@index([level])
+  @@index([organizerId])
 }
 
 model Athlete {

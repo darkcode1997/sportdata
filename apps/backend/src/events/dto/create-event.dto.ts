@@ -1,5 +1,7 @@
 import { IsString, IsOptional, IsBoolean, IsDateString, IsArray } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { EventLevel } from '@prisma/client';
+import { IsEnum } from 'class-validator';
 
 export class CreateEventDto {
   @ApiProperty()
@@ -61,4 +63,25 @@ export class CreateEventDto {
   @IsArray()
   @IsString({ each: true })
   athleteIds?: string[];
+
+  @ApiPropertyOptional({ enum: EventLevel, default: EventLevel.INTERNATIONAL })
+  @IsOptional()
+  @IsEnum(EventLevel)
+  level?: EventLevel;
+
+  @ApiPropertyOptional({ description: 'Liên đoàn, trung tâm hoặc CLB đứng ra tổ chức' })
+  @IsOptional()
+  @IsString()
+  organizerId?: string;
+
+  @ApiPropertyOptional({ type: [String], description: 'Các đơn vị/CLB được tham gia sự kiện' })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  participatingFederationIds?: string[];
+
+  @ApiPropertyOptional({ default: true })
+  @IsOptional()
+  @IsBoolean()
+  allowIndependentAthletes?: boolean;
 }

@@ -22,6 +22,7 @@ import {
 } from 'antd';
 import { Network, Plus, Users } from 'lucide-react';
 import { api, fetcher } from '@/lib/api';
+import { ENTRY_STATUS_META, ENTRY_TYPE_LABELS, labelOf, statusMeta } from '@/lib/vi-labels';
 import { RemoteAthleteSelect } from './RemoteAthleteSelect';
 
 function requestMessage(error: any, fallback: string) {
@@ -76,7 +77,7 @@ export function CompetitionEntriesPanel({
         memberIds: undefined,
         relay: undefined,
       });
-      message.success('Đã tạo đội/relay');
+      message.success('Đã tạo đội/đội tiếp sức');
       setTeamOpen(false);
       teamForm.resetFields();
       await mutateTeams();
@@ -91,14 +92,14 @@ export function CompetitionEntriesPanel({
     try {
       const values = await entryForm.validateFields();
       await api.post(`/competitions/events/${eventId}/categories/${categoryId}/entries`, values);
-      message.success('Đã đăng ký entry');
+      message.success('Đã thêm lượt đăng ký thi đấu');
       setEntryOpen(false);
       entryForm.resetFields();
       await mutateEntries();
       await onChanged?.();
     } catch (error: any) {
       if (error?.errorFields) return;
-      message.error(requestMessage(error, 'Không thể đăng ký entry'));
+      message.error(requestMessage(error, 'Không thể thêm lượt đăng ký thi đấu'));
     }
   };
 
@@ -110,7 +111,7 @@ export function CompetitionEntriesPanel({
         ...values,
         entryIds: selectedEntryIds,
       });
-      message.success(generator === 'HEAT' ? 'Đã sinh heats và phân làn' : 'Đã sinh lịch vòng tròn');
+      message.success(generator === 'HEAT' ? 'Đã tạo lượt đấu và phân làn' : 'Đã tạo lịch vòng tròn');
       setGenerator(undefined);
       generatorForm.resetFields();
       setSelectedEntryIds([]);
@@ -123,22 +124,24 @@ export function CompetitionEntriesPanel({
 
   const columns = [
     {
-      title: 'Entry',
+      title: 'Lượt đăng ký',
       render: (_: any, row: any) => (
         <div>
           <Typography.Text strong>{row.athlete?.fullName || row.team?.name}</Typography.Text>
-          <Typography.Text type="secondary" className="block text-xs">{row.country?.name} · {row.type}</Typography.Text>
+          <Typography.Text type="secondary" className="block text-xs">
+            {row.country?.name} · {labelOf(ENTRY_TYPE_LABELS, row.type, 'Chưa xác định')}
+          </Typography.Text>
         </div>
       ),
     },
     { title: 'Hạt giống', dataIndex: 'seed', render: (value: number) => value || '—' },
-    { title: 'Bib', dataIndex: 'bib', render: (value: string) => value || '—' },
-    { title: 'Trạng thái', dataIndex: 'status', render: (value: string) => <Tag color={value === 'VERIFIED' ? 'green' : 'blue'}>{value}</Tag> },
+    { title: 'Số đeo', dataIndex: 'bib', render: (value: string) => value || '—' },
+    { title: 'Trạng thái', dataIndex: 'status', render: (value: string) => { const item = statusMeta(ENTRY_STATUS_META, value); return <Tag color={item.color}>{item.label}</Tag>; } },
   ];
 
   return (
     <Space direction="vertical" size="large" className="w-full">
-      <Card title="Đăng ký thi đấu" extra={<Space wrap><Button icon={<Users className="h-4 w-4" />} disabled={readOnly} onClick={() => setTeamOpen(true)}>Tạo đội/relay</Button><Button type="primary" icon={<Plus className="h-4 w-4" />} disabled={readOnly || !categoryId} onClick={() => setEntryOpen(true)}>Thêm entry</Button></Space>}>
+      <Card title="Đăng ký thi đấu" extra={<Space wrap><Button icon={<Users className="h-4 w-4" />} disabled={readOnly} onClick={() => setTeamOpen(true)}>Tạo đội/đội tiếp sức</Button><Button type="primary" icon={<Plus className="h-4 w-4" />} disabled={readOnly || !categoryId} onClick={() => setEntryOpen(true)}>Thêm lượt đăng ký</Button></Space>}>
         <Alert className="mb-4" type="info" showIcon message="Chọn bộ môn → hạng mục → quốc gia → VĐV/đội" description="Danh sách VĐV được lọc phía server theo giới tính, tuổi và cân nặng của hạng mục." />
         <Typography.Text strong className="mb-2 block">Hạng mục thi đấu</Typography.Text>
         <Select
@@ -155,7 +158,7 @@ export function CompetitionEntriesPanel({
         />
       </Card>
 
-      {categoryId ? <Card title={`${category?.name || 'Hạng mục'} · ${entries.length} entry`} extra={<Space wrap><Button icon={<Network className="h-4 w-4" />} disabled={readOnly || selectedEntryIds.length < 2} onClick={() => setGenerator('HEAT')}>Sinh heats/lanes</Button><Button disabled={readOnly || selectedEntryIds.length < 2} onClick={() => setGenerator('ROUND_ROBIN')}>Sinh vòng tròn</Button></Space>}>
+      {categoryId ? <Card title={`${category?.name || 'Hạng mục'} · ${entries.length} lượt đăng ký`} extra={<Space wrap><Button icon={<Network className="h-4 w-4" />} disabled={readOnly || selectedEntryIds.length < 2} onClick={() => setGenerator('HEAT')}>Tạo lượt đấu/phân làn</Button><Button disabled={readOnly || selectedEntryIds.length < 2} onClick={() => setGenerator('ROUND_ROBIN')}>Tạo vòng tròn</Button></Space>}>
         <Space wrap className="mb-4 w-full">
           <Select allowClear showSearch optionFilterProp="label" placeholder="Lọc theo quốc gia" value={countryId} onChange={(value) => { setCountryId(value); setSelectedEntryIds([]); }} className="min-w-64" options={entryCountries.map((country: any) => ({ value: country.id, label: `${country.name} · ${country.code}` }))} />
           <Button disabled={readOnly || !filteredEntries.length} onClick={() => setSelectedEntryIds(filteredEntries.map((entry: any) => entry.id))}>Chọn tất cả đang hiển thị</Button>
@@ -170,17 +173,17 @@ export function CompetitionEntriesPanel({
         />
       </Card> : <Alert showIcon message="Chọn hạng mục để quản lý danh sách đăng ký." />}
 
-      <Modal title="Tạo đội hoặc relay" open={teamOpen} onCancel={() => setTeamOpen(false)} onOk={createTeam} width={680} destroyOnHidden>
-        <Form form={teamForm} layout="vertical"><Row gutter={12}><Col span={12}><Form.Item name="sportId" label="Bộ môn" rules={[{ required: true }]}><Select options={sports.map((sport: any) => ({ value: sport.id, label: sport.name }))} /></Form.Item></Col><Col span={12}><Form.Item name="countryId" label="Quốc gia" rules={[{ required: true }]}><Select showSearch optionFilterProp="label" options={countries.map((country: any) => ({ value: country.id, label: `${country.name} · ${country.code}` }))} /></Form.Item></Col></Row><Row gutter={12}><Col span={16}><Form.Item name="name" label="Tên đội" rules={[{ required: true }]}><Input /></Form.Item></Col><Col span={8}><Form.Item name="code" label="Mã đội"><Input /></Form.Item></Col></Row><Form.Item name="relay" label="Loại"><Radio.Group options={[{ value: false, label: 'Đội' }, { value: true, label: 'Relay' }]} /></Form.Item><Form.Item name="memberIds" label="Thành viên theo thứ tự thi đấu" rules={[{ required: true, type: 'array', min: 1 }]}><RemoteAthleteSelect mode="multiple" eventId={eventId} countryId={teamCountryId} maxTagCount={2} selectionLabel="thành viên" showPageControls /></Form.Item></Form>
+      <Modal title="Tạo đội hoặc đội tiếp sức" open={teamOpen} onCancel={() => setTeamOpen(false)} onOk={createTeam} width={680} destroyOnHidden>
+        <Form form={teamForm} layout="vertical"><Row gutter={12}><Col span={12}><Form.Item name="sportId" label="Bộ môn" rules={[{ required: true }]}><Select options={sports.map((sport: any) => ({ value: sport.id, label: sport.name }))} /></Form.Item></Col><Col span={12}><Form.Item name="countryId" label="Quốc gia" rules={[{ required: true }]}><Select showSearch optionFilterProp="label" options={countries.map((country: any) => ({ value: country.id, label: `${country.name} · ${country.code}` }))} /></Form.Item></Col></Row><Row gutter={12}><Col span={16}><Form.Item name="name" label="Tên đội" rules={[{ required: true }]}><Input /></Form.Item></Col><Col span={8}><Form.Item name="code" label="Mã đội"><Input /></Form.Item></Col></Row><Form.Item name="relay" label="Loại đội"><Radio.Group options={[{ value: false, label: 'Đội thông thường' }, { value: true, label: 'Đội tiếp sức' }]} /></Form.Item><Form.Item name="memberIds" label="Thành viên theo thứ tự thi đấu" rules={[{ required: true, type: 'array', min: 1 }]}><RemoteAthleteSelect mode="multiple" eventId={eventId} countryId={teamCountryId} maxTagCount={2} selectionLabel="thành viên" showPageControls /></Form.Item></Form>
       </Modal>
 
-      <Modal title="Đăng ký entry" open={entryOpen} onCancel={() => setEntryOpen(false)} onOk={createEntry} destroyOnHidden>
-        <Form form={entryForm} layout="vertical" initialValues={{ type: 'INDIVIDUAL', status: 'VERIFIED' }}><Form.Item name="type" label="Loại entry" rules={[{ required: true }]}><Radio.Group options={[{ value: 'INDIVIDUAL', label: 'Cá nhân' }, { value: 'TEAM', label: 'Đội' }, { value: 'RELAY', label: 'Relay' }]} /></Form.Item>{entryType === 'INDIVIDUAL' ? <Form.Item name="athleteId" label="Vận động viên" rules={[{ required: true }]}><RemoteAthleteSelect eventId={eventId} categoryId={categoryId} /></Form.Item> : <Form.Item name="teamId" label="Đội" rules={[{ required: true }]}><Select showSearch optionFilterProp="label" options={availableTeams.map((team: any) => ({ value: team.id, label: `${team.name} · ${team.country?.code}` }))} /></Form.Item>}<Row gutter={12}><Col span={12}><Form.Item name="seed" label="Hạt giống"><InputNumber min={1} className="w-full" /></Form.Item></Col><Col span={12}><Form.Item name="bib" label="Bib"><Input /></Form.Item></Col></Row><Form.Item name="status" label="Trạng thái"><Select options={[{ value: 'REGISTERED', label: 'Đã đăng ký' }, { value: 'VERIFIED', label: 'Đã xác minh' }]} /></Form.Item></Form>
+      <Modal title="Thêm lượt đăng ký thi đấu" open={entryOpen} onCancel={() => setEntryOpen(false)} onOk={createEntry} destroyOnHidden>
+        <Form form={entryForm} layout="vertical" initialValues={{ type: 'INDIVIDUAL', status: 'VERIFIED' }}><Form.Item name="type" label="Hình thức tham dự" rules={[{ required: true }]}><Radio.Group options={[{ value: 'INDIVIDUAL', label: 'Cá nhân' }, { value: 'TEAM', label: 'Đội' }, { value: 'RELAY', label: 'Tiếp sức' }]} /></Form.Item>{entryType === 'INDIVIDUAL' ? <Form.Item name="athleteId" label="Vận động viên" rules={[{ required: true }]}><RemoteAthleteSelect eventId={eventId} categoryId={categoryId} /></Form.Item> : <Form.Item name="teamId" label="Đội" rules={[{ required: true }]}><Select showSearch optionFilterProp="label" options={availableTeams.map((team: any) => ({ value: team.id, label: `${team.name} · ${team.country?.code}` }))} /></Form.Item>}<Row gutter={12}><Col span={12}><Form.Item name="seed" label="Hạt giống"><InputNumber min={1} className="w-full" /></Form.Item></Col><Col span={12}><Form.Item name="bib" label="Số đeo"><Input /></Form.Item></Col></Row><Form.Item name="status" label="Trạng thái"><Select options={[{ value: 'REGISTERED', label: 'Đã đăng ký' }, { value: 'VERIFIED', label: 'Đã xác minh' }]} /></Form.Item></Form>
       </Modal>
 
-      <Modal title={generator === 'HEAT' ? 'Sinh heats và phân làn' : 'Sinh vòng tròn'} open={Boolean(generator)} onCancel={() => setGenerator(undefined)} onOk={generate} destroyOnHidden>
-        <Alert className="mb-4" type="info" showIcon message={`Đã chọn ${selectedEntryIds.length} entry`} />
-        <Form form={generatorForm} layout="vertical" initialValues={generator === 'HEAT' ? { laneCount: category?.laneCount || 8, round: 1, namePrefix: 'Heat' } : { groupCount: 1, namePrefix: 'Bảng' }}>
+      <Modal title={generator === 'HEAT' ? 'Tạo lượt đấu và phân làn' : 'Tạo vòng tròn'} open={Boolean(generator)} onCancel={() => setGenerator(undefined)} onOk={generate} destroyOnHidden>
+        <Alert className="mb-4" type="info" showIcon message={`Đã chọn ${selectedEntryIds.length} lượt đăng ký`} />
+        <Form form={generatorForm} layout="vertical" initialValues={generator === 'HEAT' ? { laneCount: category?.laneCount || 8, round: 1, namePrefix: 'Lượt' } : { groupCount: 1, namePrefix: 'Bảng' }}>
           {generator === 'HEAT' ? <><Form.Item name="laneCount" label="Số làn"><InputNumber min={2} max={16} className="w-full" /></Form.Item><Form.Item name="round" label="Vòng"><InputNumber min={1} className="w-full" /></Form.Item><Form.Item name="namePrefix" label="Tiền tố"><Input /></Form.Item></> : <><Form.Item name="groupCount" label="Số bảng"><InputNumber min={1} className="w-full" /></Form.Item><Form.Item name="namePrefix" label="Tên bảng"><Input /></Form.Item></>}
         </Form>
       </Modal>

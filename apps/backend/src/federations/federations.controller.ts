@@ -20,7 +20,7 @@ export class FederationsController {
   constructor(private readonly federationsService: FederationsService) {}
 
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN, UserRole.CONTENT)
+  @Roles(UserRole.ADMIN, UserRole.CONTENT, UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER)
   @Post()
   create(@Body() createFederationDto: CreateFederationDto) {
     return this.federationsService.create(createFederationDto);
@@ -37,7 +37,7 @@ export class FederationsController {
   }
 
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN, UserRole.CONTENT)
+  @Roles(UserRole.ADMIN, UserRole.CONTENT, UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER)
   @Patch(':id')
   update(
     @Param('id') id: string,
@@ -47,7 +47,7 @@ export class FederationsController {
   }
 
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.GAMES_ADMIN)
   @Delete(':id')
   remove(@Param('id') id: string) {
     return this.federationsService.remove(id);

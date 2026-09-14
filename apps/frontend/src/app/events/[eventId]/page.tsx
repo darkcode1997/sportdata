@@ -288,7 +288,7 @@ export default function EventDetailPage() {
               <small>event technology</small>
             </span>
           </Link>
-          <div className="mt-3 text-xs font-black tracking-[0.16em] text-sky-400">MATCH SCHEDULE</div>
+          <div className="mt-3 text-xs font-black tracking-[0.16em] text-sky-400">LỊCH THI ĐẤU</div>
           <h1 className="mx-auto mt-5 max-w-4xl text-xl font-black uppercase leading-tight text-slate-100 sm:text-2xl lg:text-[1.7rem]">
             {event?.name || 'Lịch thi đấu'}
           </h1>
@@ -439,7 +439,7 @@ export default function EventDetailPage() {
           title="Xem trận đang thi đấu"
         >
           <Radio className="h-3.5 w-3.5" />
-          LIVE
+          TRỰC TIẾP
         </button>
       )}
     </div>

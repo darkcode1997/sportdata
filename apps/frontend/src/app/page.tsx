@@ -278,6 +278,8 @@ function FeaturedNewsSlider({ articles, loading }: { articles: FeaturedArticle[]
                   tabIndex={index === activeIndex ? 0 : -1}
                 >
                   {article.coverImageUrl ? (
+                    // News images are configured by editors and can come from arbitrary hosts.
+                    // eslint-disable-next-line @next/next/no-img-element
                     <img src={article.coverImageUrl} alt={article.title} loading={index === 0 ? 'eager' : 'lazy'} />
                   ) : (
                     <span className="home-featured-news-placeholder"><Newspaper className="h-14 w-14" /></span>

@@ -16,6 +16,7 @@
     "prisma:migrate": "npm run prisma:migrate --workspace=@sportdata/backend",
     "seed": "npm run seed --workspace=@sportdata/backend",
     "seed:demo-accounts": "npm run seed:demo-accounts --workspace=@sportdata/backend",
+    "seed:domestic-centers": "npm run seed:domestic-centers --workspace=@sportdata/backend",
     "seed:sea-games:verify": "npm run seed:sea-games:verify --workspace=@sportdata/backend",
     "docker:up": "docker compose up --build",
     "docker:down": "docker compose down"

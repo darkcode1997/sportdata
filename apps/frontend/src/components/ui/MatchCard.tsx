@@ -69,6 +69,7 @@ export default function MatchCard({ match, onClick, className }: MatchCardProps)
           <div className="relative">
             <div className="w-10 h-10 rounded-full bg-gradient-to-br from-gray-600 to-gray-800 flex items-center justify-center text-white text-xs font-bold overflow-hidden border border-gray-600">
               {match.athlete1?.country?.flagUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={match.athlete1.country.flagUrl}
                   alt={match.athlete1.country.code}
@@ -123,7 +124,7 @@ export default function MatchCard({ match, onClick, className }: MatchCardProps)
         <div className="relative flex items-center justify-center">
           <div className="h-px bg-gray-700 absolute inset-x-0"></div>
           <span className="bg-sdark px-3 text-gray-500 text-xs font-bold relative z-10">
-            VS
+            ĐỐI ĐẦU
           </span>
         </div>
 
@@ -136,6 +137,7 @@ export default function MatchCard({ match, onClick, className }: MatchCardProps)
           <div className="relative">
             <div className="w-10 h-10 rounded-full bg-gradient-to-br from-gray-600 to-gray-800 flex items-center justify-center text-white text-xs font-bold overflow-hidden border border-gray-600">
               {match.athlete2?.country?.flagUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={match.athlete2.country.flagUrl}
                   alt={match.athlete2.country.code}

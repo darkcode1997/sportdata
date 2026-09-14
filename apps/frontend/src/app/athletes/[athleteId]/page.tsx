@@ -252,6 +252,8 @@ function CountryFlag({ country }: { country: { code?: string; name?: string; fla
   }
 
   return (
+    // Country flag URLs are data-managed and may use arbitrary federation hosts.
+    // eslint-disable-next-line @next/next/no-img-element
     <img
       src={flagUrl}
       alt={`Cờ ${country.name || country.code || ''}`}

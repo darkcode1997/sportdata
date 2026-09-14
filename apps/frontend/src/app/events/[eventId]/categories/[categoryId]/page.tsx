@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { fetcher } from '@/lib/api';
 import { cn, formatTime } from '@/lib/utils';
+import { MATCH_STATUS_META, MATCH_TYPE_LABELS, WIN_METHOD_LABELS, labelOf, statusMeta } from '@/lib/vi-labels';
 
 interface Country {
   code?: string;
@@ -142,28 +143,6 @@ interface DrawsResponse {
   categoryId: string;
   draws: DrawData[];
 }
-
-const matchTypeLabels: Record<string, string> = {
-  GROUP_STAGE: 'Vòng bảng',
-  POOL: 'Vòng tính điểm',
-  ROUND_OF_32: 'Vòng 32',
-  ROUND_OF_16: 'Vòng 16',
-  QUARTERFINAL: 'Tứ kết',
-  SEMIFINAL: 'Bán kết',
-  FINAL: 'Chung kết',
-  ELIMINATION: 'Loại trực tiếp',
-};
-
-const winMethodLabels: Record<string, string> = {
-  POINTS: 'Thắng điểm',
-  SUBMISSION: 'Submission',
-  IPPON: 'Ippon',
-  KNOCKOUT: 'Knockout',
-  DISQUALIFICATION: 'Đối thủ bị loại',
-  WALKOVVER: 'Walkover',
-  DECISION: 'Quyết định trọng tài',
-  TECHNICAL: 'Thắng kỹ thuật',
-};
 
 const disciplineLabels: Record<string, string> = {
   NEWAZA: 'Newaza · Địa chiến',
@@ -320,7 +299,7 @@ export default function CategoryDetailPage() {
               <div className="category-section-title">{divisionLabel}</div>
               <div className="category-standings-label">
                 <Medal className="h-4 w-4" />
-                FINAL POOL STANDINGS
+                BẢNG XẾP HẠNG CHUNG CUỘC
               </div>
               {finalStandings.length ? (
                 <Card className="category-standings-card" styles={{ body: { padding: 0 } }}>
@@ -499,7 +478,7 @@ function MatchProtocolTable({
       width: 145,
       render: (_, match) => (
         <div className="protocol-stage">
-          <strong>{matchTypeLabels[match.matchType] || match.matchType.replaceAll('_', ' ')}</strong>
+          <strong>{labelOf(MATCH_TYPE_LABELS, match.matchType, 'Vòng đấu')}</strong>
           <small>{match.pool || match.division?.name || '—'}</small>
         </div>
       ),
@@ -533,7 +512,7 @@ function MatchProtocolTable({
           </strong>
           <small>
             {match.winMethod
-              ? winMethodLabels[match.winMethod] || match.winMethod.replaceAll('_', ' ')
+              ? labelOf(WIN_METHOD_LABELS, match.winMethod, 'Chưa xác định')
               : match.notes || '—'}
           </small>
         </div>
@@ -552,14 +531,10 @@ function MatchProtocolTable({
       dataIndex: 'status',
       width: 120,
       align: 'center',
-      render: (status: string) => (
-        <Tag
-          bordered={false}
-          color={status === 'FINISHED' ? 'success' : status === 'RUNNING' ? 'error' : 'processing'}
-        >
-          {status === 'FINISHED' ? 'HOÀN THÀNH' : status === 'RUNNING' ? 'ĐANG ĐẤU' : 'SẮP ĐẤU'}
-        </Tag>
-      ),
+      render: (status: string) => {
+        const item = statusMeta(MATCH_STATUS_META, status);
+        return <Tag bordered={false} color={item.color}>{item.shortLabel || item.label}</Tag>;
+      },
     },
   ];
 
@@ -942,11 +917,11 @@ function BracketParticipantNode({
 
 function drawTypeLabel(type: DrawData['type']) {
   return ({
-    ROUND_ROBIN_POOL: 'Round robin',
+    ROUND_ROBIN_POOL: 'Vòng tròn',
     MAIN_TREE: 'Main tree',
     POOL_WINNER_TREE: 'Poolwinner tree',
     REPECHAGE: 'Repechage',
-    DOUBLE_ELIMINATION: 'Double elimination',
+    DOUBLE_ELIMINATION: 'Loại kép',
   } as const)[type];
 }
 

@@ -1,9 +1,8 @@
 import { IsString, IsOptional, IsDateString, IsNumber, IsEnum, IsArray } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Gender } from '@prisma/client';
-import { CreateAthleteDto } from './create-athlete.dto';
 
-export class UpdateAthleteDto implements Partial<CreateAthleteDto> {
+export class UpdateAthleteDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
@@ -47,7 +46,7 @@ export class UpdateAthleteDto implements Partial<CreateAthleteDto> {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
-  federationId?: string;
+  federationId?: string | null;
 
   @ApiPropertyOptional()
   @IsOptional()

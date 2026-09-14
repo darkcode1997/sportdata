@@ -9,6 +9,7 @@ type AthleteOption = {
   id: string;
   fullName: string;
   country?: { id?: string; code?: string; name?: string } | null;
+  federation?: { id?: string; code?: string | null; name?: string } | null;
 };
 
 type RemoteAthleteSelectProps = {
@@ -19,12 +20,16 @@ type RemoteAthleteSelectProps = {
   categoryId?: string;
   categoryIds?: string[];
   countryId?: string;
+  federationId?: string;
+  federationIds?: string[];
+  includeIndependent?: boolean;
   initialOptions?: AthleteOption[];
   disabled?: boolean;
   placeholder?: string;
   autoSelectAll?: boolean;
   excludeIds?: string[];
   groupByCountry?: boolean;
+  groupByFederation?: boolean;
   maxTagCount?: number | 'responsive';
   selectionLabel?: string;
   showPageControls?: boolean;
@@ -38,12 +43,16 @@ export function RemoteAthleteSelect({
   categoryId,
   categoryIds = [],
   countryId,
+  federationId,
+  federationIds = [],
+  includeIndependent = false,
   initialOptions = [],
   disabled,
   placeholder,
   autoSelectAll = false,
   excludeIds = [],
   groupByCountry = false,
+  groupByFederation = false,
   maxTagCount,
   selectionLabel = 'VĐV',
   showPageControls = false,
@@ -62,15 +71,19 @@ export function RemoteAthleteSelect({
   }, [search]);
 
   const categoryIdsKey = categoryIds.join(',');
+  const federationIdsKey = federationIds.join(',');
 
   useEffect(() => {
     setPage(1);
-  }, [categoryId, categoryIdsKey, countryId, debouncedSearch, eventId]);
+  }, [categoryId, categoryIdsKey, countryId, debouncedSearch, eventId, federationId, federationIdsKey, includeIndependent]);
 
   const endpoint = useMemo(() => {
     const parameters = new URLSearchParams({ limit: '50', page: String(page) });
     if (debouncedSearch) parameters.set('search', debouncedSearch);
     if (countryId) parameters.set('countryId', countryId);
+    if (federationId) parameters.set('federationId', federationId);
+    else if (federationIdsKey) parameters.set('federationIds', federationIdsKey);
+    if (includeIndependent) parameters.set('includeIndependent', 'true');
     if (eventId && categoryId) {
       return `/events/${eventId}/categories/${categoryId}/eligible-athletes?${parameters}`;
     }
@@ -83,12 +96,12 @@ export function RemoteAthleteSelect({
       return `/athletes?${parameters}`;
     }
     return null;
-  }, [categoryId, categoryIdsKey, countryId, debouncedSearch, eventId, page]);
+  }, [categoryId, categoryIdsKey, countryId, debouncedSearch, eventId, federationId, federationIdsKey, includeIndependent, page]);
 
   const { data, isLoading } = useSWR<any>(disabled ? null : endpoint, fetcher, {
     keepPreviousData: true,
   });
-  const remoteAthletes: AthleteOption[] = data?.items || [];
+  const remoteAthletes: AthleteOption[] = useMemo(() => data?.items || [], [data?.items]);
 
   useEffect(() => {
     if (!remoteAthletes.length) return;
@@ -119,6 +132,12 @@ export function RemoteAthleteSelect({
 
   const flatOptions = Array.from(visibleAthletes.values())
     .filter((athlete) => !countryId || athlete.country?.id === countryId)
+    .filter((athlete) => !federationId || athlete.federation?.id === federationId)
+    .filter((athlete) => (
+      !federationIds.length
+      || (athlete.federation?.id && federationIds.includes(athlete.federation.id))
+      || (includeIndependent && !athlete.federation?.id)
+    ))
     .filter((athlete) => !excluded.has(athlete.id) || selectedIds.has(athlete.id))
     .map((athlete) => ({
       value: athlete.id,
@@ -126,15 +145,17 @@ export function RemoteAthleteSelect({
         ? `${athlete.fullName} · ${athlete.country.code}`
         : athlete.fullName,
       countryLabel: [athlete.country?.name, athlete.country?.code].filter(Boolean).join(' · ') || 'Khác',
+      federationLabel: [athlete.federation?.name, athlete.federation?.code].filter(Boolean).join(' · ') || 'VĐV tự do',
     }));
-  const options: any[] = groupByCountry
-    ? Array.from(new Set(flatOptions.map((option) => option.countryLabel))).map((countryLabel) => ({
-        label: countryLabel,
+  const groupField = groupByFederation ? 'federationLabel' : 'countryLabel';
+  const options: any[] = groupByCountry || groupByFederation
+    ? Array.from(new Set(flatOptions.map((option) => option[groupField]))).map((groupLabel) => ({
+        label: groupLabel,
         options: flatOptions
-          .filter((option) => option.countryLabel === countryLabel)
-          .map(({ countryLabel: _, ...option }) => option),
+          .filter((option) => option[groupField] === groupLabel)
+          .map(({ countryLabel: _countryLabel, federationLabel: _federationLabel, ...option }) => option),
       }))
-    : flatOptions.map(({ countryLabel: _, ...option }) => option);
+    : flatOptions.map(({ countryLabel: _countryLabel, federationLabel: _federationLabel, ...option }) => option);
   const selectedValues = Array.isArray(value) ? value : [];
   const visiblePageIds = remoteAthletes
     .map((athlete) => athlete.id)

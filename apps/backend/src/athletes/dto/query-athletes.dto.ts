@@ -1,6 +1,6 @@
-import { IsOptional, IsString, IsInt, Min, Max, IsEnum } from 'class-validator';
+import { IsBoolean, IsOptional, IsString, IsInt, Min, Max, IsEnum } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import { Gender } from '@prisma/client';
 
 export class QueryAthletesDto {
@@ -13,6 +13,22 @@ export class QueryAthletesDto {
   @IsOptional()
   @IsString()
   countryId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  federationId?: string;
+
+  @ApiPropertyOptional({ description: 'Danh sách đơn vị ID, phân cách bằng dấu phẩy' })
+  @IsOptional()
+  @IsString()
+  federationIds?: string;
+
+  @ApiPropertyOptional({ description: 'Bao gồm VĐV không trực thuộc đơn vị khi đang lọc đơn vị' })
+  @IsOptional()
+  @IsBoolean()
+  @Transform(({ value }) => value === 'true' ? true : value === 'false' ? false : value)
+  includeIndependent?: boolean;
 
   @ApiPropertyOptional()
   @IsOptional()

@@ -44,7 +44,7 @@ export class SportsService {
   async findOne(id: string) {
     const sport = await this.prisma.sport.findUnique({ where: { id } });
     if (!sport) {
-      throw new NotFoundException(`Sport with id '${id}' not found`);
+      throw new NotFoundException(`Không tìm thấy bộ môn có mã '${id}'`);
     }
     return sport;
   }

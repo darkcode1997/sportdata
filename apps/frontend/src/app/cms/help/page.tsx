@@ -15,7 +15,7 @@ import {
   Typography,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { AlertTriangle, BookOpen, CheckCircle2, KeyRound, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, BookOpen, Building2, CheckCircle2, Globe2, KeyRound, ShieldCheck } from 'lucide-react';
 import { CmsPageHeader } from '@/components/cms/CmsPageHeader';
 import {
   CMS_ROLE_INFO,
@@ -103,8 +103,8 @@ export default function CmsHelpPage() {
               responsive
               current={-1}
               items={[
-                { title: 'Chuẩn bị', description: 'Sự kiện, môn, hạng mục và entry' },
-                { title: 'Tài nguyên', description: 'Venue, FOP, session và time slot' },
+                { title: 'Chuẩn bị', description: 'Sự kiện, môn, hạng mục và đăng ký' },
+                { title: 'Tài nguyên', description: 'Địa điểm, sân/sàn, ca và khung giờ' },
                 { title: 'Thi đấu', description: 'Sinh cây, xếp và khóa lịch' },
                 { title: 'Kết quả', description: 'Nhập, xác nhận, duyệt và công bố' },
               ]}
@@ -112,6 +112,31 @@ export default function CmsHelpPage() {
           </Card>
         </Col>
       </Row>
+
+      <Card className="cms-surface" title="Chọn mô hình tổ chức sự kiện">
+        <Row gutter={[16, 16]}>
+          <Col xs={24} lg={12}>
+            <Card size="small" title={<Space><Globe2 className="h-5 w-5 text-purple-500" />Giải quốc tế / đại hội</Space>}>
+              <ol className="m-0 space-y-2 pl-5">
+                <li>Chọn quy mô <strong>Quốc tế</strong> và đơn vị đăng cai.</li>
+                <li>Chọn các liên đoàn hoặc đoàn thể thao tham gia.</li>
+                <li>Chọn nhiều bộ môn, hạng mục và lọc VĐV theo quốc gia.</li>
+                <li>Thiết lập venue, FOP và session trước khi xếp lịch.</li>
+              </ol>
+            </Card>
+          </Col>
+          <Col xs={24} lg={12}>
+            <Card size="small" title={<Space><Building2 className="h-5 w-5 text-cyan-500" />Giải trung tâm / CLB trong nước</Space>}>
+              <ol className="m-0 space-y-2 pl-5">
+                <li>Tạo đơn vị loại <strong>Trung tâm</strong>, <strong>CLB</strong> hoặc <strong>Học viện</strong> trong hồ sơ VĐV.</li>
+                <li>Chọn quy mô Toàn quốc, Tỉnh/thành hoặc Nội bộ trung tâm.</li>
+                <li>Chọn đơn vị tổ chức và danh sách đơn vị được tham gia.</li>
+                <li>Hệ thống chỉ hiển thị VĐV đúng hạng mục và đúng đơn vị đã chọn.</li>
+              </ol>
+            </Card>
+          </Col>
+        </Row>
+      </Card>
 
       <Card className="cms-surface" title="Thao tác theo vai trò">
         <Collapse
