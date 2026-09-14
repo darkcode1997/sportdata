@@ -9,6 +9,7 @@ import { createHash, randomBytes } from 'crypto';
 import * as bcrypt from 'bcrypt';
 import * as nodemailer from 'nodemailer';
 import { JwtService } from '@nestjs/jwt';
+import type { SignOptions } from 'jsonwebtoken';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
@@ -293,7 +294,7 @@ export class AuthService {
       { sub: userId, email, username, sessionIssuedAt: Date.now() },
       {
         secret: process.env.JWT_SECRET || 'sportdata-dev-secret-change-me-please',
-        expiresIn: process.env.JWT_EXPIRES_IN || '7d',
+        expiresIn: (process.env.JWT_EXPIRES_IN || '7d') as SignOptions['expiresIn'],
       },
     );
   }

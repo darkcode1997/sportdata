@@ -19,6 +19,19 @@ import { SchedulingService } from './scheduling.service';
 export class SchedulingController {
   constructor(private readonly scheduling: SchedulingService) {}
 
+  @Get('events/:eventId/overview')
+  @Roles(
+    UserRole.GAMES_ADMIN,
+    UserRole.SPORT_MANAGER,
+    UserRole.VENUE_OPERATOR,
+    UserRole.SCOREKEEPER,
+    UserRole.RESULT_APPROVER,
+    UserRole.READ_ONLY,
+  )
+  getEventOverview(@Param('eventId') eventId: string) {
+    return this.scheduling.getEventOverview(eventId);
+  }
+
   @Get('venues')
   @Roles(UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER, UserRole.VENUE_OPERATOR, UserRole.READ_ONLY)
   listVenues(@Query('eventId') eventId?: string) {

@@ -35,6 +35,61 @@ type ScheduleAssignment = {
 export class SchedulingService {
   constructor(private readonly prisma: PrismaService) {}
 
+  async getEventOverview(eventId: string) {
+    const event = await this.prisma.event.findUnique({
+      where: { id: eventId },
+      select: {
+        id: true,
+        name: true,
+        startDate: true,
+        endDate: true,
+        _count: {
+          select: {
+            athletes: true,
+            categories: true,
+            entries: true,
+            teams: true,
+            venues: true,
+            sessions: true,
+            scheduleRules: true,
+            heats: true,
+            roundRobinGroups: true,
+            matches: true,
+          },
+        },
+      },
+    });
+    if (!event) throw new NotFoundException('Event not found');
+
+    const [timeSlots, scheduledMatches, lockedSchedules, resultGroups] = await Promise.all([
+      this.prisma.timeSlot.count({ where: { session: { eventId } } }),
+      this.prisma.match.count({ where: { eventId, startTime: { not: null } } }),
+      this.prisma.match.count({ where: { eventId, scheduleLocked: true } }),
+      this.prisma.match.groupBy({
+        by: ['resultStatus'],
+        where: { eventId },
+        _count: { _all: true },
+      }),
+    ]);
+
+    return {
+      id: event.id,
+      name: event.name,
+      startDate: event.startDate,
+      endDate: event.endDate,
+      counts: {
+        ...event._count,
+        timeSlots,
+        scheduledMatches,
+        unscheduledMatches: Math.max(0, event._count.matches - scheduledMatches),
+        lockedSchedules,
+        results: Object.fromEntries(
+          resultGroups.map((group) => [group.resultStatus, group._count._all]),
+        ),
+      },
+    };
+  }
+
   listVenues(eventId?: string) {
     return this.prisma.venue.findMany({
       where: eventId ? { events: { some: { id: eventId } } } : undefined,

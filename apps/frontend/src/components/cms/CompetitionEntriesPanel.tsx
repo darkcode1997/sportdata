@@ -29,9 +29,20 @@ function requestMessage(error: any, fallback: string) {
   return Array.isArray(value) ? value.join('. ') : value || fallback;
 }
 
-export function CompetitionEntriesPanel({ eventId, event }: { eventId: string; event: any }) {
+export function CompetitionEntriesPanel({
+  eventId,
+  event,
+  readOnly = false,
+  onChanged,
+}: {
+  eventId: string;
+  event: any;
+  readOnly?: boolean;
+  onChanged?: () => void | Promise<void>;
+}) {
   const { message } = AntApp.useApp();
   const [categoryId, setCategoryId] = useState<string>();
+  const [countryId, setCountryId] = useState<string>();
   const [selectedEntryIds, setSelectedEntryIds] = useState<React.Key[]>([]);
   const [teamOpen, setTeamOpen] = useState(false);
   const [entryOpen, setEntryOpen] = useState(false);
@@ -50,6 +61,8 @@ export function CompetitionEntriesPanel({ eventId, event }: { eventId: string; e
   const categories = event?.categories || [];
   const category = categories.find((item: any) => item.id === categoryId);
   const availableTeams = teams.filter((team: any) => !category?.sportId || team.sportId === category.sportId);
+  const filteredEntries = countryId ? entries.filter((entry: any) => entry.countryId === countryId) : entries;
+  const entryCountries = countries.filter((country: any) => entries.some((entry: any) => entry.countryId === country.id));
 
   const createTeam = async () => {
     try {
@@ -67,6 +80,7 @@ export function CompetitionEntriesPanel({ eventId, event }: { eventId: string; e
       setTeamOpen(false);
       teamForm.resetFields();
       await mutateTeams();
+      await onChanged?.();
     } catch (error: any) {
       if (error?.errorFields) return;
       message.error(requestMessage(error, 'Không thể tạo đội'));
@@ -81,6 +95,7 @@ export function CompetitionEntriesPanel({ eventId, event }: { eventId: string; e
       setEntryOpen(false);
       entryForm.resetFields();
       await mutateEntries();
+      await onChanged?.();
     } catch (error: any) {
       if (error?.errorFields) return;
       message.error(requestMessage(error, 'Không thể đăng ký entry'));
@@ -99,6 +114,7 @@ export function CompetitionEntriesPanel({ eventId, event }: { eventId: string; e
       setGenerator(undefined);
       generatorForm.resetFields();
       setSelectedEntryIds([]);
+      await onChanged?.();
     } catch (error: any) {
       if (error?.errorFields) return;
       message.error(requestMessage(error, 'Không thể sinh thể thức'));
@@ -122,7 +138,8 @@ export function CompetitionEntriesPanel({ eventId, event }: { eventId: string; e
 
   return (
     <Space direction="vertical" size="large" className="w-full">
-      <Card title="Đăng ký thi đấu" extra={<Space wrap><Button icon={<Users className="h-4 w-4" />} onClick={() => setTeamOpen(true)}>Tạo đội/relay</Button><Button type="primary" icon={<Plus className="h-4 w-4" />} disabled={!categoryId} onClick={() => setEntryOpen(true)}>Thêm entry</Button></Space>}>
+      <Card title="Đăng ký thi đấu" extra={<Space wrap><Button icon={<Users className="h-4 w-4" />} disabled={readOnly} onClick={() => setTeamOpen(true)}>Tạo đội/relay</Button><Button type="primary" icon={<Plus className="h-4 w-4" />} disabled={readOnly || !categoryId} onClick={() => setEntryOpen(true)}>Thêm entry</Button></Space>}>
+        <Alert className="mb-4" type="info" showIcon message="Chọn bộ môn → hạng mục → quốc gia → VĐV/đội" description="Danh sách VĐV được lọc phía server theo giới tính, tuổi và cân nặng của hạng mục." />
         <Typography.Text strong className="mb-2 block">Hạng mục thi đấu</Typography.Text>
         <Select
           showSearch
@@ -130,7 +147,7 @@ export function CompetitionEntriesPanel({ eventId, event }: { eventId: string; e
           className="w-full"
           placeholder="Chọn hạng mục"
           value={categoryId}
-          onChange={(value) => { setCategoryId(value); setSelectedEntryIds([]); }}
+          onChange={(value) => { setCategoryId(value); setCountryId(undefined); setSelectedEntryIds([]); }}
           options={sports.map((sport: any) => ({
             label: sport.name,
             options: categories.filter((item: any) => item.sportId === sport.id).map((item: any) => ({ value: item.id, label: item.name })),
@@ -138,13 +155,18 @@ export function CompetitionEntriesPanel({ eventId, event }: { eventId: string; e
         />
       </Card>
 
-      {categoryId ? <Card title={`${category?.name || 'Hạng mục'} · ${entries.length} entry`} extra={<Space wrap><Button icon={<Network className="h-4 w-4" />} disabled={selectedEntryIds.length < 2} onClick={() => setGenerator('HEAT')}>Sinh heats/lanes</Button><Button disabled={selectedEntryIds.length < 2} onClick={() => setGenerator('ROUND_ROBIN')}>Sinh vòng tròn</Button></Space>}>
+      {categoryId ? <Card title={`${category?.name || 'Hạng mục'} · ${entries.length} entry`} extra={<Space wrap><Button icon={<Network className="h-4 w-4" />} disabled={readOnly || selectedEntryIds.length < 2} onClick={() => setGenerator('HEAT')}>Sinh heats/lanes</Button><Button disabled={readOnly || selectedEntryIds.length < 2} onClick={() => setGenerator('ROUND_ROBIN')}>Sinh vòng tròn</Button></Space>}>
+        <Space wrap className="mb-4 w-full">
+          <Select allowClear showSearch optionFilterProp="label" placeholder="Lọc theo quốc gia" value={countryId} onChange={(value) => { setCountryId(value); setSelectedEntryIds([]); }} className="min-w-64" options={entryCountries.map((country: any) => ({ value: country.id, label: `${country.name} · ${country.code}` }))} />
+          <Button disabled={readOnly || !filteredEntries.length} onClick={() => setSelectedEntryIds(filteredEntries.map((entry: any) => entry.id))}>Chọn tất cả đang hiển thị</Button>
+          {selectedEntryIds.length > 0 && <Button onClick={() => setSelectedEntryIds([])}>Bỏ chọn ({selectedEntryIds.length})</Button>}
+        </Space>
         <Table
           rowKey="id"
           columns={columns}
-          dataSource={entries}
-          pagination={{ pageSize: 20 }}
-          rowSelection={{ selectedRowKeys: selectedEntryIds, onChange: setSelectedEntryIds }}
+          dataSource={filteredEntries}
+          pagination={{ pageSize: 20, showSizeChanger: true }}
+          rowSelection={readOnly ? undefined : { selectedRowKeys: selectedEntryIds, onChange: setSelectedEntryIds }}
         />
       </Card> : <Alert showIcon message="Chọn hạng mục để quản lý danh sách đăng ký." />}
 
