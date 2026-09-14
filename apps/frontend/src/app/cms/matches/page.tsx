@@ -57,6 +57,8 @@ export default function MatchesListPage() {
   const [search, setSearch] = useState('');
   const deferredSearch = useDeferredValue(search);
   const [status, setStatus] = useState('');
+  const [sportId, setSportId] = useState('');
+  const [categoryId, setCategoryId] = useState('');
   const [page, setPage] = useState(1);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [drawOpen, setDrawOpen] = useState(false);
@@ -69,13 +71,18 @@ export default function MatchesListPage() {
   const selectedDrawType = Form.useWatch('type', drawForm) || 'MAIN_TREE';
 
   const { data: eventsResponse } = useSWR<any>('/events?limit=500', fetcher);
+  const { data: sportsResponse } = useSWR<any>('/sports', fetcher);
   const { data: categoriesResponse } = useSWR<any>('/categories?limit=500', fetcher);
   const { data: selectedEventDetails } = useSWR<any>(
     selectedEventId ? `/events/${selectedEventId}` : null,
     fetcher,
   );
   const events = eventsResponse?.items || [];
+  const sports = Array.isArray(sportsResponse) ? sportsResponse : sportsResponse?.items || [];
   const allCategories = categoriesResponse?.items || [];
+  const filterCategories = sportId
+    ? allCategories.filter((category: any) => category.sportId === sportId)
+    : [];
   const selectedEvent = selectedEventDetails
     || events.find((event: any) => event.id === selectedEventId);
   const eventSportIds = new Set<string>([
@@ -104,9 +111,11 @@ export default function MatchesListPage() {
   const query = useMemo(() => {
     const params = new URLSearchParams({ page: String(page), limit: '20' });
     if (status) params.set('status', status);
+    if (sportId) params.set('sportId', sportId);
+    if (categoryId) params.set('categoryId', categoryId);
     if (deferredSearch.trim()) params.set('search', deferredSearch.trim());
     return `/matches?${params}`;
-  }, [deferredSearch, status, page]);
+  }, [categoryId, deferredSearch, page, sportId, status]);
 
   const { data, error, isLoading, mutate } = useSWR<any>(query, fetcher);
   const matches = data?.items || [];
@@ -507,6 +516,44 @@ export default function MatchesListPage() {
               setPage(1);
             }}
             className="min-w-64 flex-1"
+          />
+          <Select
+            showSearch
+            optionFilterProp="label"
+            size="large"
+            className="w-full sm:w-56"
+            value={sportId}
+            onChange={(value) => {
+              setSportId(value);
+              setCategoryId('');
+              setPage(1);
+            }}
+            options={[
+              { value: '', label: 'Tất cả bộ môn' },
+              ...sports.map((sport: any) => ({
+                value: sport.id,
+                label: sport.name,
+              })),
+            ]}
+          />
+          <Select
+            showSearch
+            optionFilterProp="label"
+            size="large"
+            className="w-full sm:w-72"
+            value={categoryId}
+            disabled={!sportId}
+            onChange={(value) => {
+              setCategoryId(value);
+              setPage(1);
+            }}
+            options={[
+              { value: '', label: 'Tất cả hạng cân / nội dung' },
+              ...filterCategories.map((category: any) => ({
+                value: category.id,
+                label: category.name,
+              })),
+            ]}
           />
           <Select
             size="large"

@@ -130,7 +130,7 @@ services:
     command:
       - sh
       - -c
-      - npx prisma db push --schema=apps/backend/prisma/schema.prisma --skip-generate && npx prisma db execute --schema=apps/backend/prisma/schema.prisma --file=apps/backend/prisma/sql/match-schedule-constraints.sql
+      - npx prisma migrate deploy --schema=apps/backend/prisma/schema.prisma
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres-primary:5432/${POSTGRES_DB:-sportdata}?schema=public
     depends_on:

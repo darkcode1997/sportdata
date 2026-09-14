@@ -1,6 +1,8 @@
 import {
   BracketSide,
   DrawType,
+  EntryStatus,
+  EntryType,
   Gender,
   MatchStatus,
   MatchType,
@@ -686,6 +688,21 @@ export async function seedSeaGamesDemo(prisma: PrismaClient) {
       athletes: { set: athletes.map((athlete) => ({ id: athlete.id as string })) },
     },
   });
+
+  const entrySeeds: Prisma.CompetitionEntryCreateManyInput[] = athletes.map((athlete) => ({
+    eventId: event.id,
+    categoryId: athlete.categoryId,
+    countryId: athlete.countryId,
+    type: EntryType.INDIVIDUAL,
+    status: EntryStatus.VERIFIED,
+    athleteId: athlete.id as string,
+  }));
+  for (let offset = 0; offset < entrySeeds.length; offset += 1_000) {
+    await prisma.competitionEntry.createMany({
+      data: entrySeeds.slice(offset, offset + 1_000),
+      skipDuplicates: true,
+    });
+  }
 
   const statistics: Prisma.StatisticCreateManyInput[] = athletes.map((athlete) => ({
     athleteId: athlete.id as string,

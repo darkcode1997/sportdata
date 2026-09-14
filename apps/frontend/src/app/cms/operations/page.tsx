@@ -66,7 +66,7 @@ export default function OperationsPage() {
   const [ruleForm] = Form.useForm();
 
   const { data: eventsResponse } = useSWR<any>('/events?limit=200', fetcher);
-  const events = eventsResponse?.items || [];
+  const events = useMemo(() => eventsResponse?.items || [], [eventsResponse?.items]);
   const { data: currentUser } = useSWR<any>('/auth/profile', fetcher);
   const { data: event } = useSWR<any>(eventId ? `/events/${eventId}` : null, fetcher);
   const { data: overview, mutate: mutateOverview } = useSWR<any>(eventId ? `/scheduling/events/${eventId}/overview` : null, fetcher);
@@ -77,7 +77,7 @@ export default function OperationsPage() {
   const { data: matchesResponse, mutate: mutateMatches } = useSWR<any>(eventId ? `/matches?eventId=${eventId}&limit=50` : null, fetcher);
   const matches = matchesResponse?.items || [];
   const sports = event?.sports?.length ? event.sports : event?.sport ? [event.sport] : [];
-  const counts = overview?.counts || {};
+  const counts = useMemo(() => overview?.counts || {}, [overview?.counts]);
   const isAdmin = currentUser?.role === 'ADMIN';
   const hasRole = (...roles: string[]) => isAdmin || roles.includes(currentUser?.role);
   const canCreateVenue = hasRole('GAMES_ADMIN');
