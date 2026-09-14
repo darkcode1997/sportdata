@@ -16,6 +16,7 @@ import { EventsService } from './events.service';
 import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
 import { QueryEventsDto } from './dto/query-events.dto';
+import { QueryEligibleAthletesDto } from './dto/query-eligible-athletes.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { UserRole } from '../common/enums/user-role.enum';
@@ -39,6 +40,24 @@ export class EventsController {
   @ApiResponse({ status: 200, description: 'Events retrieved successfully' })
   findAll(@Query() query: QueryEventsDto) {
     return this.eventsService.findAll(query);
+  }
+
+  @Get(':id/categories/:categoryId/eligible-athletes')
+  @ApiOperation({ summary: 'Tìm VĐV đủ điều kiện của một hạng đấu trong sự kiện' })
+  findEligibleAthletes(
+    @Param('id') id: string,
+    @Param('categoryId') categoryId: string,
+    @Query() query: QueryEligibleAthletesDto,
+  ) {
+    return this.eventsService.findEligibleAthletes(id, categoryId, query);
+  }
+
+  @Get(':id/admin-detail')
+  @UseGuards(JwtAuthGuard)
+  @Roles(UserRole.ADMIN, UserRole.CONTENT)
+  @ApiOperation({ summary: 'Get event details including selected athletes for editing' })
+  findAdminDetail(@Param('id') id: string) {
+    return this.eventsService.findOne(id, true);
   }
 
   @Get(':id')

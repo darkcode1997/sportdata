@@ -77,11 +77,15 @@ interface ScheduleSummary {
 interface MatchPage {
   items: Match[];
   meta: {
-    total: number;
-    page: number;
     limit: number;
-    totalPages: number;
+    hasMore: boolean;
+    nextCursor?: string | null;
   };
+}
+
+interface EventFop {
+  id: string;
+  name: string;
 }
 
 interface EventData {
@@ -93,6 +97,7 @@ interface EventData {
   sport?: Sport;
   sports?: Sport[];
   categories?: EventCategory[];
+  fops?: EventFop[];
   _count?: { matches?: number; athletes?: number };
 }
 
@@ -150,6 +155,7 @@ export default function EventDetailPage() {
   const [selectedDate, setSelectedDate] = useState<string>();
   const [selectedSportId, setSelectedSportId] = useState<string>();
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>();
+  const [selectedFopId, setSelectedFopId] = useState<string>();
 
   useEffect(() => {
     if (!dateGroups.length) return;
@@ -160,18 +166,22 @@ export default function EventDetailPage() {
 
   const getMatchesKey = useCallback((pageIndex: number, previousPage: MatchPage | null) => {
     if (!eventId || !selectedDate) return null;
-    if (previousPage && previousPage.meta.page >= previousPage.meta.totalPages) return null;
+    if (previousPage && !previousPage.meta.hasMore) return null;
 
     const query = new URLSearchParams({
       eventId,
       date: selectedDate,
-      page: String(pageIndex + 1),
+      pagination: 'cursor',
       limit: '50',
     });
+    if (pageIndex > 0 && previousPage?.meta.nextCursor) {
+      query.set('cursor', previousPage.meta.nextCursor);
+    }
     if (selectedSportId) query.set('sportId', selectedSportId);
     if (selectedCategoryId) query.set('categoryId', selectedCategoryId);
+    if (selectedFopId) query.set('fopId', selectedFopId);
     return `/matches?${query}`;
-  }, [eventId, selectedCategoryId, selectedDate, selectedSportId]);
+  }, [eventId, selectedCategoryId, selectedDate, selectedFopId, selectedSportId]);
 
   const {
     data: matchPages,
@@ -188,8 +198,7 @@ export default function EventDetailPage() {
     return Array.from(uniqueMatches.values());
   }, [matchPages]);
   const lastPage = matchPages?.[matchPages.length - 1];
-  const hasMore = Boolean(lastPage && lastPage.meta.page < lastPage.meta.totalPages);
-  const filteredTotal = matchPages?.[0]?.meta.total || 0;
+  const hasMore = Boolean(lastPage?.meta.hasMore);
   const loadMoreRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -262,6 +271,7 @@ export default function EventDetailPage() {
       setSelectedDate(liveMatchTarget.date);
       setSelectedSportId(undefined);
       setSelectedCategoryId(undefined);
+      setSelectedFopId(undefined);
       setSize(1);
     }
     setPendingLiveMatchId(liveMatchTarget.id);
@@ -321,7 +331,7 @@ export default function EventDetailPage() {
           })}
         </div>
 
-        <div className="schedule-filter-bar mt-4 grid gap-3 sm:grid-cols-2">
+        <div className="schedule-filter-bar mt-4 grid gap-3 sm:grid-cols-3">
           <Select
             allowClear
             size="large"
@@ -351,6 +361,20 @@ export default function EventDetailPage() {
               value: category.id,
               label: categoryLabel(category),
             }))}
+          />
+          <Select
+            allowClear
+            showSearch
+            size="large"
+            optionFilterProp="label"
+            placeholder="Tất cả sân / FOP"
+            value={selectedFopId}
+            onChange={(value) => {
+              setPendingLiveMatchId(undefined);
+              setSize(1);
+              setSelectedFopId(value);
+            }}
+            options={(event?.fops || []).map((fop) => ({ value: fop.id, label: fop.name }))}
           />
         </div>
 
@@ -390,7 +414,7 @@ export default function EventDetailPage() {
                   <Spin size="small" />
                 ) : !hasMore ? (
                   <span className="text-xs font-medium text-slate-500">
-                    Đã hiển thị toàn bộ {filteredTotal.toLocaleString()} trận
+                    Đã hiển thị toàn bộ {activeMatches.length.toLocaleString()} trận
                   </span>
                 ) : null}
               </div>

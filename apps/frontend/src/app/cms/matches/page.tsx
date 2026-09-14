@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useDeferredValue, useMemo, useState } from 'react';
 import useSWR from 'swr';
 import {
   Alert,
@@ -24,6 +24,7 @@ import {
 import { Network, Pencil, Plus, Search, Trash2 } from 'lucide-react';
 import { CmsPageHeader } from '@/components/cms/CmsPageHeader';
 import { api, fetcher } from '@/lib/api';
+import { RemoteAthleteSelect } from '@/components/cms/RemoteAthleteSelect';
 
 const dateTime = new Intl.DateTimeFormat('vi-VN', {
   day: '2-digit',
@@ -54,6 +55,7 @@ export default function MatchesListPage() {
   const { data: currentUser } = useSWR<any>('/auth/profile', fetcher);
   const canDelete = currentUser?.role === 'ADMIN';
   const [search, setSearch] = useState('');
+  const deferredSearch = useDeferredValue(search);
   const [status, setStatus] = useState('');
   const [page, setPage] = useState(1);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -68,11 +70,14 @@ export default function MatchesListPage() {
 
   const { data: eventsResponse } = useSWR<any>('/events?limit=500', fetcher);
   const { data: categoriesResponse } = useSWR<any>('/categories?limit=500', fetcher);
-  const { data: athletesResponse } = useSWR<any>('/athletes?limit=500', fetcher);
+  const { data: selectedEventDetails } = useSWR<any>(
+    selectedEventId ? `/events/${selectedEventId}` : null,
+    fetcher,
+  );
   const events = eventsResponse?.items || [];
   const allCategories = categoriesResponse?.items || [];
-  const allAthletes = athletesResponse?.items || [];
-  const selectedEvent = events.find((event: any) => event.id === selectedEventId);
+  const selectedEvent = selectedEventDetails
+    || events.find((event: any) => event.id === selectedEventId);
   const eventSportIds = new Set<string>([
     ...(selectedEvent?.sports || []).map((sport: any) => sport.id),
     ...(selectedEvent?.sportId ? [selectedEvent.sportId] : []),
@@ -96,34 +101,15 @@ export default function MatchesListPage() {
   const selectedCategories = selectedCategoryIds
     .map((categoryId) => eventCategories.find((category: any) => category.id === categoryId))
     .filter(Boolean);
-  const eventAthleteIds = new Set<string>(
-    (selectedEvent?.athletes || []).map((athlete: any) => athlete.id),
-  );
-  const eventAthletes = eventAthleteIds.size
-    ? allAthletes.filter((athlete: any) => eventAthleteIds.has(athlete.id))
-    : allAthletes;
-
-  const eligibleAthletesForCategory = (categoryId: string) => {
-    const registeredAthletes = eventAthletes.filter((athlete: any) => (
-      (athlete.categories || []).some((category: any) => category.id === categoryId)
-    ));
-
-    // Dữ liệu cũ có thể chưa gắn hạng cho VĐV; khi đó vẫn cho phép
-    // người dùng chọn từ danh sách VĐV của sự kiện.
-    return registeredAthletes.length ? registeredAthletes : eventAthletes;
-  };
-
   const query = useMemo(() => {
     const params = new URLSearchParams({ page: String(page), limit: '20' });
     if (status) params.set('status', status);
+    if (deferredSearch.trim()) params.set('search', deferredSearch.trim());
     return `/matches?${params}`;
-  }, [status, page]);
+  }, [deferredSearch, status, page]);
 
   const { data, error, isLoading, mutate } = useSWR<any>(query, fetcher);
-  const matches = (data?.items || []).filter((match: any) => {
-    const haystack = `${match.athlete1?.fullName || ''} ${match.athlete2?.fullName || ''} ${match.event?.name || ''}`.toLowerCase();
-    return haystack.includes(search.toLowerCase());
-  });
+  const matches = data?.items || [];
 
   const remove = async (id: string) => {
     setDeleteError(null);
@@ -398,8 +384,7 @@ export default function MatchesListPage() {
                   'athleteIdsByCategory',
                   Object.fromEntries(categoryIds.map((categoryId) => [
                     categoryId,
-                    athleteIdsByCategory[categoryId]
-                      || eligibleAthletesForCategory(categoryId).map((athlete: any) => athlete.id),
+                    athleteIdsByCategory[categoryId] || [],
                   ])),
                 );
               }}
@@ -411,7 +396,6 @@ export default function MatchesListPage() {
               <Divider className="my-4" titlePlacement="start">Vận động viên theo hạng</Divider>
               <div className="space-y-3">
                 {selectedCategories.map((category: any) => {
-                  const eligibleAthletes = eligibleAthletesForCategory(category.id);
                   const minimumAthletes = selectedDrawType === 'DOUBLE_ELIMINATION' ? 4 : 2;
                   return (
                     <Card
@@ -437,15 +421,12 @@ export default function MatchesListPage() {
                           ),
                         }]}
                       >
-                        <Select
+                        <RemoteAthleteSelect
                           mode="multiple"
-                          showSearch
-                          optionFilterProp="label"
+                          eventId={selectedEventId}
+                          categoryId={category.id}
+                          autoSelectAll
                           placeholder="Hạt giống số 1, số 2..."
-                          options={eligibleAthletes.map((athlete: any) => ({
-                            value: athlete.id,
-                            label: athlete.fullName,
-                          }))}
                         />
                       </Form.Item>
                     </Card>
@@ -520,7 +501,10 @@ export default function MatchesListPage() {
             prefix={<Search className="h-4 w-4 text-slate-500" />}
             placeholder="Tìm vận động viên hoặc sự kiện..."
             value={search}
-            onChange={(event) => setSearch(event.target.value)}
+            onChange={(event) => {
+              setSearch(event.target.value);
+              setPage(1);
+            }}
             className="min-w-64 flex-1"
           />
           <Select

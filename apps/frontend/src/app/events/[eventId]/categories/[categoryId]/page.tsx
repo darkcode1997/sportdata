@@ -1,9 +1,10 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import useSWR from 'swr';
+import useSWRInfinite from 'swr/infinite';
 import { Button, Card, Empty, Skeleton, Table, Tag, type TableProps } from 'antd';
 import {
   ArrowLeft,
@@ -114,7 +115,11 @@ interface MatchData {
 
 interface MatchesResponse {
   items: MatchData[];
-  meta: { total: number };
+  meta: {
+    limit: number;
+    hasMore: boolean;
+    nextCursor?: string | null;
+  };
 }
 
 interface DrawData {
@@ -196,16 +201,29 @@ export default function CategoryDetailPage() {
       : null,
     fetcher,
   );
+  const getMatchesKey = useCallback((pageIndex: number, previousPage: MatchesResponse | null) => {
+    if (!eventId || !categoryId || (previousPage && !previousPage.meta.hasMore)) return null;
+    const query = new URLSearchParams({
+      eventId,
+      categoryId,
+      pagination: 'cursor',
+      limit: '50',
+    });
+    if (pageIndex > 0 && previousPage?.meta.nextCursor) {
+      query.set('cursor', previousPage.meta.nextCursor);
+    }
+    return `/matches?${query}`;
+  }, [categoryId, eventId]);
   const {
-    data: matchesResponse,
+    data: matchPages,
     isLoading: matchesLoading,
+    isValidating: matchesValidating,
     mutate: refreshMatches,
-  } = useSWR<MatchesResponse>(
-    eventId && categoryId
-      ? `/matches?eventId=${encodeURIComponent(eventId)}&categoryId=${encodeURIComponent(categoryId)}&limit=1000`
-      : null,
-    fetcher,
-  );
+    setSize: setMatchPageCount,
+  } = useSWRInfinite<MatchesResponse>(getMatchesKey, fetcher, {
+    persistSize: false,
+    revalidateFirstPage: false,
+  });
   const {
     data: drawsResponse,
     isLoading: drawsLoading,
@@ -222,10 +240,11 @@ export default function CategoryDetailPage() {
     || /\b(DUO|SHOW)\b/i.test(category?.name || '');
   const finalStandings = standings.slice(0, isPointsCategory ? 10 : 5);
   const matches = useMemo(
-    () => [...(matchesResponse?.items || [])]
+    () => [...(matchPages?.flatMap((page) => page.items) || [])]
       .sort((left, right) => (left.matchNumber || 0) - (right.matchNumber || 0)),
-    [matchesResponse],
+    [matchPages],
   );
+  const matchesHaveMore = Boolean(matchPages?.at(-1)?.meta.hasMore);
   const draws = useMemo(
     () => [...(drawsResponse?.draws || [])].sort((left, right) => left.sortOrder - right.sortOrder),
     [drawsResponse],
@@ -339,6 +358,16 @@ export default function CategoryDetailPage() {
                 <Card className="category-empty-card">
                   <Empty description="Hạng mục chưa có cấu trúc cây thi đấu" />
                 </Card>
+              )}
+              {matchesHaveMore && (
+                <div className="mt-5 flex justify-center">
+                  <Button
+                    loading={matchesValidating}
+                    onClick={() => setMatchPageCount((current) => current + 1)}
+                  >
+                    Tải thêm 50 trận
+                  </Button>
+                </div>
               )}
             </section>
           </>

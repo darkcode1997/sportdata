@@ -10,6 +10,7 @@ import dayjs from 'dayjs';
 import { Card, Checkbox, Col, DatePicker, Form, Input, Row, Select } from 'antd';
 import { api, fetcher } from '@/lib/api';
 import { ErrorMessage, FormActions } from './AthleteForm';
+import { RemoteAthleteSelect } from './RemoteAthleteSelect';
 
 const eventSchema = z.object({
   name: z.string().min(3, 'Tên sự kiện phải có ít nhất 3 ký tự'),
@@ -36,9 +37,7 @@ export function EventForm({ eventId, initialData }: { eventId?: string; initialD
   const [submitError, setSubmitError] = useState<string | null>(null);
   const { data: sports = [] } = useSWR<any[]>('/sports', fetcher);
   const { data: categoriesResponse } = useSWR<any>('/categories?limit=500', fetcher);
-  const { data: athletesResponse } = useSWR<any>('/athletes?limit=5000', fetcher);
   const categories = categoriesResponse?.items || [];
-  const athletes = athletesResponse?.items || [];
   const {
     control,
     handleSubmit,
@@ -63,30 +62,18 @@ export function EventForm({ eventId, initialData }: { eventId?: string; initialD
   });
   const selectedSportIds = watch('sportIds') || [];
   const selectedCategoryIds = watch('categoryIds') || [];
-  const selectedAthleteIds = watch('athleteIds') || [];
   const availableCategories = categories.filter((category: any) => selectedSportIds.includes(category.sportId));
-  const getEligibleAthletes = (categoryIds: string[]) => {
-    const selectedIds = new Set(categoryIds);
-    return athletes.filter((athlete: any) => (
-      (athlete.categories || []).some((category: any) => selectedIds.has(category.id))
-    ));
-  };
-  const eligibleAthletes = getEligibleAthletes(selectedCategoryIds);
-  const eligibleAthleteIds = new Set(eligibleAthletes.map((athlete: any) => athlete.id));
 
   const onSubmit = async (values: EventFormValues) => {
     setSubmitError(null);
     const validCategoryIds = values.categoryIds.filter(
       (id) => availableCategories.some((category: any) => category.id === id),
     );
-    const validAthleteIds = new Set(
-      getEligibleAthletes(validCategoryIds).map((athlete: any) => athlete.id),
-    );
     const payload = {
       ...values,
       sportId: values.sportIds[0],
       categoryIds: validCategoryIds,
-      athleteIds: values.athleteIds.filter((id) => validAthleteIds.has(id)),
+      athleteIds: values.athleteIds,
       startDate: new Date(values.startDate).toISOString(),
       endDate: new Date(values.endDate).toISOString(),
       description: values.description || undefined,
@@ -130,15 +117,8 @@ export function EventForm({ eventId, initialData }: { eventId?: string; initialD
                     const category = categories.find((item: any) => item.id === categoryId);
                     return category && allowedSportIds.has(category.sportId);
                   });
-                  const validAthleteIds = new Set(
-                    getEligibleAthletes(validCategoryIds).map((athlete: any) => athlete.id),
-                  );
                   setValue('categoryIds', validCategoryIds, { shouldValidate: true });
-                  setValue(
-                    'athleteIds',
-                    selectedAthleteIds.filter((athleteId) => validAthleteIds.has(athleteId)),
-                    { shouldValidate: true },
-                  );
+                  setValue('athleteIds', [], { shouldValidate: true });
                 }}
                 options={sports.map((sport) => ({ value: sport.id, label: sport.name }))}
               />
@@ -157,14 +137,7 @@ export function EventForm({ eventId, initialData }: { eventId?: string; initialD
                 value={field.value}
                 onChange={(categoryIds: string[]) => {
                   field.onChange(categoryIds);
-                  const validAthleteIds = new Set(
-                    getEligibleAthletes(categoryIds).map((athlete: any) => athlete.id),
-                  );
-                  setValue(
-                    'athleteIds',
-                    selectedAthleteIds.filter((athleteId) => validAthleteIds.has(athleteId)),
-                    { shouldValidate: true },
-                  );
+                  setValue('athleteIds', [], { shouldValidate: true });
                 }}
                 options={availableCategories.map((category: any) => ({
                   value: category.id,
@@ -175,23 +148,16 @@ export function EventForm({ eventId, initialData }: { eventId?: string; initialD
           </ControlledField>
           <ControlledField name="athleteIds" control={control} label="Vận động viên tham gia" error={errors.athleteIds?.message} wide>
             {(field) => (
-              <Select
+              <RemoteAthleteSelect
                 mode="multiple"
-                size="large"
-                showSearch
-                optionFilterProp="label"
-                className="w-full"
+                categoryIds={selectedCategoryIds}
+                initialOptions={initialData?.athletes || []}
                 placeholder={selectedCategoryIds.length
                   ? 'Chọn vận động viên đủ điều kiện'
                   : 'Chọn hạng mục thi đấu trước'}
                 disabled={!selectedCategoryIds.length}
-                value={(field.value || []).filter((athleteId: string) => eligibleAthleteIds.has(athleteId))}
+                value={field.value || []}
                 onChange={field.onChange}
-                options={eligibleAthletes.map((athlete: any) => ({
-                  value: athlete.id,
-                  label: athlete.fullName,
-                }))}
-                notFoundContent="Không có vận động viên nào đã đăng ký các hạng mục này"
               />
             )}
           </ControlledField>

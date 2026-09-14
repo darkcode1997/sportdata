@@ -10,6 +10,7 @@ import dayjs from 'dayjs';
 import { Card, Col, DatePicker, Form, Input, Row, Select } from 'antd';
 import { api, fetcher } from '@/lib/api';
 import { ErrorMessage, FormActions } from './AthleteForm';
+import { RemoteAthleteSelect } from './RemoteAthleteSelect';
 
 const matchSchema = z.object({
   eventId: z.string().min(1, 'Vui lòng chọn sự kiện'),
@@ -19,6 +20,7 @@ const matchSchema = z.object({
   matchDate: z.string().min(1, 'Vui lòng chọn thời gian thi đấu'),
   matchNumber: z.string().optional(),
   fop: z.string().optional(),
+  fopId: z.string().optional(),
   status: z.enum(['SCHEDULED', 'RUNNING', 'FINISHED', 'CANCELLED']),
   matchType: z.enum(['POOL', 'ELIMINATION', 'FINAL', 'SEMIFINAL', 'QUARTERFINAL', 'ROUND_OF_16', 'ROUND_OF_32', 'GROUP_STAGE']),
   athlete1Score: z.string().optional(),
@@ -69,13 +71,12 @@ export function MatchForm({ matchId, initialData }: { matchId?: string; initialD
   const [submitError, setSubmitError] = useState<string | null>(null);
   const { data: eventsResponse } = useSWR<any>('/events?limit=200', fetcher);
   const { data: categoriesResponse } = useSWR<any>('/categories?limit=200', fetcher);
-  const { data: athletesResponse } = useSWR<any>('/athletes?limit=200', fetcher);
   const events = eventsResponse?.items || [];
   const categories = categoriesResponse?.items || [];
-  const athletes = athletesResponse?.items || [];
   const {
     control,
     handleSubmit,
+    setValue,
     watch,
     formState: { errors, isSubmitting },
   } = useForm<MatchFormValues>({
@@ -88,6 +89,7 @@ export function MatchForm({ matchId, initialData }: { matchId?: string; initialD
       matchDate: toLocalInput(initialData?.matchDate || initialData?.startTime),
       matchNumber: initialData?.matchNumber != null ? String(initialData.matchNumber) : '',
       fop: initialData?.fop || '',
+      fopId: initialData?.fopId || '',
       status: initialData?.status || 'SCHEDULED',
       matchType: initialData?.matchType || 'ELIMINATION',
       athlete1Score: initialData?.athlete1Score != null ? String(initialData.athlete1Score) : '0',
@@ -100,11 +102,20 @@ export function MatchForm({ matchId, initialData }: { matchId?: string; initialD
     },
   });
   const selectedEventId = watch('eventId');
-  const selectedEvent = events.find((event: any) => event.id === selectedEventId);
+  const selectedCategoryId = watch('categoryId');
+  const selectedAthlete1Id = watch('athlete1Id');
+  const selectedAthlete2Id = watch('athlete2Id');
+  const { data: selectedEventDetails } = useSWR<any>(
+    selectedEventId ? `/events/${selectedEventId}` : null,
+    fetcher,
+  );
+  const selectedEvent = selectedEventDetails
+    || events.find((event: any) => event.id === selectedEventId);
 
   const onSubmit = async (values: MatchFormValues) => {
     setSubmitError(null);
     const date = new Date(values.matchDate).toISOString();
+    const selectedFop = selectedEvent?.fops?.find((fop: any) => fop.id === values.fopId);
     const payload = {
       ...values,
       matchDate: date,
@@ -117,7 +128,8 @@ export function MatchForm({ matchId, initialData }: { matchId?: string; initialD
       winnerId: values.winnerId || undefined,
       winMethod: values.winMethod || undefined,
       round: values.round ? Number(values.round) : undefined,
-      fop: values.fop || undefined,
+      fopId: values.fopId || undefined,
+      fop: selectedFop?.name || values.fop || undefined,
       pool: values.pool || undefined,
       notes: values.notes || undefined,
     };
@@ -134,12 +146,11 @@ export function MatchForm({ matchId, initialData }: { matchId?: string; initialD
 
   const eventOptions = events.map((event: any) => ({ value: event.id, label: event.name }));
   const eventCategories = selectedEvent?.categories?.length ? selectedEvent.categories : categories;
-  const eventAthletes = selectedEvent?.athletes?.length ? selectedEvent.athletes : athletes;
   const categoryOptions = eventCategories.map((category: any) => ({
     value: category.id,
     label: `${category.name}${category.sport?.name ? ` · ${category.sport.name}` : ''}`,
   }));
-  const athleteOptions = eventAthletes.map((athlete: any) => ({ value: athlete.id, label: athlete.fullName }));
+  const initialAthletes = [initialData?.athlete1, initialData?.athlete2, initialData?.winner].filter(Boolean);
 
   return (
     <Form layout="vertical" requiredMark={false} onFinish={handleSubmit(onSubmit)}>
@@ -147,16 +158,16 @@ export function MatchForm({ matchId, initialData }: { matchId?: string; initialD
       <Card className="cms-surface" title="Thông tin trận đấu">
         <Row gutter={[20, 2]}>
           <ControlledField name="eventId" control={control} label="Sự kiện" error={errors.eventId?.message} required>
-            {(field) => <Select size="large" showSearch optionFilterProp="label" className="w-full" placeholder="Chọn sự kiện" value={field.value || undefined} onChange={field.onChange} options={eventOptions} />}
+            {(field) => <Select size="large" showSearch optionFilterProp="label" className="w-full" placeholder="Chọn sự kiện" value={field.value || undefined} onChange={(value) => { field.onChange(value); setValue('categoryId', ''); setValue('athlete1Id', ''); setValue('athlete2Id', ''); setValue('winnerId', ''); setValue('fopId', ''); }} options={eventOptions} />}
           </ControlledField>
           <ControlledField name="categoryId" control={control} label="Hạng mục" error={errors.categoryId?.message} required>
-            {(field) => <Select size="large" showSearch optionFilterProp="label" className="w-full" placeholder="Chọn hạng mục" value={field.value || undefined} onChange={field.onChange} options={categoryOptions} />}
+            {(field) => <Select size="large" showSearch optionFilterProp="label" className="w-full" placeholder="Chọn hạng mục" value={field.value || undefined} onChange={(value) => { field.onChange(value); setValue('athlete1Id', ''); setValue('athlete2Id', ''); setValue('winnerId', ''); }} options={categoryOptions} />}
           </ControlledField>
           <ControlledField name="athlete1Id" control={control} label="Vận động viên 1" error={errors.athlete1Id?.message}>
-            {(field) => <Select size="large" allowClear showSearch optionFilterProp="label" className="w-full" placeholder="Chờ xác định" value={field.value || undefined} onChange={(value) => field.onChange(value || '')} options={athleteOptions} />}
+            {(field) => <RemoteAthleteSelect eventId={selectedEventId} categoryId={selectedCategoryId} initialOptions={initialAthletes} placeholder="Chờ xác định" value={field.value || undefined} excludeIds={[selectedAthlete2Id || '']} onChange={(value) => field.onChange(value || '')} />}
           </ControlledField>
           <ControlledField name="athlete2Id" control={control} label="Vận động viên 2" error={errors.athlete2Id?.message}>
-            {(field) => <Select size="large" allowClear showSearch optionFilterProp="label" className="w-full" placeholder="Chờ xác định" value={field.value || undefined} onChange={(value) => field.onChange(value || '')} options={athleteOptions} />}
+            {(field) => <RemoteAthleteSelect eventId={selectedEventId} categoryId={selectedCategoryId} initialOptions={initialAthletes} placeholder="Chờ xác định" value={field.value || undefined} excludeIds={[selectedAthlete1Id || '']} onChange={(value) => field.onChange(value || '')} />}
           </ControlledField>
           <ControlledField name="matchDate" control={control} label="Thời gian thi đấu" error={errors.matchDate?.message} required>
             {(field) => (
@@ -172,8 +183,8 @@ export function MatchForm({ matchId, initialData }: { matchId?: string; initialD
               />
             )}
           </ControlledField>
-          <ControlledField name="fop" control={control} label="Sàn / FOP" error={errors.fop?.message}>
-            {(field) => <Input {...field} size="large" placeholder="FOP 1" />}
+          <ControlledField name="fopId" control={control} label="Sàn / FOP" error={errors.fopId?.message}>
+            {(field) => <Select allowClear showSearch optionFilterProp="label" size="large" className="w-full" placeholder="Chọn sàn" value={field.value || undefined} onChange={(value) => field.onChange(value || '')} options={(selectedEvent?.fops || []).map((fop: any) => ({ value: fop.id, label: fop.name }))} />}
           </ControlledField>
           <ControlledField name="matchNumber" control={control} label="Số trận" error={errors.matchNumber?.message}>
             {(field) => <Input {...field} size="large" type="number" min={1} placeholder="1" />}
@@ -194,7 +205,7 @@ export function MatchForm({ matchId, initialData }: { matchId?: string; initialD
             {(field) => <Input {...field} size="large" type="number" min={0} step={0.1} />}
           </ControlledField>
           <ControlledField name="winnerId" control={control} label="Người chiến thắng" error={errors.winnerId?.message}>
-            {(field) => <Select size="large" allowClear showSearch optionFilterProp="label" className="w-full" placeholder="Chưa xác định" value={field.value || undefined} onChange={(value) => field.onChange(value || '')} options={athleteOptions} />}
+            {(field) => <RemoteAthleteSelect eventId={selectedEventId} categoryId={selectedCategoryId} initialOptions={initialAthletes} placeholder="Chưa xác định" value={field.value || undefined} onChange={(value) => field.onChange(value || '')} />}
           </ControlledField>
           <ControlledField name="winMethod" control={control} label="Cách chiến thắng" error={errors.winMethod?.message}>
             {(field) => <Select size="large" className="w-full" value={field.value} onChange={field.onChange} options={winMethodOptions} />}

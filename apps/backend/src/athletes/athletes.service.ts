@@ -32,10 +32,11 @@ export class AthletesService {
       countryId,
       sportId,
       categoryId,
+      categoryIds,
       gender,
       eventId,
       page = 1,
-      limit = 10,
+      limit = 30,
     } = query;
 
     const where: any = {};
@@ -56,18 +57,15 @@ export class AthletesService {
       where.gender = gender;
     }
 
-    if (sportId) {
+    const selectedCategoryIds = [
+      ...(categoryIds || '').split(','),
+      ...(categoryId ? [categoryId] : []),
+    ].map((id) => id.trim()).filter(Boolean);
+    if (sportId || selectedCategoryIds.length) {
       where.categories = {
         some: {
-          sportId,
-        },
-      };
-    }
-
-    if (categoryId) {
-      where.categories = {
-        some: {
-          id: categoryId,
+          ...(sportId ? { sportId } : {}),
+          ...(selectedCategoryIds.length ? { id: { in: selectedCategoryIds } } : {}),
         },
       };
     }
@@ -85,7 +83,7 @@ export class AthletesService {
     const [items, total] = await Promise.all([
       this.prisma.athlete.findMany({
         where,
-        include: this.getAthleteInclude(),
+        include: this.getAthleteListInclude(),
         skip,
         take: limit,
         orderBy: { fullName: 'asc' },
@@ -171,6 +169,32 @@ export class AthletesService {
         include: {
           sport: true,
           event: true,
+        },
+      },
+    };
+  }
+
+  private getAthleteListInclude() {
+    return {
+      country: true,
+      federation: {
+        include: { country: true },
+      },
+      categories: {
+        include: { sport: true },
+      },
+      statistics: {
+        select: {
+          eventId: true,
+          sportId: true,
+          categoryId: true,
+          totalWins: true,
+          totalLosses: true,
+          totalDraws: true,
+          totalMatches: true,
+          goldMedals: true,
+          silverMedals: true,
+          bronzeMedals: true,
         },
       },
     };

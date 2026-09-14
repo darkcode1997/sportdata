@@ -33,9 +33,13 @@ export class MatchesController {
     description:
       'Query matches by eventId, categoryId, date, status with pagination support.',
   })
+  @ApiQuery({ name: 'search', required: false, type: String })
   @ApiQuery({ name: 'eventId', required: false, type: String })
   @ApiQuery({ name: 'categoryId', required: false, type: String })
   @ApiQuery({ name: 'sportId', required: false, type: String })
+  @ApiQuery({ name: 'fopId', required: false, type: String })
+  @ApiQuery({ name: 'venue', required: false, type: String })
+  @ApiQuery({ name: 'athleteId', required: false, type: String })
   @ApiQuery({ name: 'date', required: false, type: String, example: '2024-01-15' })
   @ApiQuery({
     name: 'status',
@@ -44,6 +48,8 @@ export class MatchesController {
   })
   @ApiQuery({ name: 'page', required: false, type: Number, example: 1 })
   @ApiQuery({ name: 'limit', required: false, type: Number, example: 20 })
+  @ApiQuery({ name: 'pagination', required: false, enum: ['page', 'cursor'] })
+  @ApiQuery({ name: 'cursor', required: false, type: String })
   findAll(@Query() query: QueryMatchDto) {
     return this.matchesService.findAll(query);
   }

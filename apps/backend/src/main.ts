@@ -1,10 +1,36 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import compression from 'compression';
+import type { NextFunction, Request, Response } from 'express';
+import { constants as zlibConstants } from 'zlib';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  app.use(compression({
+    threshold: 1_024,
+    brotli: { params: { [zlibConstants.BROTLI_PARAM_QUALITY]: 4 } },
+  }));
+  app.use((request: Request, response: Response, next: NextFunction) => {
+    const publicGet = request.method === 'GET'
+      && !request.headers.authorization
+      && /^\/api\/(events|matches|athletes|sports|categories|countries|federations|statistics)(\/|\?|$)/
+        .test(request.originalUrl);
+
+    if (publicGet) {
+      const isLiveData = request.originalUrl.startsWith('/api/matches');
+      const maxAge = isLiveData ? 5 : 30;
+      response.setHeader(
+        'Cache-Control',
+        `public, max-age=${maxAge}, s-maxage=${maxAge}, stale-while-revalidate=${maxAge * 2}`,
+      );
+      response.vary('Accept-Encoding');
+      response.vary('Authorization');
+    }
+    next();
+  });
 
   app.enableCors({
     origin: process.env.FRONTEND_URL || 'http://localhost:3000',

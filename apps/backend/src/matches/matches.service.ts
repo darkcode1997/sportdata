@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateMatchDto } from './dto/create-match.dto';
@@ -81,14 +86,19 @@ export class MatchesService {
 
   async findAll(query: QueryMatchDto) {
     const {
+      search,
       eventId,
       categoryId,
       sportId,
+      fopId,
+      venue,
       athleteId,
       date,
       status,
       page = 1,
       limit = 20,
+      pagination = 'page',
+      cursor,
     } = query;
 
     const where: Prisma.MatchWhereInput = {};
@@ -96,16 +106,64 @@ export class MatchesService {
     if (eventId) where.eventId = eventId;
     if (categoryId) where.categoryId = categoryId;
     if (sportId) where.category = { sportId };
-    if (athleteId) {
-      where.OR = [{ athlete1Id: athleteId }, { athlete2Id: athleteId }];
+    if (fopId) where.fopId = fopId;
+    const additionalFilters: Prisma.MatchWhereInput[] = [];
+    if (search?.trim()) {
+      const keyword = search.trim();
+      additionalFilters.push({
+        OR: [
+          { athlete1: { fullName: { contains: keyword, mode: 'insensitive' } } },
+          { athlete2: { fullName: { contains: keyword, mode: 'insensitive' } } },
+          { event: { name: { contains: keyword, mode: 'insensitive' } } },
+        ],
+      });
     }
+    if (athleteId) {
+      additionalFilters.push({ OR: [{ athlete1Id: athleteId }, { athlete2Id: athleteId }] });
+    }
+    if (venue?.trim()) {
+      additionalFilters.push({
+        OR: [
+          { fop: { contains: venue.trim(), mode: 'insensitive' } },
+          { fopRecord: { name: { contains: venue.trim(), mode: 'insensitive' } } },
+        ],
+      });
+    }
+    if (additionalFilters.length) where.AND = additionalFilters;
     if (status) where.status = status;
     if (date) {
-      const startOfDay = new Date(`${date}T00:00:00.000Z`);
-      const endOfDay = new Date(`${date}T23:59:59.999Z`);
+      const startOfDay = new Date(`${date}T00:00:00+07:00`);
+      const endOfDay = new Date(startOfDay.getTime() + 86_400_000);
       where.matchDate = {
         gte: startOfDay,
-        lte: endOfDay,
+        lt: endOfDay,
+      };
+    }
+
+    const orderBy: Prisma.MatchOrderByWithRelationInput[] = [
+      { matchDate: 'asc' },
+      { startTime: 'asc' },
+      { matchNumber: 'asc' },
+      { id: 'asc' },
+    ];
+
+    if (pagination === 'cursor') {
+      const rows = await this.prisma.match.findMany({
+        where,
+        include: MATCH_INCLUDE,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+        take: limit + 1,
+        orderBy,
+      });
+      const hasMore = rows.length > limit;
+      const items = hasMore ? rows.slice(0, limit) : rows;
+      return {
+        items,
+        meta: {
+          limit,
+          hasMore,
+          nextCursor: hasMore ? items.at(-1)?.id || null : null,
+        },
       };
     }
 
@@ -117,7 +175,7 @@ export class MatchesService {
         include: MATCH_INCLUDE,
         skip,
         take: limit,
-        orderBy: [{ matchDate: 'asc' }, { matchNumber: 'asc' }],
+        orderBy,
       }),
       this.prisma.match.count({ where }),
     ]);
@@ -141,11 +199,12 @@ export class MatchesService {
     if (!event) throw new NotFoundException(`Event with ID ${eventId} not found`);
 
     const dates = await this.prisma.$queryRaw<Array<{ date: string; count: number }>>(Prisma.sql`
-      SELECT "matchDate"::date::text AS "date", COUNT(*)::int AS "count"
+      SELECT (("matchDate" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Ho_Chi_Minh')::date::text AS "date",
+        COUNT(*)::int AS "count"
       FROM "Match"
       WHERE "eventId" = ${eventId}
-      GROUP BY "matchDate"::date
-      ORDER BY "matchDate"::date ASC
+      GROUP BY 1
+      ORDER BY 1 ASC
     `);
     const liveMatch = await this.prisma.match.findFirst({
       where: { eventId, status: MatchStatus.RUNNING },
@@ -164,7 +223,9 @@ export class MatchesService {
       liveMatch: liveMatch
         ? {
           id: liveMatch.id,
-          date: liveMatch.matchDate.toISOString().slice(0, 10),
+          date: new Intl.DateTimeFormat('en-CA', {
+            timeZone: 'Asia/Ho_Chi_Minh',
+          }).format(liveMatch.matchDate),
           categoryId: liveMatch.categoryId,
           sportId: liveMatch.category.sportId,
         }
@@ -186,6 +247,57 @@ export class MatchesService {
   }
 
   async create(createMatchDto: CreateMatchDto) {
+    const category = await this.prisma.category.findFirst({
+      where: {
+        id: createMatchDto.categoryId,
+        events: { some: { id: createMatchDto.eventId } },
+      },
+      select: { matchDurationSeconds: true },
+    });
+    if (!category) {
+      throw new BadRequestException('Hạng đấu không thuộc sự kiện đã chọn');
+    }
+
+    if (createMatchDto.fopId) {
+      const fopExists = await this.prisma.fop.count({
+        where: { id: createMatchDto.fopId, eventId: createMatchDto.eventId },
+      });
+      if (!fopExists) {
+        throw new BadRequestException('Sân/FOP không thuộc sự kiện đã chọn');
+      }
+    }
+
+    const participantIds = Array.from(new Set([
+      createMatchDto.athlete1Id,
+      createMatchDto.athlete2Id,
+      createMatchDto.winnerId,
+    ].filter((id): id is string => Boolean(id))));
+    if (participantIds.length) {
+      const eligibleCount = await this.prisma.athlete.count({
+        where: {
+          id: { in: participantIds },
+          events: { some: { id: createMatchDto.eventId } },
+          categories: { some: { id: createMatchDto.categoryId } },
+        },
+      });
+      if (eligibleCount !== participantIds.length) {
+        throw new BadRequestException(
+          'Vận động viên chưa đăng ký hạng đấu này trong sự kiện',
+        );
+      }
+    }
+
+    const startTime = createMatchDto.startTime
+      ? new Date(createMatchDto.startTime)
+      : undefined;
+    let endTime = createMatchDto.endTime
+      ? new Date(createMatchDto.endTime)
+      : undefined;
+    if (startTime && !endTime) {
+      const durationSeconds = category.matchDurationSeconds || 300;
+      endTime = new Date(startTime.getTime() + durationSeconds * 1_000);
+    }
+
     const data: Prisma.MatchCreateInput = {
       event: { connect: { id: createMatchDto.eventId } },
       category: { connect: { id: createMatchDto.categoryId } },
@@ -201,10 +313,8 @@ export class MatchesService {
       ...(createMatchDto.fopId && {
         fopRecord: { connect: { id: createMatchDto.fopId } },
       }),
-      startTime: createMatchDto.startTime
-        ? new Date(createMatchDto.startTime)
-        : undefined,
-      endTime: createMatchDto.endTime ? new Date(createMatchDto.endTime) : undefined,
+      startTime,
+      endTime,
       athlete1: createMatchDto.athlete1Id
         ? { connect: { id: createMatchDto.athlete1Id } }
         : undefined,
@@ -237,17 +347,73 @@ export class MatchesService {
       notes: createMatchDto.notes,
     };
 
-    return this.prisma.match.create({
-      data,
-      include: MATCH_INCLUDE,
-    });
+    try {
+      return await this.prisma.match.create({
+        data,
+        include: MATCH_INCLUDE,
+      });
+    } catch (error) {
+      this.rethrowScheduleConstraint(error);
+    }
   }
 
   async update(id: string, updateMatchDto: UpdateMatchDto) {
-    return this.prisma.$transaction(async (transaction) => {
+    try {
+      return await this.prisma.$transaction(async (transaction) => {
       const previous = await transaction.match.findUnique({ where: { id } });
       if (!previous) {
         throw new NotFoundException(`Match with ID ${id} not found`);
+      }
+
+      const resultingEventId = updateMatchDto.eventId || previous.eventId;
+      const resultingCategoryId = updateMatchDto.categoryId || previous.categoryId;
+      const category = await transaction.category.findFirst({
+        where: {
+          id: resultingCategoryId,
+          events: { some: { id: resultingEventId } },
+        },
+        select: { matchDurationSeconds: true },
+      });
+      if (!category) {
+        throw new BadRequestException('Hạng đấu không thuộc sự kiện đã chọn');
+      }
+
+      const resultingFopId = updateMatchDto.fopId !== undefined
+        ? updateMatchDto.fopId
+        : previous.fopId;
+      if (resultingFopId) {
+        const fopExists = await transaction.fop.count({
+          where: { id: resultingFopId, eventId: resultingEventId },
+        });
+        if (!fopExists) {
+          throw new BadRequestException('Sân/FOP không thuộc sự kiện đã chọn');
+        }
+      }
+
+      const participantIds = Array.from(new Set([
+        updateMatchDto.athlete1Id !== undefined
+          ? updateMatchDto.athlete1Id
+          : previous.athlete1Id,
+        updateMatchDto.athlete2Id !== undefined
+          ? updateMatchDto.athlete2Id
+          : previous.athlete2Id,
+        updateMatchDto.winnerId !== undefined
+          ? updateMatchDto.winnerId
+          : previous.winnerId,
+      ].filter((athleteId): athleteId is string => Boolean(athleteId))));
+      if (participantIds.length) {
+        const eligibleCount = await transaction.athlete.count({
+          where: {
+            id: { in: participantIds },
+            events: { some: { id: resultingEventId } },
+            categories: { some: { id: resultingCategoryId } },
+          },
+        });
+        if (eligibleCount !== participantIds.length) {
+          throw new BadRequestException(
+            'Vận động viên chưa đăng ký hạng đấu này trong sự kiện',
+          );
+        }
       }
 
       const data: Prisma.MatchUpdateInput = {};
@@ -285,6 +451,11 @@ export class MatchesService {
       }
       if (updateMatchDto.endTime !== undefined) {
         data.endTime = updateMatchDto.endTime ? new Date(updateMatchDto.endTime) : null;
+      } else if (updateMatchDto.startTime) {
+        const durationSeconds = category.matchDurationSeconds || 300;
+        data.endTime = new Date(
+          new Date(updateMatchDto.startTime).getTime() + durationSeconds * 1_000,
+        );
       }
       if (updateMatchDto.athlete1Id !== undefined) {
         data.athlete1 = updateMatchDto.athlete1Id
@@ -334,7 +505,10 @@ export class MatchesService {
         where: { id },
         include: MATCH_INCLUDE,
       });
-    });
+      });
+    } catch (error) {
+      this.rethrowScheduleConstraint(error);
+    }
   }
 
   async remove(id: string) {
@@ -396,9 +570,16 @@ export class MatchesService {
 
     const [event, category, athletes] = await Promise.all([
       this.prisma.event.findUnique({ where: { id: eventId }, select: { id: true, startDate: true } }),
-      this.prisma.category.findUnique({ where: { id: categoryId }, select: { id: true, name: true } }),
+      this.prisma.category.findFirst({
+        where: { id: categoryId, events: { some: { id: eventId } } },
+        select: { id: true, name: true },
+      }),
       this.prisma.athlete.findMany({
-        where: { id: { in: dto.athleteIds } },
+        where: {
+          id: { in: dto.athleteIds },
+          events: { some: { id: eventId } },
+          categories: { some: { id: categoryId } },
+        },
         select: { id: true, countryId: true, federationId: true },
       }),
     ]);
@@ -406,7 +587,9 @@ export class MatchesService {
     if (!event) throw new NotFoundException(`Event with ID ${eventId} not found`);
     if (!category) throw new NotFoundException(`Category with ID ${categoryId} not found`);
     if (athletes.length !== dto.athleteIds.length) {
-      throw new BadRequestException('One or more athletes do not exist');
+      throw new BadRequestException(
+        'Một hoặc nhiều vận động viên chưa đăng ký hạng đấu này trong sự kiện',
+      );
     }
     if (dto.divisionId) {
       const division = await this.prisma.division.findFirst({
@@ -888,5 +1071,32 @@ export class MatchesService {
       where: { id: targetMatchId },
       data: targetSide === 'ATHLETE1' ? { athlete1Id: athleteId } : { athlete2Id: athleteId },
     });
+  }
+
+  private rethrowScheduleConstraint(error: unknown): never {
+    const prismaError = error as {
+      code?: string;
+      message?: string;
+      meta?: { database_error?: string; reason?: string; constraint?: string };
+    };
+    const details = [
+      prismaError.message,
+      prismaError.meta?.database_error,
+      prismaError.meta?.reason,
+      prismaError.meta?.constraint,
+    ].filter(Boolean).join(' ').toLowerCase();
+
+    if (
+      details.includes('match_fop_time_no_overlap')
+      || (prismaError.code === 'P2004' && details.includes('exclusion'))
+    ) {
+      throw new ConflictException(
+        'Sân/FOP đã có trận đấu khác trong khoảng thời gian này',
+      );
+    }
+    if (details.includes('match_valid_time_range')) {
+      throw new BadRequestException('Giờ kết thúc phải sau giờ bắt đầu');
+    }
+    throw error;
   }
 }

@@ -321,9 +321,12 @@ model Match {
   updatedAt          DateTime     @updatedAt
 
   @@index([eventId])
+  @@index([eventId, matchDate])
+  @@index([eventId, status])
   @@index([categoryId])
   @@index([drawId])
   @@index([fopId])
+  @@index([fopId, startTime])
   @@index([winnerToMatchId])
   @@index([loserToMatchId])
   @@index([matchDate])

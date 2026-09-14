@@ -1,4 +1,4 @@
-import { IsOptional, IsString, IsInt, Min, IsEnum } from 'class-validator';
+import { IsOptional, IsString, IsInt, Min, Max, IsEnum } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { Gender } from '@prisma/client';
@@ -24,6 +24,11 @@ export class QueryAthletesDto {
   @IsString()
   categoryId?: string;
 
+  @ApiPropertyOptional({ description: 'Danh sách category ID, phân cách bằng dấu phẩy' })
+  @IsOptional()
+  @IsString()
+  categoryIds?: string;
+
   @ApiPropertyOptional({ enum: Gender })
   @IsOptional()
   @IsEnum(Gender)
@@ -45,6 +50,7 @@ export class QueryAthletesDto {
   @IsOptional()
   @IsInt()
   @Min(1)
+  @Max(50)
   @Type(() => Number)
-  limit?: number = 10;
+  limit?: number = 30;
 }

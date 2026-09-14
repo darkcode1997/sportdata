@@ -3,6 +3,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
 import { QueryEventsDto } from './dto/query-events.dto';
+import { QueryEligibleAthletesDto } from './dto/query-eligible-athletes.dto';
+import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class EventsService {
@@ -31,7 +33,7 @@ export class EventsService {
           ? { connect: selectedAthleteIds.map((id) => ({ id })) }
           : undefined,
       },
-      include: this.getEventInclude(),
+      include: this.getEventInclude(true),
     });
   }
 
@@ -86,7 +88,7 @@ export class EventsService {
     const [items, total] = await Promise.all([
       this.prisma.event.findMany({
         where,
-        include: this.getEventInclude(),
+        select: this.getEventListSelect(),
         skip,
         take: limit,
         orderBy: { startDate: 'desc' },
@@ -103,10 +105,10 @@ export class EventsService {
     };
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, includeAthletes = false) {
     const event = await this.prisma.event.findUnique({
       where: { id },
-      include: this.getEventInclude(),
+      include: this.getEventInclude(includeAthletes),
     });
 
     if (!event) {
@@ -114,6 +116,74 @@ export class EventsService {
     }
 
     return event;
+  }
+
+  async findEligibleAthletes(
+    eventId: string,
+    categoryId: string,
+    query: QueryEligibleAthletesDto,
+  ) {
+    const event = await this.prisma.event.findUnique({
+      where: { id: eventId },
+      select: {
+        id: true,
+        categories: {
+          where: { id: categoryId },
+          select: { id: true },
+        },
+      },
+    });
+    if (!event) throw new NotFoundException(`Event with ID ${eventId} not found`);
+    if (!event.categories.length) {
+      throw new NotFoundException('Hạng đấu không thuộc sự kiện này');
+    }
+
+    const { search, countryId, page = 1, limit = 30 } = query;
+    const where: any = {
+      events: { some: { id: eventId } },
+      categories: { some: { id: categoryId } },
+      ...(countryId ? { countryId } : {}),
+    };
+    if (search?.trim()) {
+      const value = search.trim();
+      where.OR = [
+        { fullName: { contains: value, mode: 'insensitive' } },
+        { firstName: { contains: value, mode: 'insensitive' } },
+        { lastName: { contains: value, mode: 'insensitive' } },
+      ];
+    }
+
+    const [items, total] = await Promise.all([
+      this.prisma.athlete.findMany({
+        where,
+        skip: (page - 1) * limit,
+        take: limit,
+        orderBy: [{ fullName: 'asc' }, { id: 'asc' }],
+        select: {
+          id: true,
+          fullName: true,
+          gender: true,
+          birthDate: true,
+          weight: true,
+          photoUrl: true,
+          country: {
+            select: { id: true, code: true, name: true, flagUrl: true },
+          },
+          federation: {
+            select: { id: true, name: true },
+          },
+        },
+      }),
+      this.prisma.athlete.count({ where }),
+    ]);
+
+    return {
+      items,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
   }
 
   async update(id: string, updateEventDto: UpdateEventDto) {
@@ -127,7 +197,7 @@ export class EventsService {
         ? [sportId]
         : undefined;
 
-    const existingEvent = await this.findOne(id);
+    const existingEvent = await this.findOne(id, true);
     const resultingSportIds = selectedSportIds || existingEvent.sports.map((sport) => sport.id);
     const resultingCategoryIds = categoryIds !== undefined
       ? Array.from(new Set(categoryIds))
@@ -157,7 +227,7 @@ export class EventsService {
           ? { set: resultingAthleteIds.map((athId) => ({ id: athId })) }
           : undefined,
       },
-      include: this.getEventInclude(),
+      include: this.getEventInclude(true),
     });
   }
 
@@ -174,7 +244,7 @@ export class EventsService {
     return { id };
   }
 
-  private getEventInclude() {
+  private getEventInclude(includeAthletes = false): Prisma.EventInclude {
     return {
       sport: true,
       sports: true,
@@ -185,14 +255,43 @@ export class EventsService {
         include: { sport: true },
         orderBy: { name: 'asc' as const },
       },
-      athletes: {
-        select: { id: true, fullName: true, gender: true },
-        orderBy: { fullName: 'asc' as const },
-      },
+      ...(includeAthletes ? {
+        athletes: {
+          select: { id: true, fullName: true, gender: true },
+          orderBy: { fullName: 'asc' as const },
+        },
+      } : {}),
       _count: {
         select: {
           matches: true,
           athletes: true,
+        },
+      },
+    };
+  }
+
+  private getEventListSelect() {
+    return {
+      id: true,
+      name: true,
+      sportId: true,
+      description: true,
+      startDate: true,
+      endDate: true,
+      location: true,
+      bannerUrl: true,
+      logoUrl: true,
+      isPublished: true,
+      createdAt: true,
+      updatedAt: true,
+      sport: true,
+      sports: true,
+      _count: {
+        select: {
+          matches: true,
+          athletes: true,
+          categories: true,
+          fops: true,
         },
       },
     };
