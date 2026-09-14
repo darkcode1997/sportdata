@@ -21,6 +21,7 @@ export class PrismaService
       this.logger.log("✅ Connected to PostgreSQL database successfully");
     } catch (err: any) {
       this.connected = false;
+      if (process.env.NODE_ENV === 'production') throw err;
       this.logger.warn(
         "⚠️  PostgreSQL not available on localhost:5432. Backend started in DEMO MODE (API will return fallback data / errors if DB is needed).\n" +
           "   To enable full CRUD + seed data, start PostgreSQL and run: npm run prisma:migrate && npm run seed\n" +

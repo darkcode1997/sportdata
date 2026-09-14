@@ -1,0 +1,30 @@
+groups:
+  - name: sportdata
+    rules:
+      - alert: SportDataBackendDown
+        expr: up{job="sportdata-backend"} == 0
+        for: 1m
+        labels: { severity: critical }
+        annotations:
+          summary: "SportData backend is unavailable"
+
+      - alert: SportDataHighErrorRate
+        expr: sum(rate(sportdata_http_request_duration_seconds_count{status_code=~"5.."}[5m])) / clamp_min(sum(rate(sportdata_http_request_duration_seconds_count[5m])), 1) > 0.02
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "Backend 5xx error rate is above 2%"
+
+      - alert: SportDataSlowApi
+        expr: histogram_quantile(0.95, sum by (le) (rate(sportdata_http_request_duration_seconds_bucket[5m]))) > 1
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "Backend p95 latency is above one second"
+
+      - alert: PostgreSQLExporterDown
+        expr: up{job="postgres"} == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "PostgreSQL metrics are unavailable"

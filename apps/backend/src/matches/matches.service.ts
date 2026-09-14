@@ -17,6 +17,7 @@ import {
   MatchStatus,
   MatchType,
   Prisma,
+  ResultStatus,
   WinMethod,
 } from '@prisma/client';
 
@@ -363,6 +364,19 @@ export class MatchesService {
       const previous = await transaction.match.findUnique({ where: { id } });
       if (!previous) {
         throw new NotFoundException(`Match with ID ${id} not found`);
+      }
+      const changesResult = [
+        'athlete1Score',
+        'athlete2Score',
+        'athlete1Advantages',
+        'athlete2Advantages',
+        'athlete1Penalties',
+        'athlete2Penalties',
+        'winnerId',
+        'winMethod',
+      ].some((field) => (updateMatchDto as Record<string, unknown>)[field] !== undefined);
+      if (previous.resultStatus === ResultStatus.LOCKED && changesResult) {
+        throw new BadRequestException('Kết quả đã khóa; phải mở khóa qua quy trình phê duyệt trước khi sửa');
       }
 
       const resultingEventId = updateMatchDto.eventId || previous.eventId;
@@ -1010,7 +1024,7 @@ export class MatchesService {
     }
   }
 
-  private async syncProgression(
+  async syncProgression(
     transaction: Prisma.TransactionClient,
     previous: Match,
     updated: Match,
@@ -1022,8 +1036,20 @@ export class MatchesService {
       previous.loserToSide,
       this.getLoserId(previous),
     );
+    await this.clearTeamProgressionTarget(
+      transaction,
+      previous.winnerToMatchId,
+      previous.winnerToSide,
+      previous.winnerTeamId,
+    );
+    await this.clearTeamProgressionTarget(
+      transaction,
+      previous.loserToMatchId,
+      previous.loserToSide,
+      this.getLoserTeamId(previous),
+    );
 
-    if (updated.status !== 'FINISHED' || !updated.winnerId) return;
+    if (updated.status !== 'FINISHED') return;
 
     await this.assignProgressionTarget(
       transaction,
@@ -1037,11 +1063,28 @@ export class MatchesService {
       updated.loserToSide,
       this.getLoserId(updated),
     );
+    await this.assignTeamProgressionTarget(
+      transaction,
+      updated.winnerToMatchId,
+      updated.winnerToSide,
+      updated.winnerTeamId,
+    );
+    await this.assignTeamProgressionTarget(
+      transaction,
+      updated.loserToMatchId,
+      updated.loserToSide,
+      this.getLoserTeamId(updated),
+    );
   }
 
   private getLoserId(match: Match) {
     if (!match.winnerId) return null;
     return match.athlete1Id === match.winnerId ? match.athlete2Id : match.athlete1Id;
+  }
+
+  private getLoserTeamId(match: Match) {
+    if (!match.winnerTeamId) return null;
+    return match.team1Id === match.winnerTeamId ? match.team2Id : match.team1Id;
   }
 
   private async clearProgressionTarget(
@@ -1070,6 +1113,35 @@ export class MatchesService {
     await transaction.match.update({
       where: { id: targetMatchId },
       data: targetSide === 'ATHLETE1' ? { athlete1Id: athleteId } : { athlete2Id: athleteId },
+    });
+  }
+
+  private async clearTeamProgressionTarget(
+    transaction: Prisma.TransactionClient,
+    targetMatchId: string | null,
+    targetSide: 'ATHLETE1' | 'ATHLETE2' | null,
+    teamId: string | null,
+  ) {
+    if (!targetMatchId || !targetSide || !teamId) return;
+    await transaction.match.updateMany({
+      where: {
+        id: targetMatchId,
+        ...(targetSide === 'ATHLETE1' ? { team1Id: teamId } : { team2Id: teamId }),
+      },
+      data: targetSide === 'ATHLETE1' ? { team1Id: null } : { team2Id: null },
+    });
+  }
+
+  private async assignTeamProgressionTarget(
+    transaction: Prisma.TransactionClient,
+    targetMatchId: string | null,
+    targetSide: 'ATHLETE1' | 'ATHLETE2' | null,
+    teamId: string | null,
+  ) {
+    if (!targetMatchId || !targetSide || !teamId) return;
+    await transaction.match.update({
+      where: { id: targetMatchId },
+      data: targetSide === 'ATHLETE1' ? { team1Id: teamId } : { team2Id: teamId },
     });
   }
 

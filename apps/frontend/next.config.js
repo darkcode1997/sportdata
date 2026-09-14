@@ -1,11 +1,13 @@
+const imageHostnames = (process.env.IMAGE_HOSTNAMES || 'images.unsplash.com,flagcdn.com')
+  .split(',')
+  .map((hostname) => hostname.trim())
+  .filter(Boolean);
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
   images: {
-    remotePatterns: [
-      { protocol: 'https', hostname: '**' },
-      { protocol: 'http', hostname: '**' },
-    ],
+    remotePatterns: imageHostnames.map((hostname) => ({ protocol: 'https', hostname })),
   },
   async rewrites() {
     return [

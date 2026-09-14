@@ -36,3 +36,34 @@ BEGIN
   END IF;
 END
 $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'CompetitionSession_valid_time_range'
+  ) THEN
+    ALTER TABLE "CompetitionSession"
+      ADD CONSTRAINT "CompetitionSession_valid_time_range"
+      CHECK ("endTime" > "startTime");
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'TimeSlot_valid_time_range'
+  ) THEN
+    ALTER TABLE "TimeSlot"
+      ADD CONSTRAINT "TimeSlot_valid_time_range"
+      CHECK ("endTime" > "startTime");
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'TimeSlot_fop_time_no_overlap'
+  ) THEN
+    ALTER TABLE "TimeSlot"
+      ADD CONSTRAINT "TimeSlot_fop_time_no_overlap"
+      EXCLUDE USING gist (
+        "fopId" WITH =,
+        tsrange("startTime", "endTime", '[)') WITH &&
+      );
+  END IF;
+END
+$$;

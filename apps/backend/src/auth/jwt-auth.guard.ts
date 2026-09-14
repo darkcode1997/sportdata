@@ -21,7 +21,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     if (!requiredRoles?.length) return true;
 
     const user = context.switchToHttp().getRequest().user;
-    if (!user || !requiredRoles.includes(user.role)) {
+    if (!user || (user.role !== UserRole.ADMIN && !requiredRoles.includes(user.role))) {
       throw new ForbiddenException('Tài khoản không có quyền thực hiện thao tác này');
     }
 

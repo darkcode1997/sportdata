@@ -10,7 +10,9 @@ RUN npm ci
 COPY apps/frontend ./apps/frontend
 
 ARG API_INTERNAL_URL=http://backend:4000/api
+ARG IMAGE_HOSTNAMES=images.unsplash.com,flagcdn.com
 ENV NEXT_PUBLIC_API_URL=$API_INTERNAL_URL
+ENV IMAGE_HOSTNAMES=$IMAGE_HOSTNAMES
 ENV NEXT_TELEMETRY_DISABLED=1
 
 RUN npm run build:frontend

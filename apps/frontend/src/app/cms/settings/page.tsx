@@ -36,7 +36,26 @@ import {
 import { CmsPageHeader } from '@/components/cms/CmsPageHeader';
 import { api, clearAuthToken, fetcher } from '@/lib/api';
 
-type Role = 'ADMIN' | 'CONTENT';
+type Role =
+  | 'ADMIN'
+  | 'CONTENT'
+  | 'GAMES_ADMIN'
+  | 'SPORT_MANAGER'
+  | 'VENUE_OPERATOR'
+  | 'SCOREKEEPER'
+  | 'RESULT_APPROVER'
+  | 'READ_ONLY';
+
+const roleLabels: Record<Role, string> = {
+  ADMIN: 'Admin · Toàn quyền hệ thống',
+  CONTENT: 'Nội dung · Tin tức và dữ liệu chung',
+  GAMES_ADMIN: 'Quản trị đại hội',
+  SPORT_MANAGER: 'Trưởng môn',
+  VENUE_OPERATOR: 'Điều hành venue',
+  SCOREKEEPER: 'Nhập điểm',
+  RESULT_APPROVER: 'Phê duyệt kết quả',
+  READ_ONLY: 'Chỉ xem',
+};
 
 type Account = {
   id: string;
@@ -197,9 +216,11 @@ export default function SettingsPage() {
       title: 'Quyền',
       dataIndex: 'role',
       width: 160,
-      render: (role: Role) => role === 'ADMIN'
-        ? <Tag color="blue" icon={<ShieldCheck className="h-3 w-3" />}>Admin</Tag>
-        : <Tag color="cyan" icon={<Pencil className="h-3 w-3" />}>Content</Tag>,
+      render: (role: Role) => (
+        <Tag color={role === 'ADMIN' || role === 'GAMES_ADMIN' ? 'blue' : 'cyan'} icon={<ShieldCheck className="h-3 w-3" />}>
+          {roleLabels[role] || role}
+        </Tag>
+      ),
     },
     {
       title: 'Trạng thái',
@@ -284,7 +305,7 @@ export default function SettingsPage() {
             <div>
               <Typography.Title level={4} className="!mb-1">{profile?.name || 'Tài khoản'}</Typography.Title>
               <Space size={6} wrap>
-                <Tag color={isAdmin ? 'blue' : 'cyan'}>{isAdmin ? 'ADMIN' : 'CONTENT'}</Tag>
+                <Tag color={isAdmin ? 'blue' : 'cyan'}>{profile ? roleLabels[profile.role] : ''}</Tag>
                 <Tag color="success">ACTIVE</Tag>
               </Space>
             </div>
@@ -292,7 +313,7 @@ export default function SettingsPage() {
           <Descriptions column={1} size="small" colon={false}>
             <Descriptions.Item label="Username">@{profile?.username || '—'}</Descriptions.Item>
             <Descriptions.Item label="Email">{profile?.email || '—'}</Descriptions.Item>
-            <Descriptions.Item label="Quyền hạn">{isAdmin ? 'Quản trị viên' : 'Biên tập nội dung'}</Descriptions.Item>
+            <Descriptions.Item label="Quyền hạn">{profile ? roleLabels[profile.role] : ''}</Descriptions.Item>
           </Descriptions>
         </Space>
       </Card>
@@ -426,10 +447,7 @@ export default function SettingsPage() {
             <Form.Item name="role" label="Quyền" rules={[{ required: true, message: 'Chọn quyền' }]}>
               <Select
                 disabled={editingAccount?.id === profile?.id}
-                options={[
-                  { value: 'ADMIN', label: 'Admin · Toàn quyền' },
-                  { value: 'CONTENT', label: 'Content · Quản lý nội dung' },
-                ]}
+                options={(Object.entries(roleLabels) as Array<[Role, string]>).map(([value, label]) => ({ value, label }))}
               />
             </Form.Item>
           </div>

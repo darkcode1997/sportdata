@@ -149,15 +149,13 @@ export class UsersService {
   }
 
   private toPrismaRole(role: UserRole): PrismaUserRole {
-    return role === UserRole.ADMIN
-      ? PrismaUserRole.ADMIN
-      : PrismaUserRole.CONTENT;
+    return role as PrismaUserRole;
   }
 
   private toPublicUser<T extends { role: PrismaUserRole }>(user: T) {
     return {
       ...user,
-      role: user.role === PrismaUserRole.ADMIN ? UserRole.ADMIN : UserRole.CONTENT,
+      role: user.role as UserRole,
     };
   }
 }

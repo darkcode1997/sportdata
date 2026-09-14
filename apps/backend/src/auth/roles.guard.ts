@@ -24,7 +24,10 @@ export class RolesGuard implements CanActivate {
     if (!user) {
       throw new ForbiddenException('Access denied: no user authenticated');
     }
-    const hasRole = requiredRoles.some((role) => user.role === role);
+    // ADMIN remains the backwards-compatible platform superuser. Operational
+    // roles below can be granted with least privilege per competition desk.
+    const hasRole = user.role === UserRole.ADMIN
+      || requiredRoles.some((role) => user.role === role);
     if (!hasRole) {
       throw new ForbiddenException(
         `Access denied: requires one of roles: ${requiredRoles.join(', ')}`,

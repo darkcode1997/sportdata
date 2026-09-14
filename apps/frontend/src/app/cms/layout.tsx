@@ -305,7 +305,16 @@ export default function CmsLayout({ children }: { children: React.ReactNode }) {
                   <div className="hidden sm:block">
                     <Typography.Text strong className="block text-sm group-hover:text-sblue-500">{userLabel || 'Admin'}</Typography.Text>
                     <Typography.Text type="secondary" className="block text-xs">
-                      {userRole === 'ADMIN' ? 'Quản trị viên' : userRole === 'CONTENT' ? 'Biên tập nội dung' : 'Người dùng'}
+                      {{
+                        ADMIN: 'Quản trị viên',
+                        CONTENT: 'Biên tập nội dung',
+                        GAMES_ADMIN: 'Quản trị đại hội',
+                        SPORT_MANAGER: 'Trưởng môn',
+                        VENUE_OPERATOR: 'Điều hành venue',
+                        SCOREKEEPER: 'Nhập điểm',
+                        RESULT_APPROVER: 'Phê duyệt kết quả',
+                        READ_ONLY: 'Chỉ xem',
+                      }[userRole || ''] || 'Người dùng'}
                     </Typography.Text>
                   </div>
                 </Flex>

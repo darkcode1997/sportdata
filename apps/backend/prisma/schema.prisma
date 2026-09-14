@@ -11,8 +11,59 @@ datasource db {
 
 enum UserRole {
   ADMIN
-  CONTENT       @map("EDITOR")
-  LEGACY_VIEWER @map("VIEWER")
+  CONTENT         @map("EDITOR")
+  LEGACY_VIEWER   @map("VIEWER")
+  GAMES_ADMIN
+  SPORT_MANAGER
+  VENUE_OPERATOR
+  SCOREKEEPER
+  RESULT_APPROVER
+  READ_ONLY
+}
+
+enum CompetitionFormat {
+  HEAD_TO_HEAD
+  ROUND_ROBIN
+  HEAT
+  LANE
+  MULTI_PARTICIPANT
+  RELAY
+}
+
+enum EntryType {
+  INDIVIDUAL
+  TEAM
+  RELAY
+}
+
+enum EntryStatus {
+  REGISTERED
+  VERIFIED
+  WITHDRAWN
+  DISQUALIFIED
+}
+
+enum SessionStatus {
+  DRAFT
+  PUBLISHED
+  LOCKED
+}
+
+enum ResultStatus {
+  DRAFT
+  ENTERED
+  REFEREE_CONFIRMED
+  APPROVED
+  PUBLISHED
+  LOCKED
+}
+
+enum HeatStatus {
+  DRAFT
+  SCHEDULED
+  RUNNING
+  FINISHED
+  PUBLISHED
 }
 
 enum MatchStatus {
@@ -42,6 +93,8 @@ enum MatchType {
   ROUND_OF_16
   ROUND_OF_32
   GROUP_STAGE
+  HEAT
+  QUALIFIER
 }
 
 enum Gender {
@@ -93,14 +146,16 @@ enum ContactStatus {
 }
 
 model Country {
-  id          String       @id @default(cuid())
-  code        String       @unique
+  id          String             @id @default(cuid())
+  code        String             @unique
   name        String
   flagUrl     String?
   athletes    Athlete[]
   federations Federation[]
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  teams       Team[]
+  entries     CompetitionEntry[]
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
 }
 
 model Federation {
@@ -116,19 +171,20 @@ model Federation {
 }
 
 model User {
-  id                       String    @id @default(cuid())
-  email                    String    @unique
-  username                 String?   @unique
+  id                       String     @id @default(cuid())
+  email                    String     @unique
+  username                 String?    @unique
   name                     String
   password                 String
-  role                     UserRole  @default(CONTENT)
-  isActive                 Boolean   @default(true)
-  resetPasswordTokenHash   String?   @unique
+  role                     UserRole   @default(CONTENT)
+  isActive                 Boolean    @default(true)
+  resetPasswordTokenHash   String?    @unique
   resetPasswordExpiresAt   DateTime?
   resetPasswordRequestedAt DateTime?
   passwordChangedAt        DateTime?
-  createdAt                DateTime  @default(now())
-  updatedAt                DateTime  @updatedAt
+  createdAt                DateTime   @default(now())
+  updatedAt                DateTime   @updatedAt
+  auditLogs                AuditLog[] @relation("AuditActor")
 
   @@index([isActive, role])
 }
@@ -168,17 +224,21 @@ model ContactMessage {
 }
 
 model Sport {
-  id            String      @id @default(cuid())
+  id            String                @id @default(cuid())
   name          String
-  code          String      @unique
+  code          String                @unique
   description   String?
   logoUrl       String?
-  events        Event[]     @relation("EventSports")
-  primaryEvents Event[]     @relation("PrimarySportEvents")
+  events        Event[]               @relation("EventSports")
+  primaryEvents Event[]               @relation("PrimarySportEvents")
   categories    Category[]
   statistics    Statistic[]
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
+  venues        Venue[]               @relation("VenueSports")
+  teams         Team[]
+  sessions      CompetitionSession[]
+  scheduleRules SportSchedulingRule[]
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
 }
 
 model Category {
@@ -200,6 +260,12 @@ model Category {
   divisions            Division[]
   draws                Draw[]
   events               Event[]
+  format               CompetitionFormat   @default(HEAD_TO_HEAD)
+  laneCount            Int?
+  maxEntriesPerCountry Int?
+  entries              CompetitionEntry[]
+  heats                Heat[]
+  roundRobinGroups     RoundRobinGroup[]
   createdAt            DateTime            @default(now())
   updatedAt            DateTime            @updatedAt
 
@@ -220,33 +286,40 @@ model Division {
 }
 
 model Event {
-  id          String      @id @default(cuid())
-  name        String
-  sportId     String
-  sport       Sport       @relation("PrimarySportEvents", fields: [sportId], references: [id])
-  sports      Sport[]     @relation("EventSports")
-  description String?
-  startDate   DateTime
-  endDate     DateTime
-  location    String?
-  bannerUrl   String?
-  logoUrl     String?
-  matches     Match[]
-  draws       Draw[]
-  fops        Fop[]
-  athletes    Athlete[]
-  categories  Category[]
-  statistics  Statistic[]
-  isPublished Boolean     @default(false)
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  id               String                @id @default(cuid())
+  name             String
+  sportId          String
+  sport            Sport                 @relation("PrimarySportEvents", fields: [sportId], references: [id])
+  sports           Sport[]               @relation("EventSports")
+  description      String?
+  startDate        DateTime
+  endDate          DateTime
+  location         String?
+  bannerUrl        String?
+  logoUrl          String?
+  matches          Match[]
+  draws            Draw[]
+  fops             Fop[]
+  athletes         Athlete[]
+  categories       Category[]
+  statistics       Statistic[]
+  venues           Venue[]               @relation("EventVenues")
+  sessions         CompetitionSession[]
+  entries          CompetitionEntry[]
+  teams            Team[]
+  scheduleRules    SportSchedulingRule[]
+  heats            Heat[]
+  roundRobinGroups RoundRobinGroup[]
+  isPublished      Boolean               @default(false)
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
 
   @@index([sportId])
   @@index([startDate])
 }
 
 model Athlete {
-  id                String      @id @default(cuid())
+  id                String             @id @default(cuid())
   firstName         String
   lastName          String
   fullName          String
@@ -255,18 +328,22 @@ model Athlete {
   weight            Float?
   height            Float?
   countryId         String
-  country           Country     @relation(fields: [countryId], references: [id])
+  country           Country            @relation(fields: [countryId], references: [id])
   federationId      String?
-  federation        Federation? @relation(fields: [federationId], references: [id])
+  federation        Federation?        @relation(fields: [federationId], references: [id])
   photoUrl          String?
-  matchesAsAthlete1 Match[]     @relation("Athlete1Matches")
-  matchesAsAthlete2 Match[]     @relation("Athlete2Matches")
-  matchesAsWinner   Match[]     @relation("WinnerMatches")
+  matchesAsAthlete1 Match[]            @relation("Athlete1Matches")
+  matchesAsAthlete2 Match[]            @relation("Athlete2Matches")
+  matchesAsWinner   Match[]            @relation("WinnerMatches")
   events            Event[]
   categories        Category[]
   statistics        Statistic[]
-  createdAt         DateTime    @default(now())
-  updatedAt         DateTime    @updatedAt
+  teamMemberships   TeamMember[]
+  entries           CompetitionEntry[]
+  matchParticipants MatchParticipant[]
+  heatLanes         HeatLane[]
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
 
   @@index([countryId])
   @@index([federationId])
@@ -274,51 +351,83 @@ model Athlete {
 }
 
 model Match {
-  id                 String       @id @default(cuid())
+  id                 String              @id @default(cuid())
   eventId            String
-  event              Event        @relation(fields: [eventId], references: [id])
+  event              Event               @relation(fields: [eventId], references: [id])
   categoryId         String
-  category           Category     @relation(fields: [categoryId], references: [id])
+  category           Category            @relation(fields: [categoryId], references: [id])
   divisionId         String?
-  division           Division?    @relation(fields: [divisionId], references: [id])
+  division           Division?           @relation(fields: [divisionId], references: [id])
   drawId             String?
-  draw               Draw?        @relation(fields: [drawId], references: [id], onDelete: SetNull)
+  draw               Draw?               @relation(fields: [drawId], references: [id], onDelete: SetNull)
   matchNumber        Int?
   fop                String?
   fopId              String?
-  fopRecord          Fop?         @relation(fields: [fopId], references: [id], onDelete: SetNull)
+  fopRecord          Fop?                @relation(fields: [fopId], references: [id], onDelete: SetNull)
   matchDate          DateTime
   startTime          DateTime?
   endTime            DateTime?
   athlete1Id         String?
-  athlete1           Athlete?     @relation("Athlete1Matches", fields: [athlete1Id], references: [id])
+  athlete1           Athlete?            @relation("Athlete1Matches", fields: [athlete1Id], references: [id])
   athlete2Id         String?
-  athlete2           Athlete?     @relation("Athlete2Matches", fields: [athlete2Id], references: [id])
-  athlete1Score      Float        @default(0)
-  athlete2Score      Float        @default(0)
-  athlete1Advantages Int          @default(0)
-  athlete2Advantages Int          @default(0)
-  athlete1Penalties  Int          @default(0)
-  athlete2Penalties  Int          @default(0)
-  status             MatchStatus  @default(SCHEDULED)
-  matchType          MatchType    @default(ELIMINATION)
+  athlete2           Athlete?            @relation("Athlete2Matches", fields: [athlete2Id], references: [id])
+  team1Id            String?
+  team1              Team?               @relation("Team1Matches", fields: [team1Id], references: [id])
+  team2Id            String?
+  team2              Team?               @relation("Team2Matches", fields: [team2Id], references: [id])
+  athlete1Score      Float               @default(0)
+  athlete2Score      Float               @default(0)
+  athlete1Advantages Int                 @default(0)
+  athlete2Advantages Int                 @default(0)
+  athlete1Penalties  Int                 @default(0)
+  athlete2Penalties  Int                 @default(0)
+  status             MatchStatus         @default(SCHEDULED)
+  matchType          MatchType           @default(ELIMINATION)
   winnerId           String?
-  winner             Athlete?     @relation("WinnerMatches", fields: [winnerId], references: [id])
+  winner             Athlete?            @relation("WinnerMatches", fields: [winnerId], references: [id])
+  winnerTeamId       String?
+  winnerTeam         Team?               @relation("TeamWinnerMatches", fields: [winnerTeamId], references: [id])
   winMethod          WinMethod?
   round              Int?
   bracketPosition    Int?
   winnerToMatchId    String?
-  winnerToMatch      Match?       @relation("WinnerProgression", fields: [winnerToMatchId], references: [id], onDelete: SetNull)
-  winnerFromMatches  Match[]      @relation("WinnerProgression")
+  winnerToMatch      Match?              @relation("WinnerProgression", fields: [winnerToMatchId], references: [id], onDelete: SetNull)
+  winnerFromMatches  Match[]             @relation("WinnerProgression")
   winnerToSide       BracketSide?
   loserToMatchId     String?
-  loserToMatch       Match?       @relation("LoserProgression", fields: [loserToMatchId], references: [id], onDelete: SetNull)
-  loserFromMatches   Match[]      @relation("LoserProgression")
+  loserToMatch       Match?              @relation("LoserProgression", fields: [loserToMatchId], references: [id], onDelete: SetNull)
+  loserFromMatches   Match[]             @relation("LoserProgression")
   loserToSide        BracketSide?
   pool               String?
   notes              String?
-  createdAt          DateTime     @default(now())
-  updatedAt          DateTime     @updatedAt
+  sessionId          String?
+  session            CompetitionSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  timeSlotId         String?             @unique
+  timeSlot           TimeSlot?           @relation(fields: [timeSlotId], references: [id], onDelete: SetNull)
+  scheduleLocked     Boolean             @default(false)
+  scheduleLockedAt   DateTime?
+  scheduleLockedBy   String?
+  scheduleLockReason String?
+  resultStatus       ResultStatus        @default(DRAFT)
+  resultData         Json?
+  resultVersion      Int                 @default(0)
+  resultEnteredAt    DateTime?
+  resultEnteredBy    String?
+  refereeConfirmedAt DateTime?
+  refereeConfirmedBy String?
+  approvedAt         DateTime?
+  approvedBy         String?
+  resultPublishedAt  DateTime?
+  resultPublishedBy  String?
+  resultLockedAt     DateTime?
+  resultLockedBy     String?
+  participants       MatchParticipant[]
+  resultRevisions    ResultRevision[]
+  roundRobinGroupId  String?
+  roundRobinGroup    RoundRobinGroup?    @relation(fields: [roundRobinGroupId], references: [id], onDelete: SetNull)
+  heat               Heat?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
 
   @@index([eventId])
   @@index([eventId, matchDate])
@@ -333,6 +442,12 @@ model Match {
   @@index([status])
   @@index([athlete1Id])
   @@index([athlete2Id])
+  @@index([team1Id])
+  @@index([team2Id])
+  @@index([winnerTeamId])
+  @@index([sessionId, startTime])
+  @@index([resultStatus])
+  @@index([roundRobinGroupId])
 }
 
 model Draw {
@@ -359,17 +474,297 @@ model Draw {
 }
 
 model Fop {
-  id        String   @id @default(cuid())
+  id        String     @id @default(cuid())
   name      String
   eventId   String
-  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  draws     Draw[]   @relation("DrawFops")
+  event     Event      @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  draws     Draw[]     @relation("DrawFops")
   matches   Match[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  venueId   String?
+  venue     Venue?     @relation(fields: [venueId], references: [id], onDelete: SetNull)
+  timeSlots TimeSlot[]
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
 
   @@unique([eventId, name])
   @@index([eventId])
+  @@index([venueId])
+}
+
+model Venue {
+  id        String               @id @default(cuid())
+  code      String               @unique
+  name      String
+  location  String?
+  capacity  Int?
+  timezone  String               @default("Asia/Ho_Chi_Minh")
+  isActive  Boolean              @default(true)
+  sports    Sport[]              @relation("VenueSports")
+  events    Event[]              @relation("EventVenues")
+  fops      Fop[]
+  sessions  CompetitionSession[]
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
+
+  @@index([isActive])
+}
+
+model CompetitionSession {
+  id        String        @id @default(cuid())
+  eventId   String
+  event     Event         @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  venueId   String
+  venue     Venue         @relation(fields: [venueId], references: [id])
+  sportId   String?
+  sport     Sport?        @relation(fields: [sportId], references: [id], onDelete: SetNull)
+  name      String
+  startTime DateTime
+  endTime   DateTime
+  status    SessionStatus @default(DRAFT)
+  notes     String?
+  timeSlots TimeSlot[]
+  matches   Match[]
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@index([eventId, startTime])
+  @@index([venueId, startTime])
+  @@index([sportId, startTime])
+}
+
+model TimeSlot {
+  id         String             @id @default(cuid())
+  sessionId  String
+  session    CompetitionSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  fopId      String
+  fop        Fop                @relation(fields: [fopId], references: [id], onDelete: Cascade)
+  startTime  DateTime
+  endTime    DateTime
+  isLocked   Boolean            @default(false)
+  lockReason String?
+  match      Match?
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+
+  @@index([sessionId, startTime])
+  @@index([fopId, startTime])
+}
+
+model SportSchedulingRule {
+  id                   String   @id @default(cuid())
+  eventId              String
+  event                Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  sportId              String
+  sport                Sport    @relation(fields: [sportId], references: [id], onDelete: Cascade)
+  matchDurationMinutes Int      @default(10)
+  turnaroundMinutes    Int      @default(5)
+  minRestMinutes       Int      @default(60)
+  earliestStart        String   @default("08:00")
+  latestEnd            String   @default("22:00")
+  preferredStart       String?
+  preferredEnd         String?
+  outdoor              Boolean  @default(false)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@unique([eventId, sportId])
+  @@index([sportId])
+}
+
+model Team {
+  id                String             @id @default(cuid())
+  eventId           String
+  event             Event              @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  sportId           String
+  sport             Sport              @relation(fields: [sportId], references: [id])
+  countryId         String
+  country           Country            @relation(fields: [countryId], references: [id])
+  name              String
+  code              String?
+  gender            Gender?
+  members           TeamMember[]
+  entries           CompetitionEntry[]
+  matchesAsTeam1    Match[]            @relation("Team1Matches")
+  matchesAsTeam2    Match[]            @relation("Team2Matches")
+  matchesAsWinner   Match[]            @relation("TeamWinnerMatches")
+  matchParticipants MatchParticipant[]
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  @@unique([eventId, sportId, countryId, name])
+  @@index([eventId, sportId])
+  @@index([countryId])
+}
+
+model TeamMember {
+  id        String   @id @default(cuid())
+  teamId    String
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  athleteId String
+  athlete   Athlete  @relation(fields: [athleteId], references: [id])
+  role      String?
+  relayLeg  Int?
+  isReserve Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@unique([teamId, athleteId])
+  @@index([athleteId])
+}
+
+model CompetitionEntry {
+  id                String                  @id @default(cuid())
+  eventId           String
+  event             Event                   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  categoryId        String
+  category          Category                @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  countryId         String
+  country           Country                 @relation(fields: [countryId], references: [id])
+  type              EntryType
+  status            EntryStatus             @default(REGISTERED)
+  athleteId         String?
+  athlete           Athlete?                @relation(fields: [athleteId], references: [id], onDelete: SetNull)
+  teamId            String?
+  team              Team?                   @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  seed              Int?
+  bib               String?
+  notes             String?
+  matchParticipants MatchParticipant[]
+  heatLanes         HeatLane[]
+  roundRobinGroups  RoundRobinGroupMember[]
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+
+  @@unique([eventId, categoryId, athleteId])
+  @@unique([eventId, categoryId, teamId])
+  @@index([eventId, categoryId, status])
+  @@index([countryId])
+}
+
+model MatchParticipant {
+  id        String            @id @default(cuid())
+  matchId   String
+  match     Match             @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  entryId   String?
+  entry     CompetitionEntry? @relation(fields: [entryId], references: [id], onDelete: SetNull)
+  athleteId String?
+  athlete   Athlete?          @relation(fields: [athleteId], references: [id], onDelete: SetNull)
+  teamId    String?
+  team      Team?             @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  lane      Int?
+  position  Int?
+  score     Json?
+  rank      Int?
+  qualified Boolean           @default(false)
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  @@unique([matchId, entryId])
+  @@index([athleteId])
+  @@index([teamId])
+}
+
+model Heat {
+  id         String     @id @default(cuid())
+  eventId    String
+  event      Event      @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  categoryId String
+  category   Category   @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  name       String
+  round      Int        @default(1)
+  sequence   Int        @default(1)
+  status     HeatStatus @default(DRAFT)
+  startTime  DateTime?
+  matchId    String?    @unique
+  match      Match?     @relation(fields: [matchId], references: [id], onDelete: SetNull)
+  lanes      HeatLane[]
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  @@unique([eventId, categoryId, round, sequence])
+  @@index([eventId, startTime])
+}
+
+model HeatLane {
+  id        String           @id @default(cuid())
+  heatId    String
+  heat      Heat             @relation(fields: [heatId], references: [id], onDelete: Cascade)
+  entryId   String
+  entry     CompetitionEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  athleteId String?
+  athlete   Athlete?         @relation(fields: [athleteId], references: [id], onDelete: SetNull)
+  lane      Int
+  result    Json?
+  rank      Int?
+  qualified Boolean          @default(false)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@unique([heatId, lane])
+  @@unique([heatId, entryId])
+}
+
+model RoundRobinGroup {
+  id         String                  @id @default(cuid())
+  eventId    String
+  event      Event                   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  categoryId String
+  category   Category                @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  name       String
+  members    RoundRobinGroupMember[]
+  matches    Match[]
+  createdAt  DateTime                @default(now())
+  updatedAt  DateTime                @updatedAt
+
+  @@unique([eventId, categoryId, name])
+  @@index([eventId, categoryId])
+}
+
+model RoundRobinGroupMember {
+  id        String           @id @default(cuid())
+  groupId   String
+  group     RoundRobinGroup  @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  entryId   String
+  entry     CompetitionEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  seed      Int?
+  createdAt DateTime         @default(now())
+
+  @@unique([groupId, entryId])
+}
+
+model ResultRevision {
+  id          String       @id @default(cuid())
+  matchId     String
+  match       Match        @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  version     Int
+  status      ResultStatus
+  action      String
+  before      Json?
+  after       Json?
+  reason      String?
+  actorUserId String?
+  createdAt   DateTime     @default(now())
+
+  @@unique([matchId, version])
+  @@index([matchId, createdAt])
+  @@index([actorUserId])
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  actorUserId String?
+  actor       User?    @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  action      String
+  entityType  String
+  entityId    String?
+  method      String?
+  path        String?
+  metadata    Json?
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+
+  @@index([entityType, entityId, createdAt])
+  @@index([actorUserId, createdAt])
 }
 
 model Statistic {
