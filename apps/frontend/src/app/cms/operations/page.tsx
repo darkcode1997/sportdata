@@ -28,7 +28,16 @@ import {
   TimePicker,
   Typography,
 } from 'antd';
-import { CalendarClock, CheckCircle2, LockKeyhole, MapPin, Play, ScanSearch } from 'lucide-react';
+import {
+  CalendarClock,
+  CheckCircle2,
+  LockKeyhole,
+  MapPin,
+  Play,
+  RefreshCw,
+  ScanSearch,
+  ShieldCheck,
+} from 'lucide-react';
 import { CmsPageHeader } from '@/components/cms/CmsPageHeader';
 import { CompetitionEntriesPanel } from '@/components/cms/CompetitionEntriesPanel';
 import { api, fetcher } from '@/lib/api';
@@ -70,6 +79,7 @@ export default function OperationsPage() {
   const { data: currentUser } = useSWR<any>('/auth/profile', fetcher);
   const { data: event } = useSWR<any>(eventId ? `/events/${eventId}` : null, fetcher);
   const { data: overview, mutate: mutateOverview } = useSWR<any>(eventId ? `/scheduling/events/${eventId}/overview` : null, fetcher);
+  const { data: readiness, error: readinessError, isLoading: readinessLoading, mutate: mutateReadiness } = useSWR<any>(eventId ? `/scheduling/events/${eventId}/readiness` : null, fetcher);
   const { data: venues = [], mutate: mutateVenues } = useSWR<any[]>(eventId ? `/scheduling/venues?eventId=${eventId}` : null, fetcher);
   const { data: sessions = [], mutate: mutateSessions } = useSWR<any[]>(eventId ? `/scheduling/events/${eventId}/sessions` : null, fetcher);
   const { data: rules = [], mutate: mutateRules } = useSWR<any[]>(eventId ? `/scheduling/events/${eventId}/rules` : null, fetcher);
@@ -165,6 +175,24 @@ export default function OperationsPage() {
     const text = `${match.matchNumber || ''} ${match.category?.name || ''} ${match.athlete1?.fullName || match.team1?.name || ''} ${match.athlete2?.fullName || match.team2?.name || ''}`.toLowerCase();
     return text.includes(matchSearch.trim().toLowerCase());
   });
+  const readinessIssues = (readiness?.checks || []).filter((check: any) => check.status !== 'PASS');
+  const readinessColumns = [
+    {
+      title: 'Mức',
+      dataIndex: 'status',
+      width: 110,
+      render: (value: string) => (
+        <Tag color={value === 'FAIL' ? 'red' : 'gold'}>{value === 'FAIL' ? 'BẮT BUỘC' : 'CẢNH BÁO'}</Tag>
+      ),
+    },
+    { title: 'Hạng mục kiểm tra', dataIndex: 'title', width: 230 },
+    { title: 'Chi tiết', dataIndex: 'detail' },
+    {
+      title: '',
+      width: 120,
+      render: (_: any, row: any) => <Button onClick={() => setActiveTab(row.tab)}>Xử lý</Button>,
+    },
+  ];
 
   const saveVenue = async () => {
     try {
@@ -173,7 +201,7 @@ export default function OperationsPage() {
       message.success('Đã tạo địa điểm');
       setVenueOpen(false);
       venueForm.resetFields();
-      await Promise.all([mutateVenues(), mutateOverview()]);
+      await Promise.all([mutateVenues(), mutateOverview(), mutateReadiness()]);
     } catch (error: any) {
       if (error?.errorFields) return;
       message.error(requestMessage(error, 'Không thể tạo địa điểm'));
@@ -192,7 +220,7 @@ export default function OperationsPage() {
       message.success('Đã tạo ca thi đấu');
       setSessionOpen(false);
       sessionForm.resetFields();
-      await Promise.all([mutateSessions(), mutateOverview()]);
+      await Promise.all([mutateSessions(), mutateOverview(), mutateReadiness()]);
     } catch (error: any) {
       if (error?.errorFields) return;
       message.error(requestMessage(error, 'Không thể tạo ca thi đấu'));
@@ -206,7 +234,7 @@ export default function OperationsPage() {
       message.success(`Đã tạo ${response.data.created} time slot`);
       setSlotSession(undefined);
       slotForm.resetFields();
-      await Promise.all([mutateSessions(), mutateOverview()]);
+      await Promise.all([mutateSessions(), mutateOverview(), mutateReadiness()]);
     } catch (error: any) {
       if (error?.errorFields) return;
       message.error(requestMessage(error, 'Không thể tạo time slot'));
@@ -228,7 +256,7 @@ export default function OperationsPage() {
       message.success('Đã lưu quy tắc xếp lịch');
       setRuleOpen(false);
       ruleForm.resetFields();
-      await Promise.all([mutateRules(), mutateOverview()]);
+      await Promise.all([mutateRules(), mutateOverview(), mutateReadiness()]);
     } catch (error: any) {
       if (error?.errorFields) return;
       message.error(requestMessage(error, 'Không thể lưu quy tắc'));
@@ -242,7 +270,7 @@ export default function OperationsPage() {
       const response = await api.post(`/scheduling/events/${eventId}/auto-schedule`, { dryRun, onlyUnscheduled: true });
       setScheduleResult(response.data);
       message.success(dryRun ? 'Đã mô phỏng lịch' : `Đã xếp ${response.data.scheduled} trận`);
-      if (!dryRun) await Promise.all([mutateMatches(), mutateConflicts(), mutateSessions(), mutateOverview()]);
+      if (!dryRun) await Promise.all([mutateMatches(), mutateConflicts(), mutateSessions(), mutateOverview(), mutateReadiness()]);
     } catch (error: any) {
       message.error(requestMessage(error, 'Không thể xếp lịch'));
     } finally {
@@ -264,7 +292,7 @@ export default function OperationsPage() {
     try {
       await api.patch(`/scheduling/matches/${match.id}/lock`, { locked, reason });
       message.success(locked ? 'Đã khóa lịch trận đấu' : 'Đã mở khóa lịch trận đấu');
-      await Promise.all([mutateMatches(), mutateOverview()]);
+      await Promise.all([mutateMatches(), mutateOverview(), mutateReadiness()]);
     } catch (error: any) {
       message.error(requestMessage(error, 'Không thể cập nhật khóa lịch'));
     }
@@ -349,6 +377,75 @@ export default function OperationsPage() {
         <Space direction="vertical" size="large" className="w-full">
           {currentUser?.role === 'READ_ONLY' && <Alert showIcon type="info" message="Bạn đang ở chế độ chỉ xem" description="Các nút thay đổi dữ liệu được ẩn hoặc vô hiệu hóa theo vai trò tài khoản." />}
 
+          <Card
+            className="cms-surface"
+            loading={readinessLoading && !readiness}
+            title={<Space><ShieldCheck className="h-5 w-5" /> Cổng kiểm tra sẵn sàng vận hành</Space>}
+            extra={(
+              <Space>
+                {readiness && (
+                  <Tag color={readiness.ready ? 'green' : 'red'}>
+                    {readiness.ready ? 'ĐỦ ĐIỀU KIỆN KỸ THUẬT' : `${readiness.summary?.fail || 0} LỖI BẮT BUỘC`}
+                  </Tag>
+                )}
+                <Button
+                  aria-label="Kiểm tra lại mức sẵn sàng"
+                  icon={<RefreshCw className="h-4 w-4" />}
+                  loading={readinessLoading}
+                  onClick={() => mutateReadiness()}
+                >
+                  Kiểm tra lại
+                </Button>
+              </Space>
+            )}
+          >
+            {readinessError ? (
+              <Alert
+                showIcon
+                type="error"
+                message="Không thể chạy kiểm tra sẵn sàng"
+                description={requestMessage(readinessError, 'Vui lòng kiểm tra kết nối API và thử lại.')}
+              />
+            ) : (
+            <>
+            <Row gutter={[20, 16]} align="middle">
+              <Col xs={24} md={5} className="text-center">
+                <Progress
+                  type="dashboard"
+                  percent={readiness?.score || 0}
+                  status={readiness?.ready ? 'success' : 'exception'}
+                  format={(percent) => `${percent}%`}
+                />
+              </Col>
+              <Col xs={24} md={19}>
+                <Alert
+                  showIcon
+                  type={readiness?.ready ? (readiness?.summary?.warn ? 'warning' : 'success') : 'error'}
+                  message={readiness?.ready ? 'Không còn lỗi kỹ thuật bắt buộc' : 'Chưa được phép chốt lịch vận hành'}
+                  description={readiness?.ready
+                    ? `${readiness?.summary?.pass || 0} mục đạt · ${readiness?.summary?.warn || 0} cảnh báo cần xem xét.`
+                    : `${readiness?.summary?.fail || 0} lỗi bắt buộc · ${readiness?.summary?.warn || 0} cảnh báo. Xử lý hết lỗi bắt buộc rồi chạy kiểm tra lại.`}
+                />
+              </Col>
+            </Row>
+            {readinessIssues.length ? (
+              <Table
+                className="mt-5"
+                rowKey="code"
+                size="small"
+                pagination={false}
+                columns={readinessColumns}
+                dataSource={readinessIssues}
+                loading={readinessLoading}
+                scroll={{ x: 760 }}
+              />
+            ) : (
+              <Alert className="mt-5" showIcon type="success" message="Toàn bộ kiểm tra đều đạt." />
+            )}
+            </>
+            )}
+          </Card>
+
           <Card className="cms-surface" title="Tiến độ chuẩn bị và vận hành" extra={<Progress type="circle" size={44} percent={Math.round((completedSteps / workflow.length) * 100)} format={() => `${completedSteps}/${workflow.length}`} />}>
             <Steps
               responsive
@@ -388,7 +485,7 @@ export default function OperationsPage() {
           {
             key: 'entries',
             label: `2. Đăng ký & thể thức (${counts.entries || 0})`,
-            children: <CompetitionEntriesPanel eventId={eventId} event={event} readOnly={!canManageEntries} onChanged={async () => { await Promise.all([mutateOverview(), mutateMatches(), mutateConflicts()]); }} />,
+            children: <CompetitionEntriesPanel eventId={eventId} event={event} readOnly={!canManageEntries} onChanged={async () => { await Promise.all([mutateOverview(), mutateMatches(), mutateConflicts(), mutateReadiness()]); }} />,
           },
           {
             key: 'schedule',
@@ -402,7 +499,7 @@ export default function OperationsPage() {
                 <Card title="Lịch đã xếp và khóa thủ công" extra={<Tag color="gold">{counts.lockedSchedules || 0} trận đã khóa</Tag>}>
                   <Table rowKey="id" size="small" columns={scheduleColumns} dataSource={matches} pagination={{ pageSize: 10, showSizeChanger: true }} scroll={{ x: 900 }} />
                 </Card>
-                <Card title="Báo cáo xung đột" extra={<Button onClick={() => mutateConflicts()}>Kiểm tra lại</Button>}>
+                <Card title="Báo cáo xung đột" extra={<Button onClick={() => Promise.all([mutateConflicts(), mutateReadiness()])}>Kiểm tra lại</Button>}>
                   {conflictReport?.valid ? <Alert showIcon type="success" message="Lịch hiện tại không có xung đột cứng." /> : <Table rowKey={(_, index) => String(index)} size="small" pagination={{ pageSize: 20 }} columns={conflictColumns} dataSource={conflictReport?.conflicts || []} scroll={{ x: 800 }} />}
                 </Card>
               </Space>
@@ -433,7 +530,7 @@ export default function OperationsPage() {
         <Form form={ruleForm} layout="vertical" initialValues={{ matchDurationMinutes: 10, turnaroundMinutes: 5, minRestMinutes: 60, outdoor: false }}><Form.Item name="sportId" label="Bộ môn" rules={[{ required: true }]}><Select onChange={loadRule} options={sports.map((sport: any) => ({ value: sport.id, label: sport.name }))} /></Form.Item><Row gutter={12}><Col span={8}><Form.Item name="matchDurationMinutes" label="Thi đấu (phút)"><InputNumber min={1} className="w-full" /></Form.Item></Col><Col span={8}><Form.Item name="turnaroundMinutes" label="Chuyển sân"><InputNumber min={0} className="w-full" /></Form.Item></Col><Col span={8}><Form.Item name="minRestMinutes" label="Nghỉ tối thiểu"><InputNumber min={0} className="w-full" /></Form.Item></Col></Row><Row gutter={12}><Col span={12}><Form.Item name="earliestStart" label="Bắt đầu sớm nhất" initialValue={dayjs('08:00', 'HH:mm')}><TimePicker format="HH:mm" className="w-full" /></Form.Item></Col><Col span={12}><Form.Item name="latestEnd" label="Kết thúc muộn nhất" initialValue={dayjs('22:00', 'HH:mm')}><TimePicker format="HH:mm" className="w-full" /></Form.Item></Col><Col span={12}><Form.Item name="preferredStart" label="Khung giờ vàng từ"><TimePicker format="HH:mm" className="w-full" /></Form.Item></Col><Col span={12}><Form.Item name="preferredEnd" label="Khung giờ vàng đến"><TimePicker format="HH:mm" className="w-full" /></Form.Item></Col></Row><Form.Item name="outdoor" label="Môn ngoài trời" valuePropName="checked"><Switch /></Form.Item></Form>
       </Modal>
 
-      {resultMatch && <ResultWorkflowModal match={resultMatch} role={currentUser?.role} open onClose={() => setResultMatch(undefined)} onChanged={async () => { await Promise.all([mutateMatches(), mutateOverview()]); }} />}
+      {resultMatch && <ResultWorkflowModal match={resultMatch} role={currentUser?.role} open onClose={() => setResultMatch(undefined)} onChanged={async () => { await Promise.all([mutateMatches(), mutateOverview(), mutateReadiness()]); }} />}
     </div>
   );
 }
@@ -454,7 +551,10 @@ function ResultWorkflowModal({ match, role, open, onClose, onChanged }: { match:
   const act = async (action: string, payload: Record<string, unknown> = {}) => {
     setPending(true);
     try {
-      await api.post(`/results/matches/${match.id}/${action}`, payload);
+      await api.post(`/results/matches/${match.id}/${action}`, {
+        ...payload,
+        expectedVersion: data?.resultVersion ?? match.resultVersion ?? 0,
+      });
       message.success('Đã cập nhật quy trình kết quả');
       await Promise.all([mutate(), onChanged()]);
     } catch (error: any) {

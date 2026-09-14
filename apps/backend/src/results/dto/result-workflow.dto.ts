@@ -1,4 +1,4 @@
-import { ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { WinMethod } from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
@@ -22,6 +22,9 @@ export class ParticipantResultDto {
 }
 
 export class EnterResultDto {
+  @ApiProperty({ description: 'Phiên bản kết quả mà màn hình đang hiển thị' })
+  @IsInt() @Min(0) @Type(() => Number)
+  expectedVersion: number;
   @ApiPropertyOptional() @IsNumber() @Type(() => Number) @IsOptional() athlete1Score?: number;
   @ApiPropertyOptional() @IsNumber() @Type(() => Number) @IsOptional() athlete2Score?: number;
   @ApiPropertyOptional() @IsInt() @Min(0) @Type(() => Number) @IsOptional() athlete1Advantages?: number;
@@ -39,5 +42,8 @@ export class EnterResultDto {
 }
 
 export class ResultActionDto {
+  @ApiProperty({ description: 'Phiên bản kết quả mà màn hình đang hiển thị' })
+  @IsInt() @Min(0) @Type(() => Number)
+  expectedVersion: number;
   @ApiPropertyOptional() @IsString() @IsOptional() reason?: string;
 }

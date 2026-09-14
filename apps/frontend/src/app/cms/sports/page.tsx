@@ -27,6 +27,9 @@ const emptySport = { name: '', code: '', description: '', logoUrl: '' };
 const emptyCategory = {
   name: '',
   gender: 'MALE',
+  format: 'HEAD_TO_HEAD',
+  laneCount: '',
+  maxEntriesPerCountry: '',
   discipline: 'NEWAZA',
   uniform: 'GI',
   beltLevel: 'OPEN',
@@ -36,6 +39,14 @@ const emptyCategory = {
   minWeight: '',
   maxWeight: '',
 };
+const formatOptions = [
+  { value: 'HEAD_TO_HEAD', label: 'Đối kháng 1–1' },
+  { value: 'ROUND_ROBIN', label: 'Vòng tròn' },
+  { value: 'HEAT', label: 'Chia heat' },
+  { value: 'LANE', label: 'Thi đấu theo làn' },
+  { value: 'MULTI_PARTICIPANT', label: 'Nhiều VĐV cùng thi đấu' },
+  { value: 'RELAY', label: 'Tiếp sức' },
+];
 const disciplineOptions = [
   { value: 'NEWAZA', label: 'Newaza · Địa chiến' },
   { value: 'FIGHTING', label: 'Fighting · Đối kháng 3 phần' },
@@ -95,6 +106,9 @@ export default function SportsPage() {
       ? {
           name: category.name,
           gender: category.gender,
+          format: category.format || 'HEAD_TO_HEAD',
+          laneCount: category.laneCount == null ? '' : String(category.laneCount),
+          maxEntriesPerCountry: category.maxEntriesPerCountry == null ? '' : String(category.maxEntriesPerCountry),
           discipline: category.discipline || 'NEWAZA',
           uniform: category.uniform || 'GI',
           beltLevel: category.beltLevel || 'OPEN',
@@ -139,6 +153,13 @@ export default function SportsPage() {
         name: categoryForm.name,
         sportId: categorySport.id,
         gender: categoryForm.gender,
+        format: categoryForm.format,
+        laneCount: categoryForm.laneCount
+          ? Number(categoryForm.laneCount)
+          : editingCategory ? null : undefined,
+        maxEntriesPerCountry: categoryForm.maxEntriesPerCountry
+          ? Number(categoryForm.maxEntriesPerCountry)
+          : editingCategory ? null : undefined,
         discipline: categoryForm.discipline || undefined,
         uniform: categoryForm.uniform || undefined,
         beltLevel: categoryForm.beltLevel || undefined,
@@ -297,6 +318,7 @@ export default function SportsPage() {
                           {category.maxWeight ? ` · đến ${category.maxWeight}kg` : ''}
                           {category.discipline ? ` · ${disciplineOptions.find((item) => item.value === category.discipline)?.label || category.discipline}` : ''}
                           {category.uniform ? ` · ${category.uniform === 'NO_GI' ? 'No-Gi' : 'Gi'}` : ''}
+                          {category.maxEntriesPerCountry ? ` · tối đa ${category.maxEntriesPerCountry}/quốc gia` : ''}
                         </p>
                       </div>
                       <div className="flex items-center gap-1">
@@ -417,6 +439,30 @@ export default function SportsPage() {
               <Select className="w-full" value={categoryForm.beltLevel} options={beltOptions} onChange={(beltLevel) => setCategoryForm({ ...categoryForm, beltLevel })} />
             </Field>
           </div>
+          <div className="grid grid-cols-1 gap-x-4 md:grid-cols-3">
+            <Field label="Thể thức">
+              <Select
+                className="w-full"
+                value={categoryForm.format}
+                options={formatOptions}
+                onChange={(format) => setCategoryForm({ ...categoryForm, format })}
+              />
+            </Field>
+            <NumberField
+              label="Số làn (nếu áp dụng)"
+              value={categoryForm.laneCount}
+              min={2}
+              max={16}
+              onChange={(laneCount) => setCategoryForm({ ...categoryForm, laneCount })}
+            />
+            <NumberField
+              label="Entry tối đa mỗi quốc gia"
+              value={categoryForm.maxEntriesPerCountry}
+              min={1}
+              max={100}
+              onChange={(maxEntriesPerCountry) => setCategoryForm({ ...categoryForm, maxEntriesPerCountry })}
+            />
+          </div>
           <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-2 md:grid-cols-5">
             <NumberField label="Tuổi tối thiểu" value={categoryForm.minAge} onChange={(minAge) => setCategoryForm({ ...categoryForm, minAge })} />
             <NumberField label="Tuổi tối đa" value={categoryForm.maxAge} onChange={(maxAge) => setCategoryForm({ ...categoryForm, maxAge })} />
@@ -441,17 +487,22 @@ function NumberField({
   label,
   value,
   step = 1,
+  min = 0,
+  max,
   onChange,
 }: {
   label: string;
   value: string;
   step?: number;
+  min?: number;
+  max?: number;
   onChange: (value: string) => void;
 }) {
   return (
     <Field label={label}>
       <InputNumber
-        min={0}
+        min={min}
+        max={max}
         step={step}
         value={value === '' ? null : Number(value)}
         className="w-full"

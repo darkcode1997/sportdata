@@ -112,7 +112,14 @@ export class CompetitionsService {
     }
     const category = await this.prisma.category.findFirst({
       where: { id: categoryId, events: { some: { id: eventId } } },
-      include: { sport: { select: { id: true } } },
+      include: {
+        sport: { select: { id: true } },
+        events: {
+          where: { id: eventId },
+          select: { startDate: true },
+          take: 1,
+        },
+      },
     });
     if (!category) throw new NotFoundException('Category does not belong to this event');
 
@@ -120,7 +127,7 @@ export class CompetitionsService {
     if (dto.athleteId) {
       const athlete = await this.prisma.athlete.findUnique({ where: { id: dto.athleteId } });
       if (!athlete) throw new NotFoundException('Athlete not found');
-      this.assertAthleteEligibility(athlete, category);
+      this.assertAthleteEligibility(athlete, category, category.events[0].startDate);
       countryId = athlete.countryId;
     } else {
       const team = await this.prisma.team.findFirst({
@@ -134,6 +141,26 @@ export class CompetitionsService {
     }
 
     return this.prisma.$transaction(async (transaction) => {
+      if (category.maxEntriesPerCountry) {
+        await transaction.$queryRaw(Prisma.sql`
+          SELECT pg_advisory_xact_lock(
+            hashtextextended(${`${eventId}:${categoryId}:${countryId}`}, 0)
+          )
+        `);
+        const currentCountryEntries = await transaction.competitionEntry.count({
+          where: {
+            eventId,
+            categoryId,
+            countryId,
+            status: { in: [EntryStatus.REGISTERED, EntryStatus.VERIFIED] },
+          },
+        });
+        if (currentCountryEntries >= category.maxEntriesPerCountry) {
+          throw new BadRequestException(
+            `Quốc gia đã đạt giới hạn ${category.maxEntriesPerCountry} entry cho hạng mục này`,
+          );
+        }
+      }
       if (dto.athleteId) {
         await transaction.event.update({ where: { id: eventId }, data: { athletes: { connect: { id: dto.athleteId } } } });
         await transaction.category.update({ where: { id: categoryId }, data: { athletes: { connect: { id: dto.athleteId } } } });
@@ -320,6 +347,7 @@ export class CompetitionsService {
   private assertAthleteEligibility(
     athlete: { gender: string; birthDate: Date | null; weight: number | null },
     category: { gender: string; minAge: number | null; maxAge: number | null; minWeight: number | null; maxWeight: number | null },
+    referenceDate: Date,
   ) {
     if (category.gender !== 'MIXED' && athlete.gender !== category.gender) {
       throw new BadRequestException('Athlete gender does not meet the category requirement');
@@ -331,10 +359,9 @@ export class CompetitionsService {
     if (category.maxWeight !== null && athlete.weight! > category.maxWeight) throw new BadRequestException('Athlete exceeds the maximum weight');
     if (category.minAge !== null || category.maxAge !== null) {
       if (!athlete.birthDate) throw new BadRequestException('Athlete birth date is required for this category');
-      const today = new Date();
-      let age = today.getUTCFullYear() - athlete.birthDate.getUTCFullYear();
-      const birthdayPassed = today.getUTCMonth() > athlete.birthDate.getUTCMonth()
-        || (today.getUTCMonth() === athlete.birthDate.getUTCMonth() && today.getUTCDate() >= athlete.birthDate.getUTCDate());
+      let age = referenceDate.getUTCFullYear() - athlete.birthDate.getUTCFullYear();
+      const birthdayPassed = referenceDate.getUTCMonth() > athlete.birthDate.getUTCMonth()
+        || (referenceDate.getUTCMonth() === athlete.birthDate.getUTCMonth() && referenceDate.getUTCDate() >= athlete.birthDate.getUTCDate());
       if (!birthdayPassed) age -= 1;
       if (category.minAge !== null && age < category.minAge) throw new BadRequestException('Athlete is below the minimum age');
       if (category.maxAge !== null && age > category.maxAge) throw new BadRequestException('Athlete exceeds the maximum age');

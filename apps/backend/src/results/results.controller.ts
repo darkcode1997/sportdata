@@ -43,7 +43,7 @@ export class ResultsController {
     @Req() req: { user: { id: string } },
     @Body() dto: ResultActionDto,
   ) {
-    return this.results.confirm(matchId, req.user.id, dto.reason);
+    return this.results.confirm(matchId, req.user.id, dto.expectedVersion, dto.reason);
   }
 
   @Post('matches/:matchId/approve')
@@ -53,7 +53,7 @@ export class ResultsController {
     @Req() req: { user: { id: string } },
     @Body() dto: ResultActionDto,
   ) {
-    return this.results.approve(matchId, req.user.id, dto.reason);
+    return this.results.approve(matchId, req.user.id, dto.expectedVersion, dto.reason);
   }
 
   @Post('matches/:matchId/publish')
@@ -63,7 +63,7 @@ export class ResultsController {
     @Req() req: { user: { id: string } },
     @Body() dto: ResultActionDto,
   ) {
-    return this.results.publish(matchId, req.user.id, dto.reason);
+    return this.results.publish(matchId, req.user.id, dto.expectedVersion, dto.reason);
   }
 
   @Post('matches/:matchId/lock')
@@ -73,7 +73,7 @@ export class ResultsController {
     @Req() req: { user: { id: string } },
     @Body() dto: ResultActionDto,
   ) {
-    return this.results.lock(matchId, req.user.id, dto.reason);
+    return this.results.lock(matchId, req.user.id, dto.expectedVersion, dto.reason);
   }
 
   @Post('matches/:matchId/reopen')
@@ -83,6 +83,6 @@ export class ResultsController {
     @Req() req: { user: { id: string } },
     @Body() dto: ResultActionDto,
   ) {
-    return this.results.reopen(matchId, req.user.id, dto.reason);
+    return this.results.reopen(matchId, req.user.id, dto.expectedVersion, dto.reason);
   }
 }

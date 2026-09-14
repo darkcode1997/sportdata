@@ -1,9 +1,14 @@
-import { IsString, IsOptional, IsNumber, IsEnum, IsArray } from 'class-validator';
+import { IsString, IsOptional, IsNumber, IsEnum, IsArray, IsInt, Max, Min } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { BeltLevel, Gender, JiuJitsuDiscipline, UniformType } from '@prisma/client';
-import { CreateCategoryDto } from './create-category.dto';
+import {
+  BeltLevel,
+  CompetitionFormat,
+  Gender,
+  JiuJitsuDiscipline,
+  UniformType,
+} from '@prisma/client';
 
-export class UpdateCategoryDto implements Partial<CreateCategoryDto> {
+export class UpdateCategoryDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
@@ -58,6 +63,25 @@ export class UpdateCategoryDto implements Partial<CreateCategoryDto> {
   @IsOptional()
   @IsNumber()
   maxWeight?: number;
+
+  @ApiPropertyOptional({ enum: CompetitionFormat })
+  @IsOptional()
+  @IsEnum(CompetitionFormat)
+  format?: CompetitionFormat;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsInt()
+  @Min(2)
+  @Max(16)
+  laneCount?: number | null;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  maxEntriesPerCountry?: number | null;
 
   @ApiPropertyOptional({ type: [String] })
   @IsOptional()

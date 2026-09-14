@@ -32,6 +32,20 @@ export class SchedulingController {
     return this.scheduling.getEventOverview(eventId);
   }
 
+  @Get('events/:eventId/readiness')
+  @Roles(
+    UserRole.GAMES_ADMIN,
+    UserRole.SPORT_MANAGER,
+    UserRole.VENUE_OPERATOR,
+    UserRole.SCOREKEEPER,
+    UserRole.RESULT_APPROVER,
+    UserRole.READ_ONLY,
+  )
+  @ApiOperation({ summary: 'Run the event go-live readiness gate' })
+  getEventReadiness(@Param('eventId') eventId: string) {
+    return this.scheduling.getEventReadiness(eventId);
+  }
+
   @Get('venues')
   @Roles(UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER, UserRole.VENUE_OPERATOR, UserRole.READ_ONLY)
   listVenues(@Query('eventId') eventId?: string) {

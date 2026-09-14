@@ -1,5 +1,12 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { MatchStatus, Prisma, SessionStatus } from '@prisma/client';
+import {
+  EntryStatus,
+  MatchStatus,
+  Prisma,
+  ResultStatus,
+  SessionStatus,
+  UserRole,
+} from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   AutoScheduleDto,
@@ -87,6 +94,289 @@ export class SchedulingService {
           resultGroups.map((group) => [group.resultStatus, group._count._all]),
         ),
       },
+    };
+  }
+
+  async getEventReadiness(eventId: string) {
+    const event = await this.prisma.event.findUnique({
+      where: { id: eventId },
+      select: {
+        id: true,
+        name: true,
+        isPublished: true,
+        sport: { select: { id: true, name: true } },
+        sports: { select: { id: true, name: true } },
+        categories: { select: { id: true, name: true } },
+        venues: { select: { id: true } },
+        fops: { select: { id: true, name: true, venueId: true } },
+      },
+    });
+    if (!event) throw new NotFoundException('Event not found');
+
+    const eventSports = event.sports.length ? event.sports : [event.sport];
+    const activeEntryStatuses = [EntryStatus.REGISTERED, EntryStatus.VERIFIED];
+    const [
+      sessions,
+      rules,
+      entryStatusGroups,
+      activeEntriesByCategory,
+      matchCount,
+      unscheduledMatches,
+      matchesWithoutEntrants,
+      scheduledWithoutSlot,
+      finishedDraftResults,
+      activeUserRoles,
+      conflictReport,
+    ] = await Promise.all([
+      this.prisma.competitionSession.findMany({
+        where: { eventId },
+        select: { id: true, status: true, _count: { select: { timeSlots: true } } },
+      }),
+      this.prisma.sportSchedulingRule.findMany({
+        where: { eventId },
+        select: { sportId: true },
+      }),
+      this.prisma.competitionEntry.groupBy({
+        by: ['status'],
+        where: { eventId },
+        _count: { _all: true },
+      }),
+      this.prisma.competitionEntry.groupBy({
+        by: ['categoryId'],
+        where: { eventId, status: { in: activeEntryStatuses } },
+        _count: { _all: true },
+      }),
+      this.prisma.match.count({ where: { eventId, status: { not: MatchStatus.CANCELLED } } }),
+      this.prisma.match.count({
+        where: {
+          eventId,
+          status: { not: MatchStatus.CANCELLED },
+          OR: [{ startTime: null }, { endTime: null }, { fopId: null }],
+        },
+      }),
+      this.prisma.match.count({
+        where: {
+          eventId,
+          status: { not: MatchStatus.CANCELLED },
+          athlete1Id: null,
+          athlete2Id: null,
+          team1Id: null,
+          team2Id: null,
+          participants: { none: {} },
+          OR: [
+            { round: 1 },
+            { matchType: { in: ['HEAT', 'GROUP_STAGE', 'POOL', 'QUALIFIER'] } },
+          ],
+        },
+      }),
+      this.prisma.match.count({
+        where: {
+          eventId,
+          status: { not: MatchStatus.CANCELLED },
+          startTime: { not: null },
+          timeSlotId: null,
+        },
+      }),
+      this.prisma.match.count({
+        where: { eventId, status: MatchStatus.FINISHED, resultStatus: ResultStatus.DRAFT },
+      }),
+      this.prisma.user.groupBy({
+        by: ['role'],
+        where: { isActive: true },
+        _count: { _all: true },
+      }),
+      this.reportConflicts(eventId),
+    ]);
+
+    const rulesBySport = new Set(rules.map(({ sportId }) => sportId));
+    const categoriesWithEntries = new Set(activeEntriesByCategory.map(({ categoryId }) => categoryId));
+    const missingRuleSports = eventSports.filter(({ id }) => !rulesBySport.has(id));
+    const emptyCategories = event.categories.filter(({ id }) => !categoriesWithEntries.has(id));
+    const missingVenueFops = event.fops.filter(({ venueId }) => !venueId);
+    const sessionsWithoutSlots = sessions.filter((session) => session._count.timeSlots === 0);
+    const draftSessions = sessions.filter((session) => session.status === SessionStatus.DRAFT);
+    const entryCounts = Object.fromEntries(
+      entryStatusGroups.map((group) => [group.status, group._count._all]),
+    ) as Partial<Record<EntryStatus, number>>;
+    const activeEntries = (entryCounts.REGISTERED || 0) + (entryCounts.VERIFIED || 0);
+    const roleCounts = new Map(activeUserRoles.map((group) => [group.role, group._count._all]));
+    const operationalRoles = [
+      UserRole.GAMES_ADMIN,
+      UserRole.SPORT_MANAGER,
+      UserRole.VENUE_OPERATOR,
+      UserRole.SCOREKEEPER,
+      UserRole.RESULT_APPROVER,
+    ];
+    const missingOperationalRoles = operationalRoles.filter((role) => !roleCounts.get(role));
+    const checks: Array<{
+      code: string;
+      status: 'PASS' | 'WARN' | 'FAIL';
+      title: string;
+      detail: string;
+      tab: 'resources' | 'entries' | 'schedule' | 'results';
+    }> = [];
+    const addCheck = (
+      code: string,
+      status: 'PASS' | 'WARN' | 'FAIL',
+      title: string,
+      detail: string,
+      tab: 'resources' | 'entries' | 'schedule' | 'results',
+    ) => checks.push({ code, status, title, detail, tab });
+
+    addCheck(
+      'EVENT_PUBLISHED',
+      event.isPublished ? 'PASS' : 'FAIL',
+      'Công bố sự kiện',
+      event.isPublished ? 'Sự kiện đang hiển thị công khai.' : 'Sự kiện vẫn là bản nháp.',
+      'resources',
+    );
+    addCheck(
+      'SPORTS_AND_CATEGORIES',
+      eventSports.length && event.categories.length ? 'PASS' : 'FAIL',
+      'Bộ môn và hạng mục',
+      `${eventSports.length} bộ môn · ${event.categories.length} hạng mục thi đấu.`,
+      'entries',
+    );
+    addCheck(
+      'ACTIVE_ENTRIES',
+      activeEntries ? 'PASS' : 'FAIL',
+      'Danh sách đăng ký',
+      activeEntries ? `${activeEntries} entry còn hiệu lực.` : 'Chưa có entry còn hiệu lực.',
+      'entries',
+    );
+    addCheck(
+      'ENTRY_VERIFICATION',
+      entryCounts.REGISTERED ? 'WARN' : 'PASS',
+      'Xác minh entry',
+      entryCounts.REGISTERED
+        ? `${entryCounts.REGISTERED} entry mới đăng ký, chưa được xác minh.`
+        : 'Không còn entry chờ xác minh.',
+      'entries',
+    );
+    addCheck(
+      'CATEGORY_ENTRY_COVERAGE',
+      emptyCategories.length ? 'WARN' : 'PASS',
+      'Phủ entry theo hạng mục',
+      emptyCategories.length
+        ? `${emptyCategories.length} hạng mục chưa có entry: ${emptyCategories.slice(0, 3).map(({ name }) => name).join(', ')}${emptyCategories.length > 3 ? '…' : ''}`
+        : 'Tất cả hạng mục đều có entry.',
+      'entries',
+    );
+    addCheck(
+      'VENUE_AND_FOP',
+      event.venues.length && event.fops.length ? 'PASS' : 'FAIL',
+      'Venue và FOP',
+      `${event.venues.length} địa điểm · ${event.fops.length} sàn/FOP.`,
+      'resources',
+    );
+    addCheck(
+      'FOP_VENUE_MAPPING',
+      missingVenueFops.length ? 'FAIL' : 'PASS',
+      'Gán FOP vào venue',
+      missingVenueFops.length
+        ? `${missingVenueFops.length} FOP chưa gắn venue: ${missingVenueFops.slice(0, 3).map(({ name }) => name).join(', ')}${missingVenueFops.length > 3 ? '…' : ''}`
+        : 'Mọi FOP đã được gắn đúng cấp venue.',
+      'resources',
+    );
+    addCheck(
+      'SESSIONS_AND_SLOTS',
+      sessions.length && !sessionsWithoutSlots.length ? 'PASS' : 'FAIL',
+      'Ca thi đấu và time slot',
+      sessions.length
+        ? `${sessions.length} ca · ${sessionsWithoutSlots.length} ca chưa có time slot.`
+        : 'Chưa tạo ca thi đấu.',
+      'resources',
+    );
+    addCheck(
+      'SESSION_PUBLICATION',
+      draftSessions.length ? 'WARN' : 'PASS',
+      'Trạng thái ca thi đấu',
+      draftSessions.length ? `${draftSessions.length} ca vẫn đang ở trạng thái nháp.` : 'Không còn ca ở trạng thái nháp.',
+      'resources',
+    );
+    addCheck(
+      'SPORT_RULES',
+      missingRuleSports.length ? 'FAIL' : 'PASS',
+      'Quy tắc xếp lịch từng môn',
+      missingRuleSports.length
+        ? `Thiếu quy tắc cho: ${missingRuleSports.map(({ name }) => name).join(', ')}.`
+        : 'Mọi bộ môn đã có thời lượng, thời gian nghỉ và khung giờ.',
+      'resources',
+    );
+    addCheck(
+      'MATCH_GENERATION',
+      matchCount ? 'PASS' : 'FAIL',
+      'Sinh cấu trúc thi đấu',
+      matchCount ? `${matchCount} trận/heat đã được tạo.` : 'Chưa có trận hoặc heat.',
+      'entries',
+    );
+    addCheck(
+      'FIRST_ROUND_PARTICIPANTS',
+      matchesWithoutEntrants ? 'FAIL' : 'PASS',
+      'Đối tượng thi đấu vòng đầu',
+      matchesWithoutEntrants
+        ? `${matchesWithoutEntrants} trận vòng đầu chưa có bất kỳ VĐV/đội/entry nào.`
+        : 'Các trận vòng đầu đều đã có đối tượng thi đấu.',
+      'entries',
+    );
+    addCheck(
+      'SCHEDULE_COMPLETENESS',
+      unscheduledMatches ? 'FAIL' : 'PASS',
+      'Hoàn tất xếp lịch',
+      unscheduledMatches ? `${unscheduledMatches}/${matchCount} trận chưa đủ thời gian hoặc FOP.` : 'Toàn bộ trận đã có thời gian và FOP.',
+      'schedule',
+    );
+    addCheck(
+      'TIME_SLOT_LINKAGE',
+      scheduledWithoutSlot ? 'WARN' : 'PASS',
+      'Liên kết time slot',
+      scheduledWithoutSlot
+        ? `${scheduledWithoutSlot} trận được xếp thủ công nhưng chưa liên kết time slot.`
+        : 'Mọi trận đã xếp đều liên kết time slot.',
+      'schedule',
+    );
+    addCheck(
+      'HARD_CONFLICTS',
+      conflictReport.valid ? 'PASS' : 'FAIL',
+      'Ràng buộc lịch cứng',
+      conflictReport.valid
+        ? `Đã kiểm tra ${conflictReport.checkedMatches} trận, không có xung đột.`
+        : `Phát hiện ${conflictReport.conflictCount} xung đột lịch cứng.`,
+      'schedule',
+    );
+    addCheck(
+      'FINISHED_RESULT_DRAFT',
+      finishedDraftResults ? 'FAIL' : 'PASS',
+      'Tính toàn vẹn kết quả',
+      finishedDraftResults
+        ? `${finishedDraftResults} trận đã hoàn thành nhưng kết quả vẫn ở trạng thái bản nháp.`
+        : 'Không có trận hoàn thành bị bỏ ngoài quy trình kết quả.',
+      'results',
+    );
+    addCheck(
+      'OPERATIONAL_STAFFING',
+      missingOperationalRoles.length ? 'WARN' : 'PASS',
+      'Phân công tài khoản vận hành',
+      missingOperationalRoles.length
+        ? `Chưa có tài khoản chuyên trách: ${missingOperationalRoles.join(', ')}.`
+        : 'Đã có đủ nhóm tài khoản vận hành chuyên trách.',
+      'resources',
+    );
+
+    const summary = checks.reduce(
+      (result, check) => ({ ...result, [check.status.toLowerCase()]: result[check.status.toLowerCase() as 'pass' | 'warn' | 'fail'] + 1 }),
+      { pass: 0, warn: 0, fail: 0 },
+    );
+    const score = Math.round(((summary.pass + summary.warn * 0.5) / checks.length) * 100);
+
+    return {
+      eventId,
+      eventName: event.name,
+      ready: summary.fail === 0,
+      score,
+      summary: { ...summary, total: checks.length },
+      checks,
+      generatedAt: new Date(),
     };
   }
 

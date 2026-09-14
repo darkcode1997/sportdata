@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { MatchStatus, Prisma, ResultStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { MatchesService } from '../matches/matches.service';
@@ -60,6 +65,7 @@ export class ResultsService {
   async enter(matchId: string, userId: string, dto: EnterResultDto) {
     return this.prisma.$transaction(async (transaction) => {
       const before = await this.loadMatch(transaction, matchId);
+      this.assertExpectedVersion(before.resultVersion, dto.expectedVersion);
       if (before.resultStatus === ResultStatus.LOCKED) throw new BadRequestException('Result is locked');
       if (before.resultStatus === ResultStatus.APPROVED || before.resultStatus === ResultStatus.PUBLISHED) {
         throw new BadRequestException('Approved or published result must be reopened before editing');
@@ -101,8 +107,8 @@ export class ResultsService {
           },
         });
       }
-      const updated = await transaction.match.update({
-        where: { id: matchId },
+      const writeResult = await transaction.match.updateMany({
+        where: { id: matchId, resultVersion: before.resultVersion },
         data: {
           athlete1Score: dto.athlete1Score,
           athlete2Score: dto.athlete2Score,
@@ -128,66 +134,72 @@ export class ResultsService {
           resultLockedAt: null,
           resultLockedBy: null,
         },
-        select: RESULT_SELECT,
       });
+      if (writeResult.count !== 1) this.throwConcurrentUpdate();
+      const updated = await this.loadMatch(transaction, matchId);
       await this.matches.syncProgression(transaction, before as any, updated as any);
       await this.revise(transaction, before, updated, 'ENTER_RESULT', userId, dto.reason);
       return updated;
     });
   }
 
-  confirm(matchId: string, userId: string, reason?: string) {
+  confirm(matchId: string, userId: string, expectedVersion: number, reason?: string) {
     return this.transition(
       matchId,
       userId,
       ResultStatus.ENTERED,
       ResultStatus.REFEREE_CONFIRMED,
       'REFEREE_CONFIRM',
+      expectedVersion,
       reason,
       { refereeConfirmedAt: new Date(), refereeConfirmedBy: userId },
     );
   }
 
-  approve(matchId: string, userId: string, reason?: string) {
+  approve(matchId: string, userId: string, expectedVersion: number, reason?: string) {
     return this.transition(
       matchId,
       userId,
       ResultStatus.REFEREE_CONFIRMED,
       ResultStatus.APPROVED,
       'APPROVE_RESULT',
+      expectedVersion,
       reason,
       { approvedAt: new Date(), approvedBy: userId },
     );
   }
 
-  publish(matchId: string, userId: string, reason?: string) {
+  publish(matchId: string, userId: string, expectedVersion: number, reason?: string) {
     return this.transition(
       matchId,
       userId,
       ResultStatus.APPROVED,
       ResultStatus.PUBLISHED,
       'PUBLISH_RESULT',
+      expectedVersion,
       reason,
       { resultPublishedAt: new Date(), resultPublishedBy: userId },
     );
   }
 
-  lock(matchId: string, userId: string, reason?: string) {
+  lock(matchId: string, userId: string, expectedVersion: number, reason?: string) {
     return this.transition(
       matchId,
       userId,
       ResultStatus.PUBLISHED,
       ResultStatus.LOCKED,
       'LOCK_RESULT',
+      expectedVersion,
       reason,
       { resultLockedAt: new Date(), resultLockedBy: userId },
     );
   }
 
-  async reopen(matchId: string, userId: string, reason?: string) {
+  async reopen(matchId: string, userId: string, expectedVersion: number, reason?: string) {
     if (!reason?.trim()) throw new BadRequestException('A reason is required to reopen a result');
     return this.prisma.$transaction(async (transaction) => {
       const before = await this.loadMatch(transaction, matchId);
+      this.assertExpectedVersion(before.resultVersion, expectedVersion);
       if (!(
         before.resultStatus === ResultStatus.REFEREE_CONFIRMED
         || before.resultStatus === ResultStatus.APPROVED
@@ -196,8 +208,8 @@ export class ResultsService {
       )) {
         throw new BadRequestException('Only confirmed, approved, published or locked results can be reopened');
       }
-      const updated = await transaction.match.update({
-        where: { id: matchId },
+      const writeResult = await transaction.match.updateMany({
+        where: { id: matchId, resultVersion: before.resultVersion },
         data: {
           resultStatus: ResultStatus.ENTERED,
           resultVersion: { increment: 1 },
@@ -210,8 +222,9 @@ export class ResultsService {
           resultLockedAt: null,
           resultLockedBy: null,
         },
-        select: RESULT_SELECT,
       });
+      if (writeResult.count !== 1) this.throwConcurrentUpdate();
+      const updated = await this.loadMatch(transaction, matchId);
       await this.revise(transaction, before, updated, 'REOPEN_RESULT', userId, reason);
       return updated;
     });
@@ -223,19 +236,26 @@ export class ResultsService {
     expected: ResultStatus,
     next: ResultStatus,
     action: string,
+    expectedVersion: number,
     reason: string | undefined,
     data: Prisma.MatchUpdateInput,
   ) {
     return this.prisma.$transaction(async (transaction) => {
       const before = await this.loadMatch(transaction, matchId);
+      this.assertExpectedVersion(before.resultVersion, expectedVersion);
       if (before.resultStatus !== expected) {
         throw new BadRequestException(`Result must be ${expected} before ${action}`);
       }
-      const updated = await transaction.match.update({
-        where: { id: matchId },
+      const writeResult = await transaction.match.updateMany({
+        where: {
+          id: matchId,
+          resultStatus: expected,
+          resultVersion: before.resultVersion,
+        },
         data: { ...data, resultStatus: next, resultVersion: { increment: 1 } },
-        select: RESULT_SELECT,
       });
+      if (writeResult.count !== 1) this.throwConcurrentUpdate();
+      const updated = await this.loadMatch(transaction, matchId);
       await this.revise(transaction, before, updated, action, userId, reason);
       return updated;
     });
@@ -271,5 +291,15 @@ export class ResultsService {
 
   private snapshot(match: Record<string, any>): Prisma.InputJsonValue {
     return JSON.parse(JSON.stringify(match)) as Prisma.InputJsonValue;
+  }
+
+  private assertExpectedVersion(currentVersion: number, expectedVersion: number) {
+    if (currentVersion !== expectedVersion) this.throwConcurrentUpdate();
+  }
+
+  private throwConcurrentUpdate(): never {
+    throw new ConflictException(
+      'Kết quả đã được người khác cập nhật. Hãy tải lại phiên bản mới trước khi thao tác.',
+    );
   }
 }

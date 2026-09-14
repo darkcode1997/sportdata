@@ -1,6 +1,12 @@
-import { IsString, IsOptional, IsNumber, IsEnum, IsArray } from 'class-validator';
+import { IsString, IsOptional, IsNumber, IsEnum, IsArray, IsInt, Max, Min } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { BeltLevel, Gender, JiuJitsuDiscipline, UniformType } from '@prisma/client';
+import {
+  BeltLevel,
+  CompetitionFormat,
+  Gender,
+  JiuJitsuDiscipline,
+  UniformType,
+} from '@prisma/client';
 
 export class CreateCategoryDto {
   @ApiProperty()
@@ -54,6 +60,25 @@ export class CreateCategoryDto {
   @IsOptional()
   @IsNumber()
   maxWeight?: number;
+
+  @ApiPropertyOptional({ enum: CompetitionFormat })
+  @IsOptional()
+  @IsEnum(CompetitionFormat)
+  format?: CompetitionFormat;
+
+  @ApiPropertyOptional({ description: 'Số làn thi đấu cho heat/lane/relay' })
+  @IsOptional()
+  @IsInt()
+  @Min(2)
+  @Max(16)
+  laneCount?: number;
+
+  @ApiPropertyOptional({ description: 'Số entry tối đa của mỗi quốc gia' })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  maxEntriesPerCountry?: number;
 
   @ApiPropertyOptional({ type: [String] })
   @IsOptional()
