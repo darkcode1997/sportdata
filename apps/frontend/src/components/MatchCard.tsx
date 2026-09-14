@@ -104,27 +104,29 @@ export function MatchCard({
       className={cn('schedule-match-card', isRunning && 'schedule-match-card-live')}
       styles={{ body: { padding: 0 } }}
     >
-      <div className="relative px-4 pb-4 pt-[4.15rem] sm:px-5 sm:pb-5 sm:pt-[3.05rem]">
-        <div className="match-category-heading">
-          <div className="flex items-start gap-1.5 text-sky-400">
-            <ChevronRight className="mt-0.5 h-3.5 w-3.5 shrink-0 stroke-[3]" />
-            {eventId && categoryId ? (
-              <Link
-                href={`/events/${eventId}/categories/${categoryId}`}
-                className="match-category-link"
-              >
-                {categoryName || 'MATCH'}
-              </Link>
-            ) : (
-              <span className="match-category-link">{categoryName || 'MATCH'}</span>
-            )}
+      <div className="match-card-content">
+        <div className="match-card-header">
+          <div className="match-category-heading">
+            <div className="flex items-start gap-1.5 text-sky-400">
+              <ChevronRight className="mt-0.5 h-3.5 w-3.5 shrink-0 stroke-[3]" />
+              {eventId && categoryId ? (
+                <Link
+                  href={`/events/${eventId}/categories/${categoryId}`}
+                  className="match-category-link"
+                >
+                  {categoryName || 'MATCH'}
+                </Link>
+              ) : (
+                <span className="match-category-link">{categoryName || 'MATCH'}</span>
+              )}
+            </div>
+            {stage && <div className="match-stage-label">{stage}</div>}
           </div>
-          {stage && <div className="match-stage-label">{stage}</div>}
-        </div>
 
-        <div className="absolute right-4 top-3 flex items-center gap-2 sm:right-5">
-          {matchNumber != null && <span className="match-number-chip">#{matchNumber}</span>}
-          {fop && <span className="fop-chip">{fop}</span>}
+          <div className="match-card-meta">
+            {matchNumber != null && <span className="match-number-chip">#{matchNumber}</span>}
+            {fop && <span className="fop-chip" title={fop}>{fop}</span>}
+          </div>
         </div>
 
         <div className="match-card-grid">

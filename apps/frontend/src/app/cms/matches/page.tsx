@@ -288,13 +288,14 @@ export default function MatchesListPage() {
         title="Sinh cây thi đấu tự động"
         open={drawOpen}
         width={840}
+        rootClassName="draw-generation-modal-root"
+        style={{ top: 24, paddingBottom: 24 }}
         okText="Sinh cây"
         cancelText="Hủy"
         confirmLoading={drawGenerating}
         maskClosable={!drawGenerating}
         closable={!drawGenerating}
         keyboard={!drawGenerating}
-        styles={{ body: { maxHeight: '70vh', overflowY: 'auto' } }}
         onCancel={() => {
           if (!drawGenerating) setDrawOpen(false);
         }}

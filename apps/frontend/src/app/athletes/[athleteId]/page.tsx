@@ -287,7 +287,7 @@ function MatchList({
         <span className="ml-auto text-xs font-semibold text-slate-500">{matches.length} trận</span>
       </div>
       {loading ? (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4">
           {Array.from({ length: 2 }).map((_, index) => (
             <Card key={index} className="public-surface h-36"><Skeleton active avatar paragraph={{ rows: 2 }} /></Card>
           ))}
@@ -295,7 +295,7 @@ function MatchList({
       ) : matches.length === 0 ? (
         <Empty image={<Calendar className="mx-auto h-9 w-9 text-slate-700" />} description={emptyText} />
       ) : (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4">
           {matches.map((match) => (
             <MatchCard
               key={match.id}
