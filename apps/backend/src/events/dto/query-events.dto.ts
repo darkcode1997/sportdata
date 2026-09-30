@@ -22,6 +22,11 @@ export class QueryEventsDto {
 
   @ApiPropertyOptional()
   @IsOptional()
+  @IsString()
+  countryId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsDateString()
   startDateFrom?: string;
 

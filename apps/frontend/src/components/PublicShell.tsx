@@ -4,18 +4,18 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { Button, ConfigProvider, Drawer, Flex, Menu as AntMenu, Tooltip } from 'antd';
-import { BarChart3, CalendarDays, Mail, Menu, Moon, Newspaper, Sun, Trophy, Users, X } from 'lucide-react';
+import { BarChart3, CalendarDays, LogIn, LogOut, Mail, Menu, Moon, Newspaper, Sun, Trophy, UserRound, X } from 'lucide-react';
 import {
   applyDocumentColorMode,
   createSportdataTheme,
   type SportdataColorMode,
 } from '@/components/AntdProvider';
+import { SITE_CONFIG } from '@/config/site';
+import { clearParticipantSession, getParticipantAccount } from '@/lib/participant-auth';
 
 const navigation = [
-  { href: '/', label: 'Tổng quan', icon: BarChart3 },
-  { href: '/athletes', label: 'Vận động viên', icon: Users },
-  { href: '/events', label: 'Lịch thi đấu', icon: CalendarDays },
-  { href: '/rankings', label: 'Thành tích', icon: Trophy },
+  { href: '/', label: 'Trang chủ', icon: BarChart3 },
+  { href: '/events', label: 'Sự kiện', icon: CalendarDays },
   { href: '/news', label: 'Tin tức', icon: Newspaper },
   { href: '/contact', label: 'Liên hệ', icon: Mail },
 ];
@@ -25,6 +25,7 @@ export function PublicShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [colorMode, setColorMode] = useState<SportdataColorMode>('dark');
+  const [participant, setParticipant] = useState<ReturnType<typeof getParticipantAccount>>(null);
   const isLight = colorMode === 'light';
   const publicTheme = useMemo(() => createSportdataTheme(colorMode), [colorMode]);
   const selectedKey = navigation.find((item) =>
@@ -51,7 +52,18 @@ export function PublicShell({ children }: { children: React.ReactNode }) {
     }
     applyDocumentColorMode(nextMode);
     setColorMode(nextMode);
+    setParticipant(getParticipantAccount());
   }, [pathname]);
+
+  useEffect(() => {
+    const sync = () => setParticipant(getParticipantAccount());
+    window.addEventListener('participant-session-change', sync);
+    window.addEventListener('storage', sync);
+    return () => {
+      window.removeEventListener('participant-session-change', sync);
+      window.removeEventListener('storage', sync);
+    };
+  }, []);
 
   const toggleColorMode = () => {
     setColorMode((current) => {
@@ -87,8 +99,8 @@ export function PublicShell({ children }: { children: React.ReactNode }) {
               <Trophy className="h-5 w-5 text-white" />
             </span>
             <span>
-              <span className={`block text-base font-black tracking-tight ${isLight ? 'text-slate-950' : 'text-white'}`}>SPORTDATA</span>
-              <span className="block text-[10px] font-semibold uppercase tracking-[0.2em] text-sblue-400">Athlete hub</span>
+              <span className={`block text-base font-black tracking-tight ${isLight ? 'text-slate-950' : 'text-white'}`}>{SITE_CONFIG.name.toUpperCase()}</span>
+              <span className="block text-[10px] font-semibold uppercase tracking-[0.16em] text-sblue-400">Nền tảng sự kiện</span>
             </span>
           </Link>
 
@@ -112,6 +124,30 @@ export function PublicShell({ children }: { children: React.ReactNode }) {
           </nav>
 
           <div className="flex items-center gap-2">
+            <Link href={participant ? '/account' : '/account/login'} className="hidden sm:block">
+              <Button
+                type={participant ? 'default' : 'primary'}
+                icon={participant ? <UserRound className="h-4 w-4" /> : <LogIn className="h-4 w-4" />}
+              >
+                {participant ? participant.displayName : 'Đăng nhập'}
+              </Button>
+            </Link>
+            {participant && (
+              <Tooltip title="Đăng xuất">
+                <Button
+                  className="hidden sm:inline-flex"
+                  type="text"
+                  shape="circle"
+                  aria-label="Đăng xuất"
+                  icon={<LogOut className="h-4 w-4" />}
+                  onClick={() => {
+                    clearParticipantSession();
+                    setParticipant(null);
+                    router.push('/');
+                  }}
+                />
+              </Tooltip>
+            )}
             {themeToggle}
             <Button
               type="text"
@@ -146,8 +182,8 @@ export function PublicShell({ children }: { children: React.ReactNode }) {
                 <Trophy className="h-5 w-5 text-white" />
               </span>
               <span className="min-w-0">
-                <span className={`block truncate text-base font-black tracking-tight ${isLight ? 'text-slate-950' : 'text-white'}`}>SPORTDATA</span>
-                <span className="block truncate text-[10px] font-semibold uppercase tracking-[0.18em] text-sblue-400">Athlete hub</span>
+                <span className={`block truncate text-base font-black tracking-tight ${isLight ? 'text-slate-950' : 'text-white'}`}>{SITE_CONFIG.name.toUpperCase()}</span>
+                <span className="block truncate text-[10px] font-semibold uppercase tracking-[0.14em] text-sblue-400">Nền tảng sự kiện</span>
               </span>
             </Link>
             <Button
@@ -170,17 +206,49 @@ export function PublicShell({ children }: { children: React.ReactNode }) {
               setMenuOpen(false);
             }}
           />
-
+          <div className={`border-t p-4 ${isLight ? 'border-slate-200' : 'border-white/10'}`}>
+            <Button
+              block
+              type="primary"
+              icon={participant ? <UserRound className="h-4 w-4" /> : <LogIn className="h-4 w-4" />}
+              onClick={() => {
+                router.push(participant ? '/account' : '/account/login');
+                setMenuOpen(false);
+              }}
+            >
+              {participant ? 'Tài khoản & vé' : 'Đăng nhập / Đăng ký'}
+            </Button>
+            {participant && (
+              <Button
+                block
+                type="text"
+                className="mt-2"
+                icon={<LogOut className="h-4 w-4" />}
+                onClick={() => {
+                  clearParticipantSession();
+                  setParticipant(null);
+                  router.push('/');
+                  setMenuOpen(false);
+                }}
+              >
+                Đăng xuất
+              </Button>
+            )}
+          </div>
         </Flex>
       </Drawer>
 
       <main>{children}</main>
 
       <footer className={`border-t ${isLight ? 'border-slate-200 bg-white' : 'border-white/10 bg-sdark-950'}`}>
-        <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-8 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
-          <p>© 2026 SportData. Dữ liệu thi đấu tập trung, minh bạch.</p>
-          <div className="flex flex-wrap gap-x-5 gap-y-2">
-            {navigation.slice(2).map((item) => (
+        <div className="mx-auto grid max-w-7xl gap-8 px-4 py-10 text-sm text-slate-500 sm:px-6 lg:grid-cols-[1fr_auto] lg:px-8">
+          <div className="max-w-xl">
+            <p className={`font-black ${isLight ? 'text-slate-950' : 'text-slate-100'}`}>{SITE_CONFIG.legalName}</p>
+            <p className="mt-2 leading-6">{SITE_CONFIG.description}</p>
+            <p className="mt-4 text-xs">© 2026 {SITE_CONFIG.name}. Bảo lưu mọi quyền.</p>
+          </div>
+          <div className="flex flex-wrap content-start gap-x-5 gap-y-3 lg:max-w-lg lg:justify-end">
+            {navigation.slice(1).map((item) => (
               <Link
                 href={item.href}
                 key={item.href}

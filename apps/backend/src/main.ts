@@ -30,7 +30,7 @@ async function bootstrap() {
   app.use((request: Request, response: Response, next: NextFunction) => {
     const publicGet = request.method === 'GET'
       && !request.headers.authorization
-      && /^\/api\/(events|matches|athletes|sports|categories|countries|federations|statistics)(\/|\?|$)/
+      && /^\/api\/(banners|events|matches|athletes|sports|categories|countries|federations|statistics)(\/|\?|$)/
         .test(request.originalUrl);
 
     if (publicGet) {

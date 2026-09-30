@@ -17,14 +17,16 @@ import {
 } from 'antd';
 import {
   BarChart3,
-  BookOpen,
+  Building2,
   CalendarDays,
+  ClipboardCheck,
   ChevronsLeft,
   ChevronsRight,
   LayoutDashboard,
   LogOut,
   Mail,
   Menu as MenuIcon,
+  Images,
   Moon,
   Newspaper,
   Settings,
@@ -51,14 +53,16 @@ const navItems = [
   { label: 'Dashboard', key: '/cms', icon: <LayoutDashboard className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms'] },
   { label: 'Điều hành giải đấu', key: '/cms/operations', icon: <Workflow className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/operations'] },
   { label: 'Sự kiện', key: '/cms/events', icon: <CalendarDays className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/events'] },
+  { label: 'Đăng ký thi đấu', key: '/cms/registrations', icon: <ClipboardCheck className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/registrations'] },
   { label: 'Vận động viên', key: '/cms/athletes', icon: <Users className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/athletes'] },
   { label: 'Bộ môn & hạng đấu', key: '/cms/sports', icon: <Trophy className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/sports'] },
+  { label: 'Quốc gia & đơn vị', key: '/cms/organizations', icon: <Building2 className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/organizations'] },
   { label: 'Trận đấu', key: '/cms/matches', icon: <Swords className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/matches'] },
   { label: 'Thống kê', key: '/cms/statistics', icon: <BarChart3 className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/statistics'] },
+  { label: 'Banner trang chủ', key: '/cms/banners', icon: <Images className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/banners'] },
   { label: 'Tin tức', key: '/cms/news', icon: <Newspaper className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/news'] },
   { label: 'Liên hệ', key: '/cms/contacts', icon: <Mail className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/contacts'] },
   { label: 'Cài đặt', key: '/cms/settings', icon: <Settings className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/settings'] },
-  { label: 'Hướng dẫn sử dụng', key: '/cms/help', icon: <BookOpen className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/help'] },
 ];
 
 const publicAuthPaths = ['/cms/login', '/cms/forgot-password', '/cms/reset-password'];
@@ -135,7 +139,9 @@ export default function CmsLayout({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!authenticated || isPublicAuthPath || !userRole) return;
-    if (!canAccessCmsPath(pathname, userRole)) router.replace('/cms/help');
+    if (!canAccessCmsPath(pathname, userRole)) {
+      router.replace(isCmsRole(userRole) ? CMS_ROLE_INFO[userRole].startPath : '/cms/login');
+    }
   }, [authenticated, isPublicAuthPath, pathname, router, userRole]);
 
   const visibleNavItems = useMemo(
@@ -314,11 +320,6 @@ export default function CmsLayout({ children }: { children: React.ReactNode }) {
             </Flex>
 
             <Flex align="center" gap={8} className="h-full">
-              <Link href="/cms/help" aria-label="Mở hướng dẫn sử dụng CMS">
-                <Button type="text" icon={<BookOpen className="h-5 w-5" />}>
-                  <span className="hidden xl:inline">Hướng dẫn</span>
-                </Button>
-              </Link>
               {renderThemeToggle()}
               <Link
                 href="/cms/settings"

@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { AthleteMediaType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateAthleteDto } from './dto/create-athlete.dto';
 import { UpdateAthleteDto } from './dto/update-athlete.dto';
@@ -260,6 +261,27 @@ export class AthletesService {
       where: { id },
       include: this.getAthleteInclude(),
     });
+  }
+
+  async uploadAvatar(id: string, file?: Express.Multer.File) {
+    await this.findOne(id);
+    if (!file) throw new BadRequestException('Vui lòng chọn ảnh đại diện');
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype)) {
+      throw new BadRequestException('Ảnh đại diện phải là JPG, PNG hoặc WebP');
+    }
+    if (file.size > 8 * 1024 * 1024) throw new BadRequestException('Ảnh không được vượt quá 8 MB');
+    await this.prisma.$transaction([
+      this.prisma.athleteMedia.upsert({
+        where: { athleteId_type: { athleteId: id, type: AthleteMediaType.AVATAR } },
+        create: { athleteId: id, type: AthleteMediaType.AVATAR, data: file.buffer, mimeType: file.mimetype, size: file.size },
+        update: { data: file.buffer, mimeType: file.mimetype, size: file.size },
+      }),
+      this.prisma.athlete.update({
+        where: { id },
+        data: { photoUrl: `/api/participant-auth/avatar/${id}` },
+      }),
+    ]);
+    return { photoUrl: `/api/participant-auth/avatar/${id}` };
   }
 
   private getAthleteInclude() {

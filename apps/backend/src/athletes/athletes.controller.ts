@@ -10,7 +10,10 @@ import {
   HttpCode,
   HttpStatus,
   UseGuards,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { AthletesService } from './athletes.service';
 import { CreateAthleteDto } from './dto/create-athlete.dto';
@@ -32,6 +35,14 @@ export class AthletesController {
   @ApiResponse({ status: 201, description: 'Athlete created successfully' })
   create(@Body() createAthleteDto: CreateAthleteDto) {
     return this.athletesService.create(createAthleteDto);
+  }
+
+  @Post(':id/avatar')
+  @UseGuards(JwtAuthGuard)
+  @Roles(UserRole.ADMIN, UserRole.CONTENT, UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER)
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 8 * 1024 * 1024 } }))
+  uploadAvatar(@Param('id') id: string, @UploadedFile() file?: Express.Multer.File) {
+    return this.athletesService.uploadAvatar(id, file);
   }
 
   @Get()

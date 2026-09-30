@@ -2,13 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import useSWR from 'swr';
 import useSWRInfinite from 'swr/infinite';
-import { Button, Card, Empty, Select, Skeleton, Spin, Tag } from 'antd';
-import { Radio, Trophy } from 'lucide-react';
+import { Alert, Button, Card, Empty, Select, Skeleton, Spin, Tag } from 'antd';
+import { Radio, TicketCheck, Trophy } from 'lucide-react';
 import { MatchCard } from '@/components/MatchCard';
 import { fetcher } from '@/lib/api';
+import { getParticipantToken, participantApi, participantError } from '@/lib/participant-auth';
 
 interface Sport {
   id: string;
@@ -99,6 +100,12 @@ interface EventData {
   categories?: EventCategory[];
   fops?: EventFop[];
   _count?: { matches?: number; athletes?: number };
+  registrationEnabled?: boolean;
+  registrationOpenAt?: string | null;
+  registrationCloseAt?: string | null;
+  registrationFee?: number;
+  registrationCurrency?: string;
+  paymentMode?: string;
 }
 
 const demoEvent: EventData = {
@@ -138,8 +145,20 @@ function categoryLabel(category: EventCategory) {
   return details.length ? `${category.name} · ${details.join(' · ')}` : category.name;
 }
 
+function getRegistrationState(event: EventData) {
+  const now = Date.now();
+  const starts = new Date(event.startDate).getTime();
+  const openAt = event.registrationOpenAt ? new Date(event.registrationOpenAt).getTime() : 0;
+  const closeAt = event.registrationCloseAt ? new Date(event.registrationCloseAt).getTime() : starts;
+  if (!event.registrationEnabled) return { open: false, label: 'Sự kiện chưa mở đăng ký' };
+  if (now < openAt) return { open: false, label: `Mở đăng ký từ ${new Date(openAt).toLocaleString('vi-VN')}` };
+  if (now > closeAt) return { open: false, label: 'Đã hết thời gian đăng ký' };
+  return { open: true, label: `Nhận đăng ký đến ${new Date(closeAt).toLocaleString('vi-VN')}` };
+}
+
 export default function EventDetailPage() {
   const params = useParams<{ eventId: string }>();
+  const router = useRouter();
   const eventId = params.eventId;
   const { data: eventResponse, isLoading: eventLoading } = useSWR<EventData>(
     eventId ? `/events/${eventId}` : null,
@@ -156,6 +175,9 @@ export default function EventDetailPage() {
   const [selectedSportId, setSelectedSportId] = useState<string>();
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>();
   const [selectedFopId, setSelectedFopId] = useState<string>();
+  const [registrationCategoryId, setRegistrationCategoryId] = useState<string>();
+  const [registrationMessage, setRegistrationMessage] = useState<{ type: 'success' | 'error'; text: string }>();
+  const [registrationSubmitting, setRegistrationSubmitting] = useState(false);
 
   useEffect(() => {
     if (!dateGroups.length) return;
@@ -277,6 +299,32 @@ export default function EventDetailPage() {
     setPendingLiveMatchId(liveMatchTarget.id);
   };
 
+  const registrationState = event ? getRegistrationState(event) : { open: false, label: '' };
+
+  const register = async () => {
+    if (!registrationCategoryId) {
+      setRegistrationMessage({ type: 'error', text: 'Vui lòng chọn hạng đấu.' });
+      return;
+    }
+    if (!getParticipantToken()) {
+      router.push(`/account/login?next=${encodeURIComponent(`/events/${eventId}`)}`);
+      return;
+    }
+    setRegistrationSubmitting(true);
+    setRegistrationMessage(undefined);
+    try {
+      const { data } = await participantApi.post('/participant-auth/registrations', {
+        eventId,
+        categoryId: registrationCategoryId,
+      });
+      setRegistrationMessage({ type: 'success', text: `Đăng ký thành công. Mã vé: ${data.ticketCode}` });
+    } catch (requestError) {
+      setRegistrationMessage({ type: 'error', text: participantError(requestError, 'Không thể đăng ký') });
+    } finally {
+      setRegistrationSubmitting(false);
+    }
+  };
+
   return (
     <div className="schedule-page min-h-screen pb-20">
       <div className="mx-auto w-full max-w-[990px] px-3 pt-8 sm:px-3 sm:pt-10">
@@ -309,6 +357,37 @@ export default function EventDetailPage() {
             </div>
           )}
         </header>
+
+        <Card className="mt-7 border-sky-400/20" title={<span className="flex items-center gap-2"><TicketCheck className="h-5 w-5 text-sky-400" />Đăng ký tham dự</span>} extra={<Tag color={registrationState.open ? 'success' : 'default'}>{registrationState.label}</Tag>}>
+          <div className="grid items-end gap-4 md:grid-cols-[1fr_auto]">
+            <div>
+              <label className="mb-2 block text-sm font-semibold text-slate-300">Hạng đấu / nội dung đăng ký</label>
+              <Select
+                showSearch
+                optionFilterProp="label"
+                size="large"
+                className="w-full"
+                value={registrationCategoryId}
+                onChange={setRegistrationCategoryId}
+                placeholder="Chọn hạng đấu phù hợp"
+                options={eventCategories.map((category) => ({ value: category.id, label: categoryLabel(category) }))}
+              />
+            </div>
+            <Button type="primary" size="large" disabled={!registrationState.open} loading={registrationSubmitting} onClick={register}>
+              {event?.paymentMode === 'FREE' || !event?.paymentMode ? 'Đăng ký miễn phí' : 'Gửi đăng ký'}
+            </Button>
+          </div>
+          <p className="mt-3 text-xs text-slate-500">Hệ thống kiểm tra ngày sinh, giới tính, cân nặng, đơn vị tham gia và ảnh CCCD trước khi cấp vé.</p>
+          {registrationMessage && (
+            <Alert
+              className="mt-4"
+              showIcon
+              type={registrationMessage.type}
+              message={registrationMessage.text}
+              action={registrationMessage.type === 'success' ? <Link href="/account"><Button size="small">Xem vé</Button></Link> : undefined}
+            />
+          )}
+        </Card>
 
         <div className="schedule-day-tabs mt-7 flex flex-wrap justify-center gap-2">
           {dateGroups.map((group) => {

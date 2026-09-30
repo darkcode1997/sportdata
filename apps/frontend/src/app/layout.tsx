@@ -3,14 +3,23 @@ import { AntdRegistry } from '@ant-design/nextjs-registry';
 import './globals.css';
 import { AntdProvider } from '@/components/AntdProvider';
 import { PublicShell } from '@/components/PublicShell';
+import { SITE_CONFIG } from '@/config/site';
 
 export const metadata: Metadata = {
   title: {
-    default: 'SportData — Hồ sơ & thành tích vận động viên',
-    template: '%s | SportData',
+    default: SITE_CONFIG.title,
+    template: `%s | ${SITE_CONFIG.name}`,
   },
-  description:
-    'Theo dõi hồ sơ vận động viên, lịch thi đấu, kết quả và bảng thành tích thể thao.',
+  description: SITE_CONFIG.description,
+  applicationName: SITE_CONFIG.name,
+  keywords: ['sự kiện thể thao', 'quản lý giải đấu', 'lịch thi đấu', 'kết quả thể thao', 'liên đoàn thể thao'],
+  openGraph: {
+    type: 'website',
+    locale: SITE_CONFIG.locale,
+    siteName: SITE_CONFIG.name,
+    title: SITE_CONFIG.title,
+    description: SITE_CONFIG.description,
+  },
 };
 
 const themeBootstrapScript = `(() => {

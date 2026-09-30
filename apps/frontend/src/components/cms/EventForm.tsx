@@ -7,7 +7,7 @@ import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import dayjs from 'dayjs';
-import { Card, Checkbox, Col, DatePicker, Form, Input, Row, Select } from 'antd';
+import { Card, Checkbox, Col, DatePicker, Form, Input, InputNumber, Row, Select } from 'antd';
 import { api, fetcher } from '@/lib/api';
 import { ErrorMessage, FormActions } from './AthleteForm';
 import { RemoteAthleteSelect } from './RemoteAthleteSelect';
@@ -21,6 +21,12 @@ const eventSchema = z.object({
   organizerId: z.string().optional(),
   participatingFederationIds: z.array(z.string()),
   allowIndependentAthletes: z.boolean(),
+  registrationEnabled: z.boolean(),
+  registrationOpenAt: z.string().optional(),
+  registrationCloseAt: z.string().optional(),
+  registrationFee: z.number().min(0),
+  registrationCurrency: z.string().min(1),
+  paymentMode: z.enum(['FREE', 'MANUAL', 'ONLINE']),
   description: z.string().optional(),
   startDate: z.string().min(1, 'Vui lòng chọn thời gian bắt đầu'),
   endDate: z.string().min(1, 'Vui lòng chọn thời gian kết thúc'),
@@ -34,6 +40,15 @@ const eventSchema = z.object({
 }).refine((values) => values.level !== 'CENTER_INTERNAL' || Boolean(values.organizerId), {
   message: 'Sự kiện nội bộ phải chọn đơn vị tổ chức',
   path: ['organizerId'],
+}).refine((values) => !values.registrationEnabled || Boolean(values.registrationOpenAt && values.registrationCloseAt), {
+  message: 'Sự kiện mở đăng ký phải có thời gian bắt đầu và kết thúc đăng ký',
+  path: ['registrationCloseAt'],
+}).refine((values) => !values.registrationOpenAt || !values.registrationCloseAt || new Date(values.registrationCloseAt) >= new Date(values.registrationOpenAt), {
+  message: 'Thời gian đóng đăng ký phải sau thời gian mở',
+  path: ['registrationCloseAt'],
+}).refine((values) => !values.registrationCloseAt || new Date(values.registrationCloseAt) <= new Date(values.startDate), {
+  message: 'Thời gian đóng đăng ký không được sau khi sự kiện bắt đầu',
+  path: ['registrationCloseAt'],
 });
 
 type EventFormValues = z.infer<typeof eventSchema>;
@@ -65,6 +80,12 @@ export function EventForm({ eventId, initialData }: { eventId?: string; initialD
       organizerId: initialData?.organizerId || '',
       participatingFederationIds: initialData?.participatingFederations?.map((item: any) => item.id) || [],
       allowIndependentAthletes: initialData?.allowIndependentAthletes ?? true,
+      registrationEnabled: initialData?.registrationEnabled ?? false,
+      registrationOpenAt: toLocalInput(initialData?.registrationOpenAt),
+      registrationCloseAt: toLocalInput(initialData?.registrationCloseAt),
+      registrationFee: initialData?.registrationFee ?? 0,
+      registrationCurrency: initialData?.registrationCurrency || 'VND',
+      paymentMode: initialData?.paymentMode || 'FREE',
       description: initialData?.description || '',
       startDate: toLocalInput(initialData?.startDate),
       endDate: toLocalInput(initialData?.endDate),
@@ -79,6 +100,8 @@ export function EventForm({ eventId, initialData }: { eventId?: string; initialD
   const selectedLevel = watch('level');
   const selectedFederationIds = watch('participatingFederationIds') || [];
   const allowIndependentAthletes = watch('allowIndependentAthletes');
+  const registrationEnabled = watch('registrationEnabled');
+  const paymentMode = watch('paymentMode');
   const selectedCategoryIdsKey = selectedCategoryIds.join(',');
   const selectedFederationIdsKey = selectedFederationIds.join(',');
   const { data: athleteFilterOptions } = useSWR<any>(
@@ -124,6 +147,9 @@ export function EventForm({ eventId, initialData }: { eventId?: string; initialD
       athleteIds: values.athleteIds,
       startDate: new Date(values.startDate).toISOString(),
       endDate: new Date(values.endDate).toISOString(),
+      registrationOpenAt: values.registrationOpenAt ? new Date(values.registrationOpenAt).toISOString() : undefined,
+      registrationCloseAt: values.registrationCloseAt ? new Date(values.registrationCloseAt).toISOString() : undefined,
+      registrationFee: values.paymentMode === 'FREE' ? 0 : values.registrationFee,
       description: values.description || undefined,
       location: values.location || undefined,
       bannerUrl: values.bannerUrl || undefined,
@@ -366,6 +392,81 @@ export function EventForm({ eventId, initialData }: { eventId?: string; initialD
               />
             )}
           </ControlledField>
+          <Col span={24}>
+            <Card size="small" className="mb-5 border-sky-500/20 bg-sky-500/[0.03]" title="Cấu hình đăng ký vận động viên">
+              <Row gutter={[20, 2]}>
+                <Col span={24}>
+                  <Form.Item>
+                    <Controller
+                      name="registrationEnabled"
+                      control={control}
+                      render={({ field }) => (
+                        <Checkbox checked={field.value} onChange={(event) => field.onChange(event.target.checked)}>
+                          Mở đăng ký trực tuyến cho vận động viên
+                        </Checkbox>
+                      )}
+                    />
+                  </Form.Item>
+                </Col>
+                <ControlledField name="registrationOpenAt" control={control} label="Mở đăng ký" error={errors.registrationOpenAt?.message} required={registrationEnabled}>
+                  {(field) => (
+                    <DatePicker
+                      showTime={{ format: 'HH:mm' }}
+                      format="DD/MM/YYYY HH:mm"
+                      size="large"
+                      className="w-full"
+                      disabled={!registrationEnabled}
+                      value={field.value ? dayjs(field.value) : null}
+                      onChange={(value) => field.onChange(value ? value.format('YYYY-MM-DDTHH:mm') : '')}
+                    />
+                  )}
+                </ControlledField>
+                <ControlledField name="registrationCloseAt" control={control} label="Đóng đăng ký" error={errors.registrationCloseAt?.message} required={registrationEnabled}>
+                  {(field) => (
+                    <DatePicker
+                      showTime={{ format: 'HH:mm' }}
+                      format="DD/MM/YYYY HH:mm"
+                      size="large"
+                      className="w-full"
+                      disabled={!registrationEnabled}
+                      value={field.value ? dayjs(field.value) : null}
+                      onChange={(value) => field.onChange(value ? value.format('YYYY-MM-DDTHH:mm') : '')}
+                    />
+                  )}
+                </ControlledField>
+                <ControlledField name="paymentMode" control={control} label="Hình thức thanh toán" error={errors.paymentMode?.message}>
+                  {(field) => (
+                    <Select
+                      size="large"
+                      className="w-full"
+                      value={field.value}
+                      onChange={field.onChange}
+                      options={[
+                        { value: 'FREE', label: 'Miễn phí (Phase 1)' },
+                        { value: 'MANUAL', label: 'Chuyển khoản / xác nhận thủ công' },
+                        { value: 'ONLINE', label: 'Cổng thanh toán (đầu chờ)' },
+                      ]}
+                    />
+                  )}
+                </ControlledField>
+                <ControlledField name="registrationFee" control={control} label="Lệ phí mỗi hạng đấu" error={errors.registrationFee?.message}>
+                  {(field) => (
+                    <InputNumber
+                      size="large"
+                      className="w-full"
+                      min={0}
+                      step={10000}
+                      disabled={paymentMode === 'FREE'}
+                      value={field.value}
+                      onChange={(value) => field.onChange(value || 0)}
+                      addonAfter="VND"
+                    />
+                  )}
+                </ControlledField>
+              </Row>
+              <p className="mb-0 text-xs text-slate-500">Phase 1 dùng chế độ miễn phí. Hai lựa chọn trả phí là cấu hình sẵn để tích hợp cổng thanh toán sau.</p>
+            </Card>
+          </Col>
           <ControlledField name="bannerUrl" control={control} label="URL banner" error={errors.bannerUrl?.message}>
             {(field) => <Input {...field} size="large" type="url" placeholder="https://..." />}
           </ControlledField>

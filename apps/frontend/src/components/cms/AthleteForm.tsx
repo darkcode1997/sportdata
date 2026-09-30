@@ -9,6 +9,7 @@ import { z } from 'zod';
 import dayjs from 'dayjs';
 import {
   Alert,
+  Avatar,
   Button,
   Card,
   Col,
@@ -25,8 +26,9 @@ import {
   Tag,
   Tooltip,
   Typography,
+  Upload,
 } from 'antd';
-import { Check, Pencil, Plus, Save, Trash2, X } from 'lucide-react';
+import { Check, ImagePlus, Pencil, Plus, Save, Trash2, UserRound, X } from 'lucide-react';
 import { api, fetcher } from '@/lib/api';
 
 type CountryOption = {
@@ -86,6 +88,8 @@ export function AthleteForm({ athleteId, initialData }: { athleteId?: string; in
   const router = useRouter();
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [federationManagerOpen, setFederationManagerOpen] = useState(false);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const [avatarVersion, setAvatarVersion] = useState(0);
   const { data: countries = [] } = useSWR<CountryOption[]>('/countries', fetcher);
   const {
     data: federations = [],
@@ -200,6 +204,26 @@ export function AthleteForm({ athleteId, initialData }: { athleteId?: string; in
     }
   };
 
+  const uploadAvatar = async (file: File) => {
+    if (!athleteId) return;
+    setAvatarUploading(true);
+    setSubmitError(null);
+    const data = new FormData();
+    data.append('file', file);
+    try {
+      const response = await api.post(`/athletes/${athleteId}/avatar`, data, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      setValue('photoUrl', response.data.photoUrl, { shouldDirty: true });
+      setAvatarVersion((version) => version + 1);
+    } catch (error: any) {
+      const message = error.response?.data?.message || error.message || 'Không thể tải ảnh đại diện';
+      setSubmitError(Array.isArray(message) ? message.join(', ') : message);
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
+
   return (
     <>
       <Form layout="vertical" requiredMark={false} onFinish={handleSubmit(onSubmit)}>
@@ -281,6 +305,30 @@ export function AthleteForm({ athleteId, initialData }: { athleteId?: string; in
           <ControlledField name="photoUrl" control={control} label="URL ảnh đại diện" error={errors.photoUrl?.message} wide>
             {(field) => <Input {...field} size="large" type="url" placeholder="https://..." />}
           </ControlledField>
+          {athleteId && (
+            <Col span={24}>
+              <Form.Item label="Tải ảnh đại diện trực tiếp">
+                <div className="flex flex-wrap items-center gap-4 rounded-xl border border-sdark-700 p-4">
+                  <Avatar
+                    size={64}
+                    icon={<UserRound />}
+                    src={watch('photoUrl') ? `${watch('photoUrl')}?v=${avatarVersion}` : undefined}
+                  />
+                  <Upload
+                    accept="image/jpeg,image/png,image/webp"
+                    showUploadList={false}
+                    customRequest={async (options) => {
+                      await uploadAvatar(options.file as File);
+                      options.onSuccess?.({});
+                    }}
+                  >
+                    <Button loading={avatarUploading} icon={<ImagePlus className="h-4 w-4" />}>Chọn ảnh từ máy</Button>
+                  </Upload>
+                  <span className="text-xs text-slate-500">JPG, PNG hoặc WebP · tối đa 8 MB</span>
+                </div>
+              </Form.Item>
+            </Col>
+          )}
         </Row>
       </Card>
       <Card className="cms-surface mt-6" title="Nội dung thi đấu">

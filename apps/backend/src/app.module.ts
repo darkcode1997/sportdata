@@ -19,6 +19,8 @@ import { SchedulingModule } from './scheduling/scheduling.module';
 import { ResultsModule } from './results/results.module';
 import { CompetitionsModule } from './competitions/competitions.module';
 import { OperationsModule } from './operations/operations.module';
+import { BannersModule } from './banners/banners.module';
+import { ParticipantsModule } from './participants/participants.module';
 
 @Module({
   imports: [
@@ -42,6 +44,8 @@ import { OperationsModule } from './operations/operations.module';
     ResultsModule,
     CompetitionsModule,
     OperationsModule,
+    BannersModule,
+    ParticipantsModule,
   ],
 })
 export class AppModule {}

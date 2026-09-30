@@ -1,6 +1,6 @@
-import { IsString, IsOptional, IsBoolean, IsDateString, IsArray } from 'class-validator';
+import { IsString, IsOptional, IsBoolean, IsDateString, IsArray, IsInt, Min } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { EventLevel } from '@prisma/client';
+import { EventLevel, PaymentMode } from '@prisma/client';
 import { IsEnum } from 'class-validator';
 
 export class UpdateEventDto {
@@ -87,4 +87,35 @@ export class UpdateEventDto {
   @IsOptional()
   @IsBoolean()
   allowIndependentAthletes?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  registrationEnabled?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsDateString()
+  registrationOpenAt?: string | null;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsDateString()
+  registrationCloseAt?: string | null;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  registrationFee?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  registrationCurrency?: string;
+
+  @ApiPropertyOptional({ enum: PaymentMode })
+  @IsOptional()
+  @IsEnum(PaymentMode)
+  paymentMode?: PaymentMode;
 }

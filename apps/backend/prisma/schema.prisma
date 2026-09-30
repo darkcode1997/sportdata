@@ -164,6 +164,33 @@ enum ContactStatus {
   RESOLVED
 }
 
+enum AthleteMediaType {
+  AVATAR
+  CCCD_FRONT
+  CCCD_BACK
+  PASSPORT
+}
+
+enum PaymentMode {
+  FREE
+  MANUAL
+  ONLINE
+}
+
+enum RegistrationStatus {
+  SUBMITTED
+  CONFIRMED
+  REJECTED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  NOT_REQUIRED
+  PENDING
+  PAID
+  FAILED
+}
+
 model Country {
   id          String             @id @default(cuid())
   code        String             @unique
@@ -178,17 +205,18 @@ model Country {
 }
 
 model Federation {
-  id                  String         @id @default(cuid())
+  id                  String              @id @default(cuid())
   code                String?
   name                String
-  type                FederationType @default(NATIONAL_FEDERATION)
+  type                FederationType      @default(NATIONAL_FEDERATION)
   countryId           String
-  country             Country        @relation(fields: [countryId], references: [id])
+  country             Country             @relation(fields: [countryId], references: [id])
   athletes            Athlete[]
-  organizedEvents     Event[]        @relation("EventOrganizer")
-  participatingEvents Event[]        @relation("EventParticipatingFederations")
-  createdAt           DateTime       @default(now())
-  updatedAt           DateTime       @updatedAt
+  organizedEvents     Event[]             @relation("EventOrganizer")
+  participatingEvents Event[]             @relation("EventParticipatingFederations")
+  publicRegistrations EventRegistration[]
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
 
   @@unique([countryId, code])
   @@index([countryId])
@@ -214,6 +242,21 @@ model User {
   @@index([isActive, role])
 }
 
+model ParticipantAccount {
+  id            String              @id @default(cuid())
+  email         String              @unique
+  password      String
+  displayName   String
+  phone         String?
+  isActive      Boolean             @default(true)
+  athlete       Athlete?
+  registrations EventRegistration[]
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  @@index([isActive])
+}
+
 model Article {
   id            String    @id @default(cuid())
   title         String
@@ -229,6 +272,23 @@ model Article {
 
   @@index([isPublished, publishedAt])
   @@index([isPublished, isFeatured, publishedAt])
+  @@index([createdAt])
+}
+
+model Banner {
+  id            String   @id @default(cuid())
+  title         String?
+  altText       String
+  linkUrl       String?
+  sortOrder     Int      @default(0)
+  isActive      Boolean  @default(true)
+  imageData     Bytes
+  imageMimeType String
+  imageSize     Int
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([isActive, sortOrder])
   @@index([createdAt])
 }
 
@@ -291,6 +351,7 @@ model Category {
   entries              CompetitionEntry[]
   heats                Heat[]
   roundRobinGroups     RoundRobinGroup[]
+  publicRegistrations  EventRegistration[]
   createdAt            DateTime            @default(now())
   updatedAt            DateTime            @updatedAt
 
@@ -332,6 +393,13 @@ model Event {
   organizer                Federation?           @relation("EventOrganizer", fields: [organizerId], references: [id], onDelete: SetNull)
   participatingFederations Federation[]          @relation("EventParticipatingFederations")
   allowIndependentAthletes Boolean               @default(true)
+  registrationEnabled      Boolean               @default(false)
+  registrationOpenAt       DateTime?
+  registrationCloseAt      DateTime?
+  registrationFee          Int                   @default(0)
+  registrationCurrency     String                @default("VND")
+  paymentMode              PaymentMode           @default(FREE)
+  registrations            EventRegistration[]
   statistics               Statistic[]
   venues                   Venue[]               @relation("EventVenues")
   sessions                 CompetitionSession[]
@@ -351,35 +419,80 @@ model Event {
 }
 
 model Athlete {
-  id                String             @id @default(cuid())
-  firstName         String
-  lastName          String
-  fullName          String
-  gender            Gender
-  birthDate         DateTime?
-  weight            Float?
-  height            Float?
-  countryId         String
-  country           Country            @relation(fields: [countryId], references: [id])
-  federationId      String?
-  federation        Federation?        @relation(fields: [federationId], references: [id])
-  photoUrl          String?
-  matchesAsAthlete1 Match[]            @relation("Athlete1Matches")
-  matchesAsAthlete2 Match[]            @relation("Athlete2Matches")
-  matchesAsWinner   Match[]            @relation("WinnerMatches")
-  events            Event[]
-  categories        Category[]
-  statistics        Statistic[]
-  teamMemberships   TeamMember[]
-  entries           CompetitionEntry[]
-  matchParticipants MatchParticipant[]
-  heatLanes         HeatLane[]
-  createdAt         DateTime           @default(now())
-  updatedAt         DateTime           @updatedAt
+  id                   String              @id @default(cuid())
+  firstName            String
+  lastName             String
+  fullName             String
+  gender               Gender
+  birthDate            DateTime?
+  weight               Float?
+  height               Float?
+  countryId            String
+  country              Country             @relation(fields: [countryId], references: [id])
+  federationId         String?
+  federation           Federation?         @relation(fields: [federationId], references: [id])
+  photoUrl             String?
+  participantAccountId String?             @unique
+  participantAccount   ParticipantAccount? @relation(fields: [participantAccountId], references: [id], onDelete: SetNull)
+  media                AthleteMedia[]
+  publicRegistrations  EventRegistration[]
+  matchesAsAthlete1    Match[]             @relation("Athlete1Matches")
+  matchesAsAthlete2    Match[]             @relation("Athlete2Matches")
+  matchesAsWinner      Match[]             @relation("WinnerMatches")
+  events               Event[]
+  categories           Category[]
+  statistics           Statistic[]
+  teamMemberships      TeamMember[]
+  entries              CompetitionEntry[]
+  matchParticipants    MatchParticipant[]
+  heatLanes            HeatLane[]
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
 
   @@index([countryId])
   @@index([federationId])
   @@index([fullName])
+}
+
+model AthleteMedia {
+  id        String           @id @default(cuid())
+  athleteId String
+  athlete   Athlete          @relation(fields: [athleteId], references: [id], onDelete: Cascade)
+  type      AthleteMediaType
+  data      Bytes
+  mimeType  String
+  size      Int
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@unique([athleteId, type])
+  @@index([athleteId])
+}
+
+model EventRegistration {
+  id            String             @id @default(cuid())
+  eventId       String
+  event         Event              @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  athleteId     String
+  athlete       Athlete            @relation(fields: [athleteId], references: [id], onDelete: Cascade)
+  accountId     String
+  account       ParticipantAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  categoryId    String
+  category      Category           @relation(fields: [categoryId], references: [id])
+  federationId  String?
+  federation    Federation?        @relation(fields: [federationId], references: [id], onDelete: SetNull)
+  status        RegistrationStatus @default(SUBMITTED)
+  paymentStatus PaymentStatus      @default(NOT_REQUIRED)
+  feeAmount     Int                @default(0)
+  currency      String             @default("VND")
+  ticketCode    String             @unique
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  @@unique([eventId, athleteId, categoryId])
+  @@index([accountId, createdAt])
+  @@index([eventId, status])
+  @@index([categoryId])
 }
 
 model Match {

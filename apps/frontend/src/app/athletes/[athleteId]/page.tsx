@@ -65,7 +65,7 @@ export default function AthleteProfilePage() {
           image={<Users className="mx-auto h-12 w-12 text-slate-600" />}
           description="Không tìm thấy vận động viên"
         >
-          <Link href="/athletes"><Button type="primary" icon={<ArrowLeft className="h-4 w-4" />}>Quay lại danh sách</Button></Link>
+          <Link href="/rankings"><Button type="primary" icon={<ArrowLeft className="h-4 w-4" />}>Xem bảng xếp hạng</Button></Link>
         </Empty>
       </Card>
     );
@@ -80,8 +80,8 @@ export default function AthleteProfilePage() {
 
   return (
     <div className="mx-auto max-w-7xl space-y-8 px-4 py-10 sm:px-6 lg:px-8">
-      <Link href="/athletes">
-        <Button type="text" icon={<ArrowLeft className="h-4 w-4" />}>Tất cả vận động viên</Button>
+      <Link href="/rankings">
+        <Button type="text" icon={<ArrowLeft className="h-4 w-4" />}>Bảng xếp hạng</Button>
       </Link>
 
       <div className="relative -mx-4 sm:-mx-6 lg:-mx-8 rounded-none lg:rounded-b-3xl overflow-hidden">

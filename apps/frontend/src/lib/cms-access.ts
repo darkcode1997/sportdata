@@ -32,9 +32,9 @@ export const CMS_ROLE_INFO: Record<CmsRole, {
   CONTENT: {
     label: 'Biên tập nội dung',
     shortLabel: 'Nội dung',
-    description: 'Quản lý tin tức và dữ liệu danh mục phục vụ website công khai.',
+    description: 'Quản lý banner, tin tức và dữ liệu danh mục phục vụ website công khai.',
     startPath: '/cms/news',
-    capabilities: ['Tin tức và liên hệ', 'Dữ liệu sự kiện/VĐV', 'Danh mục môn và hạng đấu'],
+    capabilities: ['Banner, tin tức và liên hệ', 'Dữ liệu sự kiện/VĐV', 'Danh mục môn và hạng đấu'],
     restrictions: ['Không điều hành lịch', 'Không nhập hoặc phê duyệt kết quả'],
   },
   GAMES_ADMIN: {
@@ -91,14 +91,16 @@ export const CMS_PAGE_ACCESS: Record<string, readonly CmsRole[]> = {
   '/cms': ALL_CMS_ROLES,
   '/cms/operations': ['ADMIN', 'GAMES_ADMIN', 'SPORT_MANAGER', 'VENUE_OPERATOR', 'SCOREKEEPER', 'RESULT_APPROVER', 'READ_ONLY'],
   '/cms/events': ['ADMIN', 'CONTENT', 'GAMES_ADMIN', 'SPORT_MANAGER', 'READ_ONLY'],
+  '/cms/registrations': ['ADMIN', 'GAMES_ADMIN', 'SPORT_MANAGER', 'READ_ONLY'],
   '/cms/athletes': ['ADMIN', 'CONTENT', 'GAMES_ADMIN', 'SPORT_MANAGER', 'READ_ONLY'],
   '/cms/sports': ['ADMIN', 'CONTENT', 'GAMES_ADMIN', 'SPORT_MANAGER', 'READ_ONLY'],
+  '/cms/organizations': ['ADMIN', 'CONTENT', 'GAMES_ADMIN', 'SPORT_MANAGER', 'READ_ONLY'],
   '/cms/matches': ['ADMIN', 'CONTENT', 'GAMES_ADMIN', 'SPORT_MANAGER', 'VENUE_OPERATOR', 'READ_ONLY'],
   '/cms/statistics': ALL_CMS_ROLES,
+  '/cms/banners': ['ADMIN', 'CONTENT'],
   '/cms/news': ['ADMIN', 'CONTENT'],
   '/cms/contacts': ['ADMIN', 'CONTENT'],
   '/cms/settings': ALL_CMS_ROLES,
-  '/cms/help': ALL_CMS_ROLES,
 };
 
 export const DEMO_ROLE_USERNAMES: Record<CmsRole, string> = {

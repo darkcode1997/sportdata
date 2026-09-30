@@ -43,6 +43,12 @@ export class EventsService {
       selectedFederationIds,
       allowIndependentAthletes,
     );
+    this.validateRegistrationConfig(
+      data.registrationEnabled ?? false,
+      data.registrationOpenAt,
+      data.registrationCloseAt,
+      data.startDate,
+    );
 
     return this.prisma.event.create({
       data: {
@@ -71,6 +77,7 @@ export class EventsService {
       sportId,
       level,
       organizerId,
+      countryId,
       startDateFrom,
       startDateTo,
       isPublished,
@@ -91,6 +98,18 @@ export class EventsService {
     if (level) where.level = level;
     if (organizerId) where.organizerId = organizerId;
 
+    const andConditions: Prisma.EventWhereInput[] = [];
+    if (countryId) {
+      andConditions.push({
+        OR: [
+          { organizer: { is: { countryId } } },
+          { participatingFederations: { some: { countryId } } },
+          { teams: { some: { countryId } } },
+          { entries: { some: { countryId } } },
+        ],
+      });
+    }
+
     if (startDateFrom || startDateTo) {
       where.startDate = {};
       if (startDateFrom) {
@@ -106,18 +125,18 @@ export class EventsService {
     }
 
     if (search) {
-      where.AND = [
-        {
-          OR: [
-            { name: { contains: search, mode: 'insensitive' } },
-            { description: { contains: search, mode: 'insensitive' } },
-            { location: { contains: search, mode: 'insensitive' } },
-            { organizer: { is: { name: { contains: search, mode: 'insensitive' } } } },
-            { participatingFederations: { some: { name: { contains: search, mode: 'insensitive' } } } },
-          ],
-        },
-      ];
+      andConditions.push({
+        OR: [
+          { name: { contains: search, mode: 'insensitive' } },
+          { description: { contains: search, mode: 'insensitive' } },
+          { location: { contains: search, mode: 'insensitive' } },
+          { organizer: { is: { name: { contains: search, mode: 'insensitive' } } } },
+          { participatingFederations: { some: { name: { contains: search, mode: 'insensitive' } } } },
+        ],
+      });
     }
+
+    if (andConditions.length) where.AND = andConditions;
 
     const skip = (page - 1) * limit;
 
@@ -296,6 +315,12 @@ export class EventsService {
         resultingAllowIndependent,
       );
     }
+    this.validateRegistrationConfig(
+      data.registrationEnabled ?? existingEvent.registrationEnabled,
+      data.registrationOpenAt === undefined ? existingEvent.registrationOpenAt : data.registrationOpenAt,
+      data.registrationCloseAt === undefined ? existingEvent.registrationCloseAt : data.registrationCloseAt,
+      data.startDate || existingEvent.startDate,
+    );
 
     return this.prisma.event.update({
       where: { id },
@@ -386,12 +411,30 @@ export class EventsService {
       isPublished: true,
       level: true,
       allowIndependentAthletes: true,
+      registrationEnabled: true,
+      registrationOpenAt: true,
+      registrationCloseAt: true,
+      registrationFee: true,
+      registrationCurrency: true,
+      paymentMode: true,
       organizerId: true,
       organizer: {
-        select: { id: true, code: true, name: true, type: true },
+        select: {
+          id: true,
+          code: true,
+          name: true,
+          type: true,
+          country: { select: { id: true, code: true, name: true, flagUrl: true } },
+        },
       },
       participatingFederations: {
-        select: { id: true, code: true, name: true, type: true },
+        select: {
+          id: true,
+          code: true,
+          name: true,
+          type: true,
+          country: { select: { id: true, code: true, name: true, flagUrl: true } },
+        },
       },
       createdAt: true,
       updatedAt: true,
@@ -403,6 +446,7 @@ export class EventsService {
           athletes: true,
           categories: true,
           fops: true,
+          registrations: true,
         },
       },
     };
@@ -498,6 +542,24 @@ export class EventsService {
   private validateOrganizerRequirement(level: EventLevel, organizerId?: string) {
     if (level === EventLevel.CENTER_INTERNAL && !organizerId) {
       throw new BadRequestException('Sự kiện nội bộ phải chọn trung tâm, CLB hoặc đơn vị tổ chức');
+    }
+  }
+
+  private validateRegistrationConfig(
+    enabled: boolean,
+    openAt?: string | Date | null,
+    closeAt?: string | Date | null,
+    eventStart?: string | Date,
+  ) {
+    if (enabled && (!openAt || !closeAt)) {
+      throw new BadRequestException('Sự kiện mở đăng ký phải có thời gian mở và đóng đăng ký');
+    }
+    if (!openAt || !closeAt) return;
+    const open = new Date(openAt);
+    const close = new Date(closeAt);
+    if (close < open) throw new BadRequestException('Thời gian đóng đăng ký phải sau thời gian mở');
+    if (eventStart && close > new Date(eventStart)) {
+      throw new BadRequestException('Thời gian đóng đăng ký không được sau thời gian bắt đầu sự kiện');
     }
   }
 }

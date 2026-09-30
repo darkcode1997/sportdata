@@ -32,7 +32,16 @@ export class FederationsService {
 
   async findAll() {
     return this.prisma.federation.findMany({
-      include: { country: true },
+      include: {
+        country: true,
+        _count: {
+          select: {
+            athletes: true,
+            organizedEvents: true,
+            participatingEvents: true,
+          },
+        },
+      },
       orderBy: { name: 'asc' },
     });
   }
@@ -40,7 +49,16 @@ export class FederationsService {
   async findOne(id: string) {
     const federation = await this.prisma.federation.findUnique({
       where: { id },
-      include: { country: true },
+      include: {
+        country: true,
+        _count: {
+          select: {
+            athletes: true,
+            organizedEvents: true,
+            participatingEvents: true,
+          },
+        },
+      },
     });
     if (!federation) {
       throw new NotFoundException(`Không tìm thấy đơn vị thể thao có mã '${id}'`);
