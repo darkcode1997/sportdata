@@ -9,7 +9,18 @@ import { ArrowRight, CalendarDays, Clock3, MapPin, ShieldCheck, Trophy, Users } 
 import { fetcher } from '@/lib/api';
 import { formatDateRange } from '@/lib/utils';
 
-type Sport = { id: string; name: string; code: string; description?: string; logoUrl?: string; categories?: Category[] };
+type Sport = {
+  id: string;
+  name: string;
+  code: string;
+  description?: string;
+  logoUrl?: string;
+  displayName?: string;
+  subtitle?: string;
+  backgroundUrl?: string;
+  isVisible?: boolean;
+  categories?: Category[];
+};
 type Category = { id: string; name: string; discipline?: string; uniform?: string; minAge?: number; maxAge?: number; minWeight?: number; maxWeight?: number };
 type EventItem = {
   id: string;
@@ -43,7 +54,7 @@ export default function SportPlatformPage() {
   const params = useParams<{ sportCode: string }>();
   const code = decodeURIComponent(params.sportCode || '').toUpperCase();
   const { data: sports = [], isLoading: sportsLoading } = useSWR<Sport[]>('/sports', fetcher);
-  const sport = sports.find((item) => item.code.toUpperCase() === code);
+  const sport = sports.find((item) => item.code.toUpperCase() === code && item.isVisible !== false);
   const { data: response, isLoading: eventsLoading } = useSWR<{ items: EventItem[] }>(
     sport ? `/events?isPublished=true&sportId=${sport.id}&limit=100` : null,
     fetcher,
@@ -66,14 +77,21 @@ export default function SportPlatformPage() {
 
   return (
     <main className="min-h-screen pb-20">
-      <section className="relative overflow-hidden border-b border-white/10 bg-gradient-to-br from-[#111827] via-[#0b1e36] to-[#082f49]">
+      <section
+        className="relative overflow-hidden border-b border-white/10 bg-cover bg-center"
+        style={{
+          backgroundImage: sport.backgroundUrl
+            ? `linear-gradient(110deg, rgba(8,15,30,.97), rgba(8,15,30,.74)), url("${sport.backgroundUrl.replace(/"/g, '%22')}")`
+            : 'linear-gradient(135deg, #111827, #0b1e36 52%, #082f49)',
+        }}
+      >
         <div className="absolute inset-0 opacity-20 [background-image:radial-gradient(circle_at_20%_20%,#38bdf8_0,transparent_35%),radial-gradient(circle_at_80%_60%,#22d3ee_0,transparent_30%)]" />
         <div className="relative mx-auto grid max-w-7xl gap-10 px-4 py-16 sm:px-6 lg:grid-cols-[1.2fr_.8fr] lg:px-8 lg:py-24">
           <div>
             <p className="mb-3 text-sm font-bold uppercase tracking-[0.22em] text-sky-400">Nền tảng bộ môn</p>
-            <h1 className="text-5xl font-black tracking-tight text-white sm:text-6xl">{sport.name}</h1>
+            <h1 className="text-5xl font-black tracking-tight text-white sm:text-6xl">{sport.displayName || sport.name}</h1>
             <p className="mt-5 max-w-2xl text-lg leading-8 text-slate-300">
-              {sport.description || (isJiuJitsu
+              {sport.subtitle || sport.description || (isJiuJitsu
                 ? 'Đăng ký giải, quản lý hạng cân, lịch thi đấu và vé tham dự Ju‑Jitsu trên một nền tảng thống nhất.'
                 : `Theo dõi và đăng ký các sự kiện ${sport.name}.`)}
             </p>

@@ -20,6 +20,9 @@ type Sport = {
   code: string;
   description?: string | null;
   logoUrl?: string | null;
+  displayName?: string | null;
+  subtitle?: string | null;
+  isVisible?: boolean;
   categories?: Category[];
   _count?: { events?: number; categories?: number };
 };
@@ -27,11 +30,11 @@ type Sport = {
 export default function SportsDirectoryPage() {
   const [search, setSearch] = useState('');
   const { data = [], error, isLoading, mutate } = useSWR<Sport[]>('/sports', fetcher);
-  const sports = useMemo(() => Array.isArray(data) ? data : [], [data]);
+  const sports = useMemo(() => (Array.isArray(data) ? data : []).filter((sport) => sport.isVisible !== false), [data]);
   const filteredSports = useMemo(() => {
     const keyword = search.trim().toLocaleLowerCase('vi');
     if (!keyword) return sports;
-    return sports.filter((sport) => [sport.name, sport.code, sport.description]
+    return sports.filter((sport) => [sport.name, sport.displayName, sport.subtitle, sport.code, sport.description]
       .filter(Boolean)
       .join(' ')
       .toLocaleLowerCase('vi')
@@ -92,10 +95,10 @@ export default function SportsDirectoryPage() {
                   </span>
                   <div>
                     <Tag color="blue">{sport.code}</Tag>
-                    <h2>{sport.name}</h2>
+                    <h2>{sport.displayName || sport.name}</h2>
                   </div>
                 </div>
-                <p className="directory-card-description">{sport.description || 'Bộ môn đang được cấu hình nội dung và dữ liệu sự kiện.'}</p>
+                <p className="directory-card-description">{sport.subtitle || sport.description || 'Bộ môn đang được cấu hình nội dung và dữ liệu sự kiện.'}</p>
                 <div className="directory-card-metrics">
                   <span><CalendarDays className="h-4 w-4" /><strong>{sport._count?.events || 0}</strong> sự kiện</span>
                   <span><Tags className="h-4 w-4" /><strong>{sport._count?.categories || sport.categories?.length || 0}</strong> hạng mục</span>

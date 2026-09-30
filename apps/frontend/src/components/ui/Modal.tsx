@@ -10,6 +10,7 @@ interface ModalProps {
   children: ReactNode;
   footer?: ReactNode;
   size?: 'sm' | 'md' | 'lg' | 'xl';
+  scrollBody?: boolean;
 }
 
 export default function Modal({
@@ -19,6 +20,7 @@ export default function Modal({
   children,
   footer,
   size = 'md',
+  scrollBody = true,
 }: ModalProps) {
   const sizes = {
     sm: 384,
@@ -34,9 +36,13 @@ export default function Modal({
       title={title}
       footer={footer ?? null}
       width={sizes[size]}
-      centered
+      centered={scrollBody}
       destroyOnHidden
-      styles={{ body: { maxHeight: '75vh', overflowY: 'auto' } }}
+      styles={{
+        body: scrollBody
+          ? { maxHeight: '75vh', overflowY: 'auto' }
+          : { maxHeight: 'none', overflow: 'visible' },
+      }}
     >
       {children}
     </AntModal>

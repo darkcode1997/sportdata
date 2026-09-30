@@ -28,8 +28,9 @@ export default function ParticipantLoginPage() {
   };
 
   return (
-    <main className="min-h-[calc(100vh-64px)] px-4 py-14">
-      <Card className="mx-auto max-w-md" title="Đăng nhập tài khoản vận động viên">
+    <main className="flex min-h-[calc(100vh-64px)] justify-center px-4 py-14 sm:px-6">
+      <div className="w-full max-w-md">
+      <Card className="w-full" title="Đăng nhập tài khoản vận động viên">
         <p className="mb-6 text-sm text-slate-400">Quản lý hồ sơ, giấy tờ đăng ký và vé tham dự sự kiện.</p>
         {error && <Alert className="mb-5" type="error" showIcon message={error} />}
         <Form layout="vertical" onFinish={submit} requiredMark={false}>
@@ -47,6 +48,7 @@ export default function ParticipantLoginPage() {
           Chưa có tài khoản? <Link className="font-semibold text-sky-400" href="/account/register">Đăng ký ngay</Link>
         </p>
       </Card>
+      </div>
     </main>
   );
 }

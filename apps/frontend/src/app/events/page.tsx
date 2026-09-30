@@ -15,6 +15,11 @@ type Sport = {
   code: string;
   description?: string | null;
   logoUrl?: string | null;
+  displayName?: string | null;
+  subtitle?: string | null;
+  backgroundUrl?: string | null;
+  isVisible?: boolean;
+  sortOrder?: number;
   categories?: Category[];
   _count?: { events?: number; categories?: number };
 };
@@ -57,8 +62,9 @@ export default function EventPlatformsPage() {
   const events = useMemo(() => unwrapEvents(eventResponse), [eventResponse]);
   const keyword = search.trim().toLocaleLowerCase('vi');
   const filteredSports = useMemo(() => sports.filter((sport) => {
+    if (sport.isVisible === false) return false;
     if (!keyword) return true;
-    return [sport.name, sport.code, sport.description, ...(sport.categories || []).map((category) => category.name)]
+    return [sport.name, sport.displayName, sport.subtitle, sport.code, sport.description, ...(sport.categories || []).map((category) => category.name)]
       .filter(Boolean)
       .join(' ')
       .toLocaleLowerCase('vi')
@@ -135,7 +141,7 @@ export default function EventPlatformsPage() {
           <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
             {filteredSports.map((sport, index) => {
               const sportEvents = events.filter((event) => belongsToSport(event, sport.id));
-              const cover = sportEvents.find((event) => event.bannerUrl)?.bannerUrl;
+              const cover = sport.backgroundUrl || sportEvents.find((event) => event.bannerUrl)?.bannerUrl;
               const backgroundImage = cover
                 ? `linear-gradient(180deg, rgba(5,8,18,.22) 0%, rgba(5,8,18,.52) 48%, rgba(5,8,18,.96) 100%), url("${cover.replace(/"/g, '%22')}")`
                 : fallbackBackgrounds[index % fallbackBackgrounds.length];
@@ -146,7 +152,7 @@ export default function EventPlatformsPage() {
                   href={`/sports/${encodeURIComponent(sport.code.toLowerCase())}`}
                   className="group relative min-h-[300px] overflow-hidden rounded-[28px] border border-white/20 bg-cover bg-center shadow-2xl shadow-black/20 transition duration-300 hover:-translate-y-1 hover:border-sky-400/80 hover:shadow-sky-950/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
                   style={{ backgroundImage, '--platform-index': index } as CSSProperties}
-                  aria-label={`Mở nền tảng ${sport.name}`}
+                  aria-label={`Mở nền tảng ${sport.displayName || sport.name}`}
                 >
                   <div className="absolute inset-0 bg-[linear-gradient(115deg,rgba(255,255,255,.06),transparent_35%)] opacity-70" />
                   <div className="relative flex min-h-[300px] flex-col justify-between p-7 sm:p-8">
@@ -171,9 +177,9 @@ export default function EventPlatformsPage() {
                         <span className="h-1 w-1 rounded-full bg-slate-500" />
                         <span>{sportEvents.length || sport._count?.events || 0} sự kiện</span>
                       </div>
-                      <h3 className="text-3xl font-black tracking-tight text-white drop-shadow-lg">{sport.name}</h3>
+                      <h3 className="text-3xl font-black tracking-tight text-white drop-shadow-lg">{sport.displayName || sport.name}</h3>
                       <p className="mt-2 line-clamp-2 max-w-xl text-sm leading-6 text-slate-300">
-                        {sport.description || `Nền tảng quản lý sự kiện và đăng ký thi đấu ${sport.name}.`}
+                        {sport.subtitle || sport.description || `Nền tảng quản lý sự kiện và đăng ký thi đấu ${sport.name}.`}
                       </p>
                     </div>
                   </div>

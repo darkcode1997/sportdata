@@ -14,16 +14,28 @@ import {
   Popconfirm,
   Select,
   Skeleton,
+  Switch,
   Tag,
   Tooltip,
+  Upload,
+  type UploadFile,
 } from 'antd';
 import TextArea from 'antd/es/input/TextArea';
-import { Dumbbell, Pencil, Plus, Tags, Trash2 } from 'lucide-react';
+import { Dumbbell, Eye, EyeOff, ImagePlus, Pencil, Plus, Tags, Trash2, UploadCloud } from 'lucide-react';
 import Modal from '@/components/ui/Modal';
 import { CmsPageHeader } from '@/components/cms/CmsPageHeader';
 import { api, fetcher } from '@/lib/api';
 
-const emptySport = { name: '', code: '', description: '', logoUrl: '' };
+const emptySport = {
+  name: '',
+  code: '',
+  description: '',
+  displayName: '',
+  subtitle: '',
+  isVisible: true,
+  sortOrder: '0',
+};
+const acceptedImageTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/avif'];
 const emptyCategory = {
   name: '',
   gender: 'MALE',
@@ -82,6 +94,10 @@ export default function SportsPage() {
   const [editingCategory, setEditingCategory] = useState<any>(null);
   const [categorySport, setCategorySport] = useState<any>(null);
   const [sportForm, setSportForm] = useState(emptySport);
+  const [logoFileList, setLogoFileList] = useState<UploadFile[]>([]);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [backgroundFileList, setBackgroundFileList] = useState<UploadFile[]>([]);
+  const [backgroundPreview, setBackgroundPreview] = useState<string | null>(null);
   const [categoryForm, setCategoryForm] = useState(emptyCategory);
   const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -94,10 +110,17 @@ export default function SportsPage() {
             name: sport.name,
             code: sport.code,
             description: sport.description || '',
-            logoUrl: sport.logoUrl || '',
+            displayName: sport.displayName || '',
+            subtitle: sport.subtitle || '',
+            isVisible: sport.isVisible !== false,
+            sortOrder: String(sport.sortOrder || 0),
           }
         : emptySport,
     );
+    setLogoFileList([]);
+    setLogoPreview(sport?.logoUrl || null);
+    setBackgroundFileList([]);
+    setBackgroundPreview(sport?.backgroundUrl || null);
     setErrorMessage(null);
     setSportOpen(true);
   };
@@ -133,18 +156,114 @@ export default function SportsPage() {
       const payload = {
         ...sportForm,
         code: sportForm.code.trim().toUpperCase(),
-        description: sportForm.description || undefined,
-        logoUrl: sportForm.logoUrl || undefined,
+        sortOrder: Number(sportForm.sortOrder || 0),
       };
-      if (editingSport) await api.patch(`/sports/${editingSport.id}`, payload);
-      else await api.post('/sports', payload);
+      const response = editingSport
+        ? await api.patch(`/sports/${editingSport.id}`, payload)
+        : await api.post('/sports', payload);
+      const savedSport = response.data;
+      const logo = logoFileList[0]?.originFileObj || logoFileList[0];
+      if (logo instanceof File) {
+        const formData = new FormData();
+        formData.append('image', logo);
+        await api.patch(`/sports/${savedSport.id}/logo`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+      }
+      const image = backgroundFileList[0]?.originFileObj || backgroundFileList[0];
+      if (image instanceof File) {
+        const formData = new FormData();
+        formData.append('image', image);
+        await api.patch(`/sports/${savedSport.id}/background`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+      }
       setSportOpen(false);
+      setLogoFileList([]);
+      setLogoPreview(null);
+      setBackgroundFileList([]);
+      setBackgroundPreview(null);
       await mutate();
       toast.success(editingSport ? 'Đã cập nhật bộ môn' : 'Đã thêm bộ môn');
     } catch (requestError: any) {
       setErrorMessage(requestError.response?.data?.message || 'Không thể lưu bộ môn.');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const validateLogo = (file: File) => {
+    if (!acceptedImageTypes.includes(file.type)) {
+      toast.error('Chỉ chấp nhận logo JPG, PNG, WebP hoặc AVIF.');
+      return Upload.LIST_IGNORE;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error('Logo không được vượt quá 2 MB.');
+      return Upload.LIST_IGNORE;
+    }
+    setLogoFileList([file as unknown as UploadFile]);
+    setLogoPreview(URL.createObjectURL(file));
+    return false;
+  };
+
+  const removeLogo = async () => {
+    if (!editingSport?.logoUrl) return;
+    setSaving(true);
+    setErrorMessage(null);
+    try {
+      const response = await api.delete(`/sports/${editingSport.id}/logo`);
+      setEditingSport(response.data);
+      setLogoFileList([]);
+      setLogoPreview(null);
+      await mutate();
+      toast.success('Đã xóa logo.');
+    } catch (requestError: any) {
+      setErrorMessage(requestError.response?.data?.message || 'Không thể xóa logo.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const validateBackground = (file: File) => {
+    if (!acceptedImageTypes.includes(file.type)) {
+      toast.error('Chỉ chấp nhận ảnh JPG, PNG, WebP hoặc AVIF.');
+      return Upload.LIST_IGNORE;
+    }
+    if (file.size > 4 * 1024 * 1024) {
+      toast.error('Ảnh nền không được vượt quá 4 MB.');
+      return Upload.LIST_IGNORE;
+    }
+    setBackgroundFileList([file as unknown as UploadFile]);
+    setBackgroundPreview(URL.createObjectURL(file));
+    return false;
+  };
+
+  const removeBackground = async () => {
+    if (!editingSport?.backgroundUrl) return;
+    setSaving(true);
+    setErrorMessage(null);
+    try {
+      const response = await api.delete(`/sports/${editingSport.id}/background`);
+      setEditingSport(response.data);
+      setBackgroundFileList([]);
+      setBackgroundPreview(null);
+      await mutate();
+      toast.success('Đã xóa ảnh nền.');
+    } catch (requestError: any) {
+      setErrorMessage(requestError.response?.data?.message || 'Không thể xóa ảnh nền.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const updateVisibility = async (sport: any, isVisible: boolean) => {
+    setErrorMessage(null);
+    try {
+      await api.patch(`/sports/${sport.id}`, { isVisible });
+      await mutate();
+      toast.success(isVisible ? 'Đã hiển thị bộ môn trên trang Sự kiện.' : 'Đã ẩn bộ môn khỏi trang Sự kiện.');
+    } catch (requestError: any) {
+      setErrorMessage(requestError.response?.data?.message || 'Không thể cập nhật trạng thái hiển thị.');
     }
   };
 
@@ -252,20 +371,38 @@ export default function SportsPage() {
               styles={{ body: { padding: 0 } }}
             >
               <div className="flex items-start gap-4 border-b border-sdark-700 p-5">
-                <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-sblue-500/15 text-sblue-300">
-                  <Dumbbell className="h-6 w-6" />
+                <span className="grid h-14 w-20 shrink-0 place-items-center overflow-hidden rounded-xl border border-sdark-700 bg-sblue-500/15 text-sblue-300">
+                  {sport.backgroundUrl ? (
+                    // Ảnh được quản trị trong CMS và phục vụ qua API nội bộ.
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={sport.backgroundUrl} alt="" className="h-full w-full object-cover" />
+                  ) : (
+                    <ImagePlus className="h-6 w-6" />
+                  )}
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <h2 className="truncate text-lg font-black text-slate-100">{sport.name}</h2>
+                    <h2 className="truncate text-lg font-black text-slate-100">{sport.displayName || sport.name}</h2>
                     <Tag className="m-0 font-mono font-bold">{sport.code}</Tag>
                     <Tag color="blue" className="m-0">{sport._count?.events || 0} sự kiện</Tag>
+                    <Tag color={sport.isVisible !== false ? 'success' : 'default'} className="m-0">
+                      {sport.isVisible !== false ? 'Đang hiển thị' : 'Đang ẩn'}
+                    </Tag>
                   </div>
                   <p className="mt-1 line-clamp-2 text-sm text-slate-500">
-                    {sport.description || 'Chưa có mô tả.'}
+                    {sport.subtitle || sport.description || 'Chưa có tiêu đề phụ.'}
                   </p>
                 </div>
                 <div className="flex gap-1">
+                  {canManageSports && <Tooltip title={sport.isVisible !== false ? 'Ẩn khỏi trang Sự kiện' : 'Hiển thị trên trang Sự kiện'}>
+                    <Switch
+                      size="small"
+                      checked={sport.isVisible !== false}
+                      checkedChildren={<Eye className="h-3 w-3" />}
+                      unCheckedChildren={<EyeOff className="h-3 w-3" />}
+                      onChange={(checked) => updateVisibility(sport, checked)}
+                    />
+                  </Tooltip>}
                   {canManageSports && <Tooltip title="Sửa bộ môn">
                     <Button
                       type="text"
@@ -361,40 +498,181 @@ export default function SportsPage() {
 
       <Modal
         isOpen={sportOpen}
-        onClose={() => setSportOpen(false)}
+        onClose={() => {
+          if (saving) return;
+          setSportOpen(false);
+          setLogoFileList([]);
+          setLogoPreview(null);
+          setBackgroundFileList([]);
+          setBackgroundPreview(null);
+        }}
         title={editingSport ? 'Chỉnh sửa bộ môn' : 'Thêm bộ môn'}
+        size="xl"
+        scrollBody={false}
       >
         <Form layout="vertical" requiredMark={false} onFinish={saveSport}>
-          <Field label="Tên bộ môn *">
+          <div className="grid gap-x-4 md:grid-cols-2">
+            <Field label="Tên bộ môn trong hệ thống *">
+              <Input
+                required
+                value={sportForm.name}
+                onChange={(event) => setSportForm({ ...sportForm, name: event.target.value })}
+              />
+            </Field>
+            <Field label="Mã viết tắt *">
+              <Input
+                required
+                maxLength={10}
+                className="font-mono uppercase"
+                value={sportForm.code}
+                onChange={(event) => setSportForm({ ...sportForm, code: event.target.value })}
+              />
+            </Field>
+          </div>
+          <Field label="Tên tiêu đề trên thẻ">
             <Input
-              required
-              value={sportForm.name}
-              onChange={(event) => setSportForm({ ...sportForm, name: event.target.value })}
+              maxLength={120}
+              placeholder="Ví dụ: JJIF"
+              value={sportForm.displayName}
+              onChange={(event) => setSportForm({ ...sportForm, displayName: event.target.value })}
             />
           </Field>
-          <Field label="Mã viết tắt *">
-            <Input
-              required
-              maxLength={10}
-              className="font-mono uppercase"
-              value={sportForm.code}
-              onChange={(event) => setSportForm({ ...sportForm, code: event.target.value })}
+          <Field label="Tiêu đề phụ">
+            <TextArea
+              rows={2}
+              maxLength={240}
+              showCount
+              placeholder="Ví dụ: Ju Jitsu International Federation"
+              value={sportForm.subtitle}
+              onChange={(event) => setSportForm({ ...sportForm, subtitle: event.target.value })}
             />
           </Field>
-          <Field label="Mô tả">
+          <div className="grid gap-x-4 md:grid-cols-[minmax(0,1fr)_220px]">
+            <Form.Item label="Logo bộ môn">
+              <div className="flex flex-col gap-3 rounded-xl border border-sdark-700 bg-sdark-800/40 p-3 sm:flex-row sm:items-center">
+                <div className="grid h-24 w-32 shrink-0 place-items-center overflow-hidden rounded-xl border border-sdark-700 bg-sdark-950 p-3">
+                  {logoPreview ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={logoPreview} alt="Xem trước logo" className="max-h-full max-w-full object-contain" />
+                  ) : (
+                    <ImagePlus className="h-7 w-7 text-slate-500" />
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap gap-2">
+                    <Upload
+                      accept={acceptedImageTypes.join(',')}
+                      maxCount={1}
+                      fileList={logoFileList}
+                      showUploadList={false}
+                      beforeUpload={validateLogo}
+                    >
+                      <Button htmlType="button" icon={<ImagePlus className="h-4 w-4" />}>
+                        {logoPreview ? 'Thay logo' : 'Chọn logo'}
+                      </Button>
+                    </Upload>
+                    {logoFileList.length > 0 && (
+                      <Button
+                        htmlType="button"
+                        onClick={() => {
+                          setLogoFileList([]);
+                          setLogoPreview(editingSport?.logoUrl || null);
+                        }}
+                      >
+                        Hủy ảnh mới
+                      </Button>
+                    )}
+                    {editingSport?.logoUrl && !logoFileList.length && (
+                      <Popconfirm
+                        title="Xóa logo hiện tại?"
+                        okText="Xóa"
+                        cancelText="Hủy"
+                        okButtonProps={{ danger: true }}
+                        onConfirm={removeLogo}
+                      >
+                        <Button htmlType="button" danger icon={<Trash2 className="h-4 w-4" />}>Xóa logo</Button>
+                      </Popconfirm>
+                    )}
+                  </div>
+                  <p className="mt-2 text-xs text-slate-500">JPG, PNG, WebP hoặc AVIF · tối đa 2 MB · nên dùng ảnh nền trong suốt.</p>
+                </div>
+              </div>
+            </Form.Item>
+            <Field label="Thứ tự hiển thị">
+              <InputNumber
+                min={0}
+                precision={0}
+                className="w-full"
+                value={Number(sportForm.sortOrder || 0)}
+                onChange={(value) => setSportForm({ ...sportForm, sortOrder: String(value ?? 0) })}
+              />
+            </Field>
+          </div>
+          <Field label="Mô tả chi tiết">
             <TextArea
               rows={3}
               value={sportForm.description}
               onChange={(event) => setSportForm({ ...sportForm, description: event.target.value })}
             />
           </Field>
-          <Field label="URL logo">
-            <Input
-              type="url"
-              value={sportForm.logoUrl}
-              onChange={(event) => setSportForm({ ...sportForm, logoUrl: event.target.value })}
+
+          <Form.Item label="Ảnh nền thẻ bộ môn">
+            {backgroundPreview && (
+              <div className="relative mb-3 aspect-[16/7] overflow-hidden rounded-2xl border border-sdark-700 bg-sdark-950">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={backgroundPreview} alt="Xem trước ảnh nền" className="h-full w-full object-cover" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/10" />
+                {logoPreview && (
+                  <div className="absolute left-4 top-4 grid h-16 w-24 place-items-center rounded-xl border border-white/15 bg-black/35 p-2 backdrop-blur-sm">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={logoPreview} alt="" className="max-h-full max-w-full object-contain" />
+                  </div>
+                )}
+                <div className="absolute bottom-4 left-4">
+                  <p className="text-xl font-black text-white">{sportForm.displayName || sportForm.name || 'Tên bộ môn'}</p>
+                  <p className="text-sm text-slate-200">{sportForm.subtitle || 'Tiêu đề phụ'}</p>
+                </div>
+              </div>
+            )}
+            <Upload.Dragger
+              accept={acceptedImageTypes.join(',')}
+              maxCount={1}
+              fileList={backgroundFileList}
+              beforeUpload={validateBackground}
+              onRemove={() => {
+                setBackgroundFileList([]);
+                setBackgroundPreview(editingSport?.backgroundUrl || null);
+              }}
+            >
+              <UploadCloud className="mx-auto mb-2 h-8 w-8 text-sblue-400" />
+              <p className="font-semibold text-slate-200">Chọn hoặc kéo ảnh nền vào đây</p>
+              <p className="text-xs text-slate-500">JPG, PNG, WebP hoặc AVIF · tối đa 4 MB · khuyến nghị tỷ lệ 16:9</p>
+            </Upload.Dragger>
+            {editingSport?.backgroundUrl && !backgroundFileList.length && (
+              <Popconfirm
+                title="Xóa ảnh nền hiện tại?"
+                okText="Xóa"
+                cancelText="Hủy"
+                okButtonProps={{ danger: true }}
+                onConfirm={removeBackground}
+              >
+                <Button htmlType="button" danger type="link" className="mt-2 !px-0" icon={<Trash2 className="h-4 w-4" />}>
+                  Xóa ảnh nền
+                </Button>
+              </Popconfirm>
+            )}
+          </Form.Item>
+
+          <div className="mb-5 flex items-center justify-between rounded-xl border border-sdark-700 bg-sdark-800/50 px-4 py-3">
+            <div>
+              <p className="font-semibold text-slate-200">Hiển thị trên trang Sự kiện</p>
+              <p className="text-xs text-slate-500">Tắt để ẩn thẻ bộ môn nhưng vẫn giữ nguyên dữ liệu.</p>
+            </div>
+            <Switch
+              checked={sportForm.isVisible}
+              onChange={(isVisible) => setSportForm({ ...sportForm, isVisible })}
             />
-          </Field>
+          </div>
           <Button type="primary" htmlType="submit" block loading={saving}>
             Lưu bộ môn
           </Button>

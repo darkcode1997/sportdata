@@ -45,8 +45,9 @@ export default function ParticipantRegisterPage() {
   };
 
   return (
-    <main className="min-h-[calc(100vh-64px)] px-4 py-12">
-      <Card className="mx-auto max-w-3xl" title="Đăng ký tài khoản vận động viên">
+    <main className="flex min-h-[calc(100vh-64px)] justify-center px-4 py-12 sm:px-6">
+      <div className="w-full max-w-5xl">
+      <Card className="w-full" title="Đăng ký tài khoản vận động viên">
         <p className="mb-6 text-sm text-slate-400">Tài khoản dùng chung cho mọi sự kiện và bộ môn trên nền tảng.</p>
         {error && <Alert className="mb-5" type="error" showIcon message={error} />}
         <Form form={form} layout="vertical" requiredMark={false} onFinish={submit}>
@@ -123,6 +124,7 @@ export default function ParticipantRegisterPage() {
           Đã có tài khoản? <Link className="font-semibold text-sky-400" href="/account/login">Đăng nhập</Link>
         </p>
       </Card>
+      </div>
     </main>
   );
 }
