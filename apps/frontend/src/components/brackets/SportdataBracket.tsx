@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Button, Card, Tag, Tooltip } from 'antd';
 import { ChevronDown, ChevronUp, Maximize2, Minus, Plus, RotateCcw } from 'lucide-react';
-import { cn, formatTime } from '@/lib/utils';
+import { cn, formatDate, formatTime } from '@/lib/utils';
 
 export interface BracketCountry {
   code?: string;
@@ -344,7 +344,10 @@ function BracketParticipantNode({
       {side !== 'champion' && (
         <span className="sportdata-node-match">
           {match.matchNumber ? `#${match.matchNumber}` : ''}
-          {[formatTime(match.startTime || match.matchDate), match.fop].filter(Boolean).join(' · ')}
+          {[
+            `${formatDate(match.startTime || match.matchDate, 'dd/MM')} ${formatTime(match.startTime || match.matchDate)}`,
+            match.fop,
+          ].filter(Boolean).join(' · ')}
         </span>
       )}
     </>

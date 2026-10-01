@@ -101,6 +101,15 @@ type ScheduledFop = {
   name: string;
 };
 
+type DateAssignableMatch = {
+  id: string;
+  matchNumber?: number | null;
+  round?: number | null;
+  winnerToMatchId?: string | null;
+  loserToMatchId?: string | null;
+  matchDate: Date | string;
+};
+
 @Injectable()
 export class MatchesService {
   constructor(private readonly prisma: PrismaService) {}
@@ -291,16 +300,23 @@ export class MatchesService {
     if (createMatchDto.athlete1Id && createMatchDto.athlete1Id === createMatchDto.athlete2Id) {
       throw new BadRequestException('Hai vận động viên của một trận phải khác nhau');
     }
-    const category = await this.prisma.category.findFirst({
-      where: {
-        id: createMatchDto.categoryId,
-        events: { some: { id: createMatchDto.eventId } },
-      },
-      select: { matchDurationSeconds: true },
-    });
+    const [category, event] = await Promise.all([
+      this.prisma.category.findFirst({
+        where: {
+          id: createMatchDto.categoryId,
+          events: { some: { id: createMatchDto.eventId } },
+        },
+        select: { matchDurationSeconds: true },
+      }),
+      this.prisma.event.findUnique({
+        where: { id: createMatchDto.eventId },
+        select: { startDate: true, endDate: true },
+      }),
+    ]);
     if (!category) {
       throw new BadRequestException('Hạng đấu không thuộc sự kiện đã chọn');
     }
+    if (!event) throw new NotFoundException('Không tìm thấy sự kiện đã chọn');
 
     if (createMatchDto.fopId) {
       const fopExists = await this.prisma.fop.count({
@@ -341,7 +357,16 @@ export class MatchesService {
       const durationSeconds = category.matchDurationSeconds || 300;
       endTime = new Date(startTime.getTime() + durationSeconds * 1_000);
     }
+    const matchDate = new Date(createMatchDto.matchDate);
+    this.assertInsideEventDates(event, matchDate, startTime, endTime);
     if (startTime && endTime) {
+      await this.assertFopAvailability(
+        this.prisma,
+        createMatchDto.eventId,
+        createMatchDto.fopId,
+        startTime,
+        endTime,
+      );
       await this.assertParticipantAvailability(
         this.prisma,
         createMatchDto.eventId,
@@ -355,7 +380,7 @@ export class MatchesService {
     const data: Prisma.MatchCreateInput = {
       event: { connect: { id: createMatchDto.eventId } },
       category: { connect: { id: createMatchDto.categoryId } },
-      matchDate: new Date(createMatchDto.matchDate),
+      matchDate,
       ...(createMatchDto.divisionId && {
         division: { connect: { id: createMatchDto.divisionId } },
       }),
@@ -463,16 +488,23 @@ export class MatchesService {
       if (resultingAthlete1Id && resultingAthlete1Id === resultingAthlete2Id) {
         throw new BadRequestException('Hai vận động viên của một trận phải khác nhau');
       }
-      const category = await transaction.category.findFirst({
-        where: {
-          id: resultingCategoryId,
-          events: { some: { id: resultingEventId } },
-        },
-        select: { matchDurationSeconds: true },
-      });
+      const [category, event] = await Promise.all([
+        transaction.category.findFirst({
+          where: {
+            id: resultingCategoryId,
+            events: { some: { id: resultingEventId } },
+          },
+          select: { matchDurationSeconds: true },
+        }),
+        transaction.event.findUnique({
+          where: { id: resultingEventId },
+          select: { startDate: true, endDate: true },
+        }),
+      ]);
       if (!category) {
         throw new BadRequestException('Hạng đấu không thuộc sự kiện đã chọn');
       }
+      if (!event) throw new NotFoundException('Không tìm thấy sự kiện đã chọn');
 
       const resultingFopId = updateMatchDto.fopId !== undefined
         ? updateMatchDto.fopId
@@ -523,7 +555,19 @@ export class MatchesService {
           new Date(updateMatchDto.startTime).getTime() + (category.matchDurationSeconds || 300) * 1_000,
         );
       }
+      const resultingMatchDate = updateMatchDto.matchDate
+        ? new Date(updateMatchDto.matchDate)
+        : previous.matchDate;
+      this.assertInsideEventDates(event, resultingMatchDate, resultingStartTime, resultingEndTime);
       if (resultingStartTime && resultingEndTime) {
+        await this.assertFopAvailability(
+          transaction,
+          resultingEventId,
+          resultingFopId,
+          resultingStartTime,
+          resultingEndTime,
+          id,
+        );
         const scheduledAthleteIds = Array.from(new Set([
           resultingAthlete1Id,
           resultingAthlete2Id,
@@ -703,7 +747,7 @@ export class MatchesService {
     }
 
     const [event, category, athletes, entries] = await Promise.all([
-      this.prisma.event.findUnique({ where: { id: eventId }, select: { id: true, startDate: true } }),
+      this.prisma.event.findUnique({ where: { id: eventId }, select: { id: true, startDate: true, endDate: true } }),
       this.prisma.category.findFirst({
         where: { id: categoryId, events: { some: { id: eventId } } },
         select: { id: true, name: true },
@@ -821,6 +865,11 @@ export class MatchesService {
         );
       }
       this.resolveGeneratedWalkovers(generatedMatches);
+      this.assignEvenMatchDates(
+        generatedMatches as Array<GeneratedMatch & DateAssignableMatch>,
+        event.startDate,
+        event.endDate,
+      );
 
       await transaction.draw.create({
         data: {
@@ -858,6 +907,63 @@ export class MatchesService {
     });
 
     return this.findDraws(eventId, categoryId);
+  }
+
+  async distributeEventMatchDates(eventId: string) {
+    const event = await this.prisma.event.findUnique({
+      where: { id: eventId },
+      select: { id: true, startDate: true, endDate: true },
+    });
+    if (!event) throw new NotFoundException('Không tìm thấy sự kiện');
+
+    const daySlots = this.eventDaySlots(event.startDate, event.endDate);
+    if (daySlots.length < 2) {
+      throw new BadRequestException('Sự kiện chỉ diễn ra trong một ngày, không thể chia lịch theo nhiều ngày');
+    }
+
+    const [matches, activeMatchCount] = await Promise.all([
+      this.prisma.match.findMany({
+        where: {
+          eventId,
+          startTime: null,
+          scheduleLocked: false,
+          status: { not: MatchStatus.CANCELLED },
+        },
+        orderBy: [{ round: 'asc' }, { matchNumber: 'asc' }, { id: 'asc' }],
+      }),
+      this.prisma.match.count({
+        where: { eventId, status: { not: MatchStatus.CANCELLED } },
+      }),
+    ]);
+    if (!matches.length) {
+      throw new BadRequestException('Không có trận chưa xếp giờ để chia đều theo ngày');
+    }
+
+    const assignments = this.evenMatchDateAssignments(matches, event.startDate, event.endDate);
+    const changed = assignments.filter(({ match, matchDate }) => (
+      new Date(match.matchDate).getTime() !== matchDate.getTime()
+    ));
+    if (changed.length) {
+      await this.prisma.$transaction(changed.map(({ match, matchDate }) => this.prisma.match.update({
+        where: { id: match.id },
+        data: { matchDate },
+      })));
+    }
+
+    const distribution = assignments.reduce<Record<string, number>>((result, { matchDate }) => {
+      const date = this.localDateKey(matchDate);
+      result[date] = (result[date] || 0) + 1;
+      return result;
+    }, {});
+    return {
+      eventId,
+      eligible: matches.length,
+      updated: changed.length,
+      skippedScheduledOrLocked: Math.max(0, activeMatchCount - matches.length),
+      eventDayCount: daySlots.length,
+      usedDayCount: Object.keys(distribution).length,
+      distribution,
+    };
   }
 
   private buildWinnerBracket(input: {
@@ -1088,6 +1194,140 @@ export class MatchesService {
     const fop = fops[cursor.value % fops.length];
     cursor.value += 1;
     return fop;
+  }
+
+  private assignEvenMatchDates<T extends DateAssignableMatch>(matches: T[], startDate: Date, endDate: Date) {
+    this.evenMatchDateAssignments(matches, startDate, endDate).forEach(({ match, matchDate }) => {
+      match.matchDate = matchDate;
+    });
+  }
+
+  private evenMatchDateAssignments<T extends DateAssignableMatch>(matches: T[], startDate: Date, endDate: Date) {
+    const ordered = this.orderMatchesByProgression(matches);
+    const dates = this.eventDaySlots(startDate, endDate);
+    return ordered.map((match, index) => {
+      const dayIndex = ordered.length <= 1
+        ? 0
+        : Math.round((index * (dates.length - 1)) / (ordered.length - 1));
+      return { match, matchDate: new Date(dates[dayIndex]) };
+    });
+  }
+
+  private orderMatchesByProgression<T extends DateAssignableMatch>(matches: T[]) {
+    const byId = new Map(matches.map((match) => [match.id, match]));
+    const outgoing = new Map<string, Set<string>>();
+    const incoming = new Map(matches.map((match) => [match.id, 0]));
+    for (const match of matches) {
+      for (const targetId of [match.winnerToMatchId, match.loserToMatchId]) {
+        if (!targetId || targetId === match.id || !byId.has(targetId)) continue;
+        const targets = outgoing.get(match.id) || new Set<string>();
+        if (targets.has(targetId)) continue;
+        targets.add(targetId);
+        outgoing.set(match.id, targets);
+        incoming.set(targetId, (incoming.get(targetId) || 0) + 1);
+      }
+    }
+    const compare = (left: T, right: T) => (
+      (left.round ?? Number.MAX_SAFE_INTEGER) - (right.round ?? Number.MAX_SAFE_INTEGER)
+      || (left.matchNumber ?? Number.MAX_SAFE_INTEGER) - (right.matchNumber ?? Number.MAX_SAFE_INTEGER)
+      || left.id.localeCompare(right.id)
+    );
+    const ready = matches.filter((match) => incoming.get(match.id) === 0).sort(compare);
+    const ordered: T[] = [];
+    while (ready.length) {
+      const match = ready.shift()!;
+      ordered.push(match);
+      for (const targetId of outgoing.get(match.id) || []) {
+        const remaining = (incoming.get(targetId) || 0) - 1;
+        incoming.set(targetId, remaining);
+        if (remaining === 0) {
+          ready.push(byId.get(targetId)!);
+          ready.sort(compare);
+        }
+      }
+    }
+    if (ordered.length < matches.length) {
+      const scheduledIds = new Set(ordered.map(({ id }) => id));
+      ordered.push(...matches.filter(({ id }) => !scheduledIds.has(id)).sort(compare));
+    }
+    return ordered;
+  }
+
+  private eventDaySlots(startDate: Date, endDate: Date) {
+    const dayMs = 86_400_000;
+    const dayCount = Math.max(1, Math.floor((endDate.getTime() - startDate.getTime()) / dayMs) + 1);
+    return Array.from({ length: dayCount }, (_, index) => new Date(startDate.getTime() + index * dayMs));
+  }
+
+  private localDateKey(date: Date) {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Ho_Chi_Minh',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(date);
+  }
+
+  private assertInsideEventDates(
+    event: { startDate: Date; endDate: Date },
+    matchDate: Date,
+    startTime?: Date | null,
+    endTime?: Date | null,
+  ) {
+    const firstDay = this.localDateKey(event.startDate);
+    const lastDay = this.localDateKey(event.endDate);
+    const values = [matchDate, startTime, endTime].filter((value): value is Date => Boolean(value));
+    if (values.some((value) => {
+      const day = this.localDateKey(value);
+      return day < firstDay || day > lastDay;
+    })) {
+      throw new BadRequestException(
+        `Thời gian thi đấu phải nằm trong thời gian sự kiện (${firstDay} đến ${lastDay})`,
+      );
+    }
+  }
+
+  private async assertFopAvailability(
+    database: PrismaService | Prisma.TransactionClient,
+    eventId: string,
+    fopId: string | null | undefined,
+    startTime: Date,
+    endTime: Date,
+    excludeMatchId?: string,
+  ) {
+    if (!fopId || endTime <= startTime) return;
+    const conflict = await (database as any).match.findFirst({
+      where: {
+        eventId,
+        fopId,
+        ...(excludeMatchId ? { id: { not: excludeMatchId } } : {}),
+        status: { not: MatchStatus.CANCELLED },
+        startTime: { lt: endTime },
+        endTime: { gt: startTime },
+      },
+      select: {
+        id: true,
+        matchNumber: true,
+        startTime: true,
+        endTime: true,
+        fopRecord: { select: { name: true } },
+      },
+    });
+    if (conflict) {
+      const range = [conflict.startTime, conflict.endTime]
+        .filter(Boolean)
+        .map((value) => new Intl.DateTimeFormat('vi-VN', {
+          timeZone: 'Asia/Ho_Chi_Minh',
+          day: '2-digit',
+          month: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+        }).format(value))
+        .join(' – ');
+      throw new ConflictException(
+        `${conflict.fopRecord?.name || 'Sân/FOP'} đã có trận #${conflict.matchNumber || conflict.id} lúc ${range}`,
+      );
+    }
   }
 
   private nextPowerOfTwo(value: number) {

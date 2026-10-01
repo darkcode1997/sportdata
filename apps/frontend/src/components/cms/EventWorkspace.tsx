@@ -27,6 +27,7 @@ import {
 import type { UploadProps } from 'antd';
 import {
   BadgeDollarSign,
+  CalendarRange,
   CheckCircle2,
   CreditCard,
   Download,
@@ -193,7 +194,7 @@ export function EventWorkspace({ event, onRefresh }: EventWorkspaceProps) {
         {
           key: 'matches',
           label: <span className="flex items-center gap-2"><List className="h-4 w-4" />Trận đấu</span>,
-          children: <MatchesTab event={event} returnTo={workspaceHref('matches')} />,
+          children: <MatchesTab event={event} returnTo={workspaceHref('matches')} canOperate={canOperate} />,
         },
         {
           key: 'payment',
@@ -660,11 +661,14 @@ function RegistrationsTab({ eventId, canOperate, canConfirmPayment }: { eventId:
   );
 }
 
-function MatchesTab({ event, returnTo }: { event: any; returnTo: string }) {
+function MatchesTab({ event, returnTo, canOperate }: { event: any; returnTo: string; canOperate: boolean }) {
+  const toast = useSportDataToast();
+  const { mutate: mutateGlobal } = useSWRConfig();
   const [categoryId, setCategoryId] = useState<string>(event.categories?.[0]?.id || '');
   const [view, setView] = useState<'tree' | 'list'>('tree');
   const [page, setPage] = useState(1);
   const [selectedAthleteId, setSelectedAthleteId] = useState<string>();
+  const [distributingDates, setDistributingDates] = useState(false);
   const pageSize = 50;
   const query = new URLSearchParams({ eventId: event.id, limit: String(pageSize), page: String(page) });
   if (categoryId) query.set('categoryId', categoryId);
@@ -674,6 +678,34 @@ function MatchesTab({ event, returnTo }: { event: any; returnTo: string }) {
   const loadError = Array.isArray(error?.response?.data?.message)
     ? error.response.data.message.join(', ')
     : error?.response?.data?.message || error?.message;
+  const eventDayCount = Math.max(
+    1,
+    Math.floor((new Date(event.endDate).getTime() - new Date(event.startDate).getTime()) / 86_400_000) + 1,
+  );
+
+  const distributeDates = async () => {
+    setDistributingDates(true);
+    try {
+      const response = await api.post(`/matches/event/${event.id}/distribute-dates`);
+      await Promise.all([
+        mutate(),
+        mutateDraws(),
+        mutateGlobal((key) => typeof key === 'string' && (
+          key.startsWith(`/matches?`) && key.includes(`eventId=${event.id}`)
+          || key.startsWith(`/matches/event/${event.id}/`)
+        )),
+      ]);
+      const result = response.data;
+      toast.success(
+        `Đã chia ${result.eligible} trận chưa xếp giờ vào ${result.usedDayCount}/${result.eventDayCount} ngày.${result.skippedScheduledOrLocked ? ` Giữ nguyên ${result.skippedScheduledOrLocked} trận đã xếp hoặc khóa.` : ''}`,
+      );
+    } catch (error: any) {
+      const message = error.response?.data?.message;
+      toast.error(Array.isArray(message) ? message.join('. ') : message || 'Không thể chia lịch theo ngày.');
+    } finally {
+      setDistributingDates(false);
+    }
+  };
 
   return (
     <div className="space-y-5">
@@ -681,6 +713,21 @@ function MatchesTab({ event, returnTo }: { event: any; returnTo: string }) {
         <div className="flex flex-wrap items-center gap-3">
           <Select className="min-w-72 flex-1" value={categoryId || undefined} placeholder="Chọn hạng đấu" onChange={(value) => { setCategoryId(value); setPage(1); }} options={(event.categories || []).map((category: any) => ({ value: category.id, label: `${category.sport?.name || ''} · ${category.name}` }))} />
           <Segmented value={view} onChange={(value) => setView(value as 'tree' | 'list')} options={[{ value: 'tree', label: 'Sơ đồ cây', icon: <Network className="h-4 w-4" /> }, { value: 'list', label: 'Danh sách', icon: <List className="h-4 w-4" /> }]} />
+          <Popconfirm
+            title="Chia đều trận đấu theo các ngày của sự kiện?"
+            description="Chỉ đổi ngày của trận chưa có giờ thi đấu chính thức. Trận đã xếp giờ hoặc đã khóa sẽ được giữ nguyên."
+            okText="Chia đều"
+            cancelText="Hủy"
+            onConfirm={distributeDates}
+          >
+            <Button
+              icon={<CalendarRange className="h-4 w-4" />}
+              loading={distributingDates}
+              disabled={!canOperate || eventDayCount < 2 || !event._count?.matches}
+            >
+              Chia đều theo ngày
+            </Button>
+          </Popconfirm>
           <Button icon={<RefreshCw className="h-4 w-4" />} onClick={() => Promise.all([mutate(), mutateDraws()])}>Làm mới</Button>
         </div>
       </Card>
@@ -716,6 +763,7 @@ function MatchesTab({ event, returnTo }: { event: any; returnTo: string }) {
             columns={[
               { title: '#', dataIndex: 'matchNumber', width: 70 },
               { title: 'Vòng', dataIndex: 'round', width: 90 },
+              { title: 'Thời gian', width: 165, render: (_: unknown, match: any) => new Date(match.startTime || match.matchDate).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) },
               { title: 'VĐV 1', render: (_: unknown, match: any) => match.athlete1 ? <Button type="link" className="h-auto !p-0" onClick={() => setSelectedAthleteId(match.athlete1.id)}>{match.athlete1.fullName}</Button> : 'Chờ xác định' },
               { title: 'VĐV 2', render: (_: unknown, match: any) => match.athlete2 ? <Button type="link" className="h-auto !p-0" onClick={() => setSelectedAthleteId(match.athlete2.id)}>{match.athlete2.fullName}</Button> : 'Chờ xác định' },
               { title: 'Sân', dataIndex: 'fop', width: 120 },

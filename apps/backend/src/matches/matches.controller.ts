@@ -102,6 +102,19 @@ export class MatchesController {
     return this.matchesService.generateDraw(eventId, categoryId, dto);
   }
 
+  @Post('event/:eventId/distribute-dates')
+  @UseGuards(JwtAuthGuard)
+  @Roles(UserRole.ADMIN, UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER)
+  @ApiOperation({
+    summary: 'Distribute unscheduled event matches evenly across event days',
+    description:
+      'Only changes matchDate for unlocked matches without an exact start time. Existing scheduled matches remain unchanged.',
+  })
+  @ApiParam({ name: 'eventId', type: String, description: 'Event ID' })
+  distributeDates(@Param('eventId') eventId: string) {
+    return this.matchesService.distributeEventMatchDates(eventId);
+  }
+
   @Get(':id')
   @ApiOperation({
     summary: 'Get a single match by ID',

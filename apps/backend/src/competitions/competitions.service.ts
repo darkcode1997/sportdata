@@ -208,7 +208,7 @@ export class CompetitionsService {
 
   async generateHeats(eventId: string, categoryId: string, dto: GenerateHeatsDto) {
     const [event, category, entries] = await Promise.all([
-      this.prisma.event.findUnique({ where: { id: eventId }, select: { startDate: true } }),
+      this.prisma.event.findUnique({ where: { id: eventId }, select: { startDate: true, endDate: true } }),
       this.prisma.category.findFirst({
         where: { id: categoryId, events: { some: { id: eventId } } },
         select: { id: true, laneCount: true },
@@ -234,7 +234,7 @@ export class CompetitionsService {
           data: {
             eventId,
             categoryId,
-            matchDate: event.startDate,
+            matchDate: this.evenEventDate(event.startDate, event.endDate, index, buckets.length),
             matchNumber: matchNumber++,
             matchType: MatchType.HEAT,
             status: MatchStatus.SCHEDULED,
@@ -278,7 +278,7 @@ export class CompetitionsService {
 
   async generateRoundRobin(eventId: string, categoryId: string, dto: GenerateRoundRobinDto) {
     const [event, category, entries] = await Promise.all([
-      this.prisma.event.findUnique({ where: { id: eventId }, select: { startDate: true } }),
+      this.prisma.event.findUnique({ where: { id: eventId }, select: { startDate: true, endDate: true } }),
       this.prisma.category.findFirst({ where: { id: categoryId, events: { some: { id: eventId } } }, select: { id: true } }),
       this.loadEntries(eventId, categoryId, dto.entryIds),
     ]);
@@ -286,6 +286,12 @@ export class CompetitionsService {
     const groupCount = dto.groupCount || 1;
     if (groupCount > Math.floor(entries.length / 2)) throw new BadRequestException('Mỗi bảng vòng tròn phải có ít nhất hai lượt đăng ký');
     const groups = this.distributeEntries(entries, groupCount, 'bảng đấu');
+    const groupRounds = groups.map((members) => this.roundRobinRounds(members));
+    const totalMatches = groupRounds.reduce(
+      (sum, rounds) => sum + rounds.reduce((roundSum, pairs) => roundSum + pairs.length, 0),
+      0,
+    );
+    let generatedMatchIndex = 0;
     const maximum = await this.prisma.match.aggregate({ where: { eventId }, _max: { matchNumber: true } });
     let matchNumber = (maximum._max.matchNumber || 0) + 1;
     const prefix = dto.namePrefix?.trim() || 'Bảng';
@@ -303,7 +309,7 @@ export class CompetitionsService {
             members: { create: members.map((entry) => ({ entryId: entry.id, seed: entry.seed })) },
           },
         });
-        const rounds = this.roundRobinRounds(members);
+        const rounds = groupRounds[groupIndex];
         for (let roundIndex = 0; roundIndex < rounds.length; roundIndex += 1) {
           for (const [first, second] of rounds[roundIndex]) {
             await transaction.match.create({
@@ -311,7 +317,12 @@ export class CompetitionsService {
                 eventId,
                 categoryId,
                 roundRobinGroupId: group.id,
-                matchDate: event.startDate,
+                matchDate: this.evenEventDate(
+                  event.startDate,
+                  event.endDate,
+                  generatedMatchIndex++,
+                  totalMatches,
+                ),
                 matchNumber: matchNumber++,
                 matchType: MatchType.GROUP_STAGE,
                 round: roundIndex + 1,
@@ -469,5 +480,14 @@ export class CompetitionsService {
       rotation.splice(1, 0, rotation.pop() || null);
     }
     return rounds;
+  }
+
+  private evenEventDate(startDate: Date, endDate: Date, index: number, total: number) {
+    const dayMs = 86_400_000;
+    const dayCount = Math.max(1, Math.floor((endDate.getTime() - startDate.getTime()) / dayMs) + 1);
+    const dayIndex = total <= 1
+      ? 0
+      : Math.round((index * (dayCount - 1)) / (total - 1));
+    return new Date(startDate.getTime() + dayIndex * dayMs);
   }
 }
