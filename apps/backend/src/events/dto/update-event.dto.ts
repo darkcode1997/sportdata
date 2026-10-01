@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsBoolean, IsDateString, IsArray, IsInt, Min } from 'class-validator';
+import { IsString, IsOptional, IsBoolean, IsDateString, IsArray, IsInt, Min, IsIn, Matches } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { EventLevel, PaymentMode } from '@prisma/client';
 import { IsEnum } from 'class-validator';
@@ -118,4 +118,29 @@ export class UpdateEventDto {
   @IsOptional()
   @IsEnum(PaymentMode)
   paymentMode?: PaymentMode;
+
+  @ApiPropertyOptional({ enum: ['OCEAN', 'CRIMSON', 'EMERALD', 'ROYAL', 'CUSTOM'] })
+  @IsOptional()
+  @IsIn(['OCEAN', 'CRIMSON', 'EMERALD', 'ROYAL', 'CUSTOM'])
+  ticketThemePreset?: string;
+
+  @ApiPropertyOptional({ enum: ['CLASSIC', 'STRIPE', 'MINIMAL'] })
+  @IsOptional()
+  @IsIn(['CLASSIC', 'STRIPE', 'MINIMAL'])
+  ticketLayout?: string;
+
+  @ApiPropertyOptional({ example: '#0284C7' })
+  @IsOptional()
+  @Matches(/^#[0-9A-Fa-f]{6}$/)
+  ticketPrimaryColor?: string;
+
+  @ApiPropertyOptional({ example: '#075985' })
+  @IsOptional()
+  @Matches(/^#[0-9A-Fa-f]{6}$/)
+  ticketSecondaryColor?: string;
+
+  @ApiPropertyOptional({ example: '#059669' })
+  @IsOptional()
+  @Matches(/^#[0-9A-Fa-f]{6}$/)
+  ticketAccentColor?: string;
 }

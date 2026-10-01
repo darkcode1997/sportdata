@@ -53,7 +53,20 @@ type Registration = {
   feeAmount: number;
   currency: string;
   createdAt: string;
-  event: { id: string; name: string; startDate: string; endDate?: string; location?: string; sport?: { id: string; name: string }; ticketBackgroundSize?: number | null };
+  event: {
+    id: string;
+    name: string;
+    startDate: string;
+    endDate?: string;
+    location?: string;
+    sport?: { id: string; name: string };
+    ticketBackgroundSize?: number | null;
+    ticketThemePreset?: string | null;
+    ticketLayout?: string | null;
+    ticketPrimaryColor?: string | null;
+    ticketSecondaryColor?: string | null;
+    ticketAccentColor?: string | null;
+  };
   category: { id: string; name: string; sport?: { id: string; name: string } };
   athlete: {
     id: string;

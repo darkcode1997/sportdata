@@ -24,6 +24,11 @@ export type ParticipationTicket = {
     location?: string | null;
     logoUrl?: string | null;
     ticketBackgroundUrl?: string | null;
+    ticketThemePreset?: string | null;
+    ticketLayout?: string | null;
+    ticketPrimaryColor?: string | null;
+    ticketSecondaryColor?: string | null;
+    ticketAccentColor?: string | null;
   };
   sport?: {
     id?: string;

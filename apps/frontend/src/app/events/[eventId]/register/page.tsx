@@ -42,7 +42,20 @@ type Category = {
   maxWeight?: number | null;
   sport?: { name: string } | null;
 };
-type EventData = { id: string; name: string; startDate: string; endDate?: string; location?: string | null; ticketBackgroundUrl?: string | null; categories: Category[] };
+type EventData = {
+  id: string;
+  name: string;
+  startDate: string;
+  endDate?: string;
+  location?: string | null;
+  ticketBackgroundUrl?: string | null;
+  ticketThemePreset?: string | null;
+  ticketLayout?: string | null;
+  ticketPrimaryColor?: string | null;
+  ticketSecondaryColor?: string | null;
+  ticketAccentColor?: string | null;
+  categories: Category[];
+};
 type AthleteDraft = {
   key: string;
   fullName: string;
@@ -432,6 +445,11 @@ export default function GuestEventRegistrationPage() {
                   endDate: event.endDate,
                   location: event.location,
                   ticketBackgroundUrl: event.ticketBackgroundUrl,
+                  ticketThemePreset: event.ticketThemePreset,
+                  ticketLayout: event.ticketLayout,
+                  ticketPrimaryColor: event.ticketPrimaryColor,
+                  ticketSecondaryColor: event.ticketSecondaryColor,
+                  ticketAccentColor: event.ticketAccentColor,
                 },
                 sport: category?.sport || null,
                 category: { id: category?.id, name: category?.name || 'Hạng đấu đang cập nhật' },

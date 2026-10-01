@@ -376,15 +376,7 @@ export default function EventDetailPage() {
     <div className="schedule-page min-h-screen pb-20">
       <div className="mx-auto w-full max-w-[990px] px-3 pt-8 sm:px-3 sm:pt-10">
         <header className="text-center">
-          <Link href="/" className="schedule-brand" aria-label="SportData - Trang chủ">
-            <span className="schedule-brand-symbol">S</span>
-            <span className="text-left">
-              <strong>SPORTDATA</strong>
-              <small>event technology</small>
-            </span>
-          </Link>
-          <div className="mt-3 text-xs font-black tracking-[0.16em] text-sky-400">LỊCH THI ĐẤU</div>
-          <h1 className="mx-auto mt-5 max-w-4xl text-xl font-black uppercase leading-tight text-slate-100 sm:text-2xl lg:text-[1.7rem]">
+          <h1 className="mx-auto max-w-4xl text-xl font-black uppercase leading-tight text-slate-100 sm:text-2xl lg:text-[1.7rem]">
             {event?.name || 'Lịch thi đấu'}
           </h1>
           <p className="mt-3 text-sm text-slate-300">

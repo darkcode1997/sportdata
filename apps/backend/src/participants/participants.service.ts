@@ -822,6 +822,11 @@ export class ParticipantsService {
         endDate: registration.event.endDate,
         location: registration.event.location,
         logoUrl: registration.event.logoUrl,
+        ticketThemePreset: registration.event.ticketThemePreset,
+        ticketLayout: registration.event.ticketLayout,
+        ticketPrimaryColor: registration.event.ticketPrimaryColor,
+        ticketSecondaryColor: registration.event.ticketSecondaryColor,
+        ticketAccentColor: registration.event.ticketAccentColor,
         ticketBackgroundUrl: registration.event.ticketBackgroundSize
           ? `/api/events/${registration.event.id}/ticket-background`
           : null,
@@ -996,6 +1001,11 @@ export class ParticipantsService {
           location: true,
           logoUrl: true,
           ticketBackgroundSize: true,
+          ticketThemePreset: true,
+          ticketLayout: true,
+          ticketPrimaryColor: true,
+          ticketSecondaryColor: true,
+          ticketAccentColor: true,
           sport: true,
           organizer: true,
         },

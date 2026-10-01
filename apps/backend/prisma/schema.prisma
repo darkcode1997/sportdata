@@ -436,6 +436,11 @@ model Event {
   ticketBackgroundData     Bytes?
   ticketBackgroundMimeType String?
   ticketBackgroundSize     Int?
+  ticketThemePreset        String                   @default("OCEAN")
+  ticketLayout             String                   @default("CLASSIC")
+  ticketPrimaryColor       String                   @default("#0284C7")
+  ticketSecondaryColor     String                   @default("#075985")
+  ticketAccentColor        String                   @default("#059669")
   matches                  Match[]
   draws                    Draw[]
   fops                     Fop[]
