@@ -373,10 +373,23 @@ function RegistrationsTab({ eventId, canOperate, canConfirmPayment }: { eventId:
             },
           },
           {
-            title: 'Vé A6',
+            title: 'Vé A6 / mã hồ sơ',
             dataIndex: 'ticketCode',
-            width: 210,
-            render: (value) => <Space><code>{value}</code><Button type="text" size="small" href={`/api/participant-auth/tickets/${encodeURIComponent(value)}/pdf`} target="_blank" icon={<Download className="h-4 w-4" />} /></Space>,
+            width: 240,
+            render: (value, item) => {
+              const ticketIssued = item.status === 'CONFIRMED'
+                && (item.paymentStatus === 'PAID' || item.paymentStatus === 'NOT_REQUIRED');
+              return (
+                <Space>
+                  <code>{value}</code>
+                  {ticketIssued ? (
+                    <Button type="text" size="small" href={`/api/participant-auth/tickets/${encodeURIComponent(value)}/pdf`} target="_blank" icon={<Download className="h-4 w-4" />} />
+                  ) : (
+                    <Tag>Chưa phát hành</Tag>
+                  )}
+                </Space>
+              );
+            },
           },
           {
             title: 'Trạng thái',

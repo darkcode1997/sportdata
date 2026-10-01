@@ -678,6 +678,9 @@ export class ParticipantsService {
           paymentStatus: registration.paymentStatus,
           feeAmount: registration.feeAmount,
           currency: registration.currency,
+          paymentDueAt: registration.paymentStatus === PaymentStatus.PENDING
+            ? this.paymentDueAt(registration.createdAt)
+            : null,
         });
       }
 
@@ -691,8 +694,11 @@ export class ParticipantsService {
         registrations,
       };
     });
-    const batch = await this.getSubmissionTickets(referenceCode, contactEmail, true);
-    const ticketEmailSent = await this.ticketEmail.send(contactEmail, batch.tickets, batch.meta);
+    let ticketEmailSent = false;
+    if (result.status === RegistrationStatus.CONFIRMED) {
+      const batch = await this.getSubmissionTickets(referenceCode, contactEmail, true);
+      ticketEmailSent = await this.ticketEmail.send(contactEmail, batch.tickets, batch.meta);
+    }
     return { ...result, ticketEmailSent };
   }
 
@@ -772,8 +778,11 @@ export class ParticipantsService {
           include: this.registrationInclude(),
         });
       });
-      const ticket = await this.getTicket(registration.ticketCode, true);
-      const ticketEmailSent = await this.ticketEmail.send(profile.email, [ticket]);
+      let ticketEmailSent = false;
+      if (registration.status === RegistrationStatus.CONFIRMED) {
+        const ticket = await this.getIssuedTicket(registration.ticketCode, true);
+        ticketEmailSent = await this.ticketEmail.send(profile.email, [ticket]);
+      }
       return { ...registration, ticketEmailSent };
     } catch (error: any) {
       if (error?.code === 'P2002') throw new ConflictException('Bạn đã đăng ký hạng đấu này');
@@ -897,10 +906,15 @@ export class ParticipantsService {
       paymentStatus: registration.paymentStatus,
       feeAmount: registration.feeAmount,
       currency: registration.currency,
+      paymentDueAt: registration.paymentStatus === PaymentStatus.PENDING
+        ? this.paymentDueAt(registration.createdAt)
+        : null,
       isValid: registration.status === RegistrationStatus.CONFIRMED
         && (registration.paymentStatus === PaymentStatus.PAID
           || registration.paymentStatus === PaymentStatus.NOT_REQUIRED),
-      issuedAt: registration.createdAt,
+      issuedAt: registration.status === RegistrationStatus.CONFIRMED
+        ? registration.statusChangedAt || registration.createdAt
+        : undefined,
       event: {
         id: registration.event.id,
         name: registration.event.name,
@@ -965,15 +979,41 @@ export class ParticipantsService {
     };
   }
 
+  async getIssuedTicket(ticketCode: string, includeAssets = false) {
+    const ticket = await this.getTicket(ticketCode, includeAssets);
+    if (!ticket.isValid) {
+      throw new BadRequestException(
+        'Vé A6 chỉ được phát hành sau khi hồ sơ được duyệt và thanh toán đã hoàn tất',
+      );
+    }
+    return ticket;
+  }
+
   async getSubmissionTickets(referenceCode: string, contactEmail: string, includeAssets = false) {
     const submission = await this.prisma.registrationSubmission.findUnique({
       where: { referenceCode: referenceCode.trim().toUpperCase() },
-      include: { registrations: { select: { ticketCode: true }, orderBy: { createdAt: 'asc' } } },
+      include: {
+        registrations: {
+          select: { ticketCode: true, status: true, paymentStatus: true },
+          orderBy: { createdAt: 'asc' },
+        },
+      },
     });
     if (!submission || submission.contactEmail.toLowerCase() !== contactEmail.trim().toLowerCase()) {
       throw new NotFoundException('Không tìm thấy bộ vé với mã hồ sơ và email này');
     }
-    const tickets = await Promise.all(submission.registrations.map((item) => this.getTicket(item.ticketCode, includeAssets)));
+    const hasUnissuedTicket = submission.registrations.some((item) => (
+      item.status !== RegistrationStatus.CONFIRMED
+      || (item.paymentStatus !== PaymentStatus.PAID && item.paymentStatus !== PaymentStatus.NOT_REQUIRED)
+    ));
+    if (hasUnissuedTicket) {
+      throw new BadRequestException(
+        'Bộ vé A6 chỉ được phát hành sau khi tất cả hồ sơ được duyệt và thanh toán đã hoàn tất',
+      );
+    }
+    const tickets = await Promise.all(
+      submission.registrations.map((item) => this.getIssuedTicket(item.ticketCode, includeAssets)),
+    );
     return {
       meta: {
         referenceCode: submission.referenceCode,
@@ -1107,7 +1147,7 @@ export class ParticipantsService {
       const email = registration.account?.email || registration.submission?.contactEmail;
       if (email) {
         try {
-          const ticket = await this.getTicket(registration.ticketCode, true);
+          const ticket = await this.getIssuedTicket(registration.ticketCode, true);
           await this.ticketEmail.send(email, [ticket]);
         } catch (error) {
           this.logger.error('Không thể gửi lại vé sau khi duyệt hồ sơ', error instanceof Error ? error.stack : String(error));
@@ -1482,6 +1522,12 @@ export class ParticipantsService {
 
   private submissionReference() {
     return `SDR-${new Date().getUTCFullYear()}-${randomBytes(4).toString('hex').toUpperCase()}`;
+  }
+
+  private paymentDueAt(createdAt: Date) {
+    const configured = Number(process.env.UNPAID_REGISTRATION_TTL_HOURS || 24);
+    const hours = Number.isFinite(configured) && configured > 0 ? configured : 24;
+    return new Date(createdAt.getTime() + hours * 60 * 60 * 1000).toISOString();
   }
 
   private sign(id: string, email: string) {

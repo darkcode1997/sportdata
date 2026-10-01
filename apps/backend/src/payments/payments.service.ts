@@ -3,14 +3,18 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  OnModuleDestroy,
+  OnModuleInit,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import {
+  EntryStatus,
   PaymentProvider,
   PaymentMode,
   PaymentStatus,
   PaymentTransactionStatus,
   Prisma,
+  RegistrationStatus,
 } from '@prisma/client';
 import { createHmac, randomBytes, timingSafeEqual } from 'crypto';
 import type { Request } from 'express';
@@ -23,13 +27,35 @@ type RegistrationForPayment = Prisma.EventRegistrationGetPayload<{
 }>;
 
 @Injectable()
-export class PaymentsService {
+export class PaymentsService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(PaymentsService.name);
+  private cleanupTimer?: NodeJS.Timeout;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly settings: SystemSettingsService,
   ) {}
+
+  onModuleInit() {
+    void this.runPaymentMaintenance();
+    this.cleanupTimer = setInterval(() => {
+      void this.runPaymentMaintenance();
+    }, 60_000);
+    this.cleanupTimer.unref();
+  }
+
+  onModuleDestroy() {
+    if (this.cleanupTimer) clearInterval(this.cleanupTimer);
+  }
+
+  private async runPaymentMaintenance() {
+    try {
+      await this.normalizePendingPaymentSessions();
+      await this.expireUnpaidRegistrations();
+    } catch (error) {
+      this.logger.error('Không thể chạy tác vụ bảo trì thanh toán', error instanceof Error ? error.stack : String(error));
+    }
+  }
 
   async createCheckout(dto: CreateCheckoutDto, request: Request) {
     if (!await this.settings.enabled('paymentsEnabled')) {
@@ -40,6 +66,9 @@ export class PaymentsService {
       include: { event: true, athlete: { select: { fullName: true } } },
     });
     if (!registration) throw new NotFoundException('Không tìm thấy lượt đăng ký');
+    if (registration.status === RegistrationStatus.CANCELLED || registration.status === RegistrationStatus.REJECTED) {
+      throw new BadRequestException('Hồ sơ đã bị hủy hoặc từ chối nên không thể tiếp tục thanh toán');
+    }
     if (
       registration.paymentStatus === PaymentStatus.PENDING
       && registration.feeAmount === 0
@@ -80,6 +109,16 @@ export class PaymentsService {
     if (!allowedProviders.includes(dto.provider)) {
       throw new BadRequestException('Phương thức thanh toán chưa được bật cho sự kiện này');
     }
+
+    await this.prisma.paymentTransaction.updateMany({
+      where: {
+        registrationId: registration.id,
+        provider: dto.provider,
+        status: PaymentTransactionStatus.PENDING,
+        expiresAt: { lte: new Date() },
+      },
+      data: { status: PaymentTransactionStatus.EXPIRED, failureReason: 'Mã thanh toán đã hết hạn sau 30 phút' },
+    });
 
     const reusable = await this.prisma.paymentTransaction.findFirst({
       where: {
@@ -242,7 +281,7 @@ export class PaymentsService {
         amount: registration.feeAmount,
         currency: registration.currency,
         qrCodeUrl,
-        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        expiresAt: this.paymentSessionExpiresAt(),
       },
     });
     return {
@@ -261,7 +300,7 @@ export class PaymentsService {
     const secret = this.requireEnv('VNPAY_HASH_SECRET');
     const orderId = this.orderId();
     const createdAt = new Date();
-    const expiresAt = new Date(createdAt.getTime() + 15 * 60 * 1000);
+    const expiresAt = this.paymentSessionExpiresAt(createdAt);
     const params: Record<string, string> = {
       vnp_Version: '2.1.0',
       vnp_Command: 'pay',
@@ -336,7 +375,7 @@ export class PaymentsService {
       extraData,
       signature,
     };
-    const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+    const expiresAt = this.paymentSessionExpiresAt();
     const transaction = await this.prisma.paymentTransaction.create({
       data: {
         registrationId: registration.id,
@@ -377,7 +416,10 @@ export class PaymentsService {
 
   private async markPaid(id: string, providerTransactionId: string, response: unknown) {
     await this.prisma.$transaction(async (database) => {
-      const transaction = await database.paymentTransaction.findUnique({ where: { id } });
+      const transaction = await database.paymentTransaction.findUnique({
+        where: { id },
+        include: { registration: { select: { paymentStatus: true } } },
+      });
       if (!transaction || transaction.status === PaymentTransactionStatus.PAID) return;
       await database.paymentTransaction.update({
         where: { id },
@@ -391,8 +433,24 @@ export class PaymentsService {
       });
       await database.eventRegistration.update({
         where: { id: transaction.registrationId },
-        data: { paymentStatus: PaymentStatus.PAID },
+        data: {
+          paymentStatus: PaymentStatus.PAID,
+          paymentStatusReason: `Đã thanh toán qua ${transaction.provider}`,
+          paymentStatusChangedAt: new Date(),
+          paymentStatusChangedBy: transaction.provider,
+        },
       });
+      if (transaction.registration.paymentStatus !== PaymentStatus.PAID) {
+        await database.paymentStatusHistory.create({
+          data: {
+            registrationId: transaction.registrationId,
+            fromStatus: transaction.registration.paymentStatus,
+            toStatus: PaymentStatus.PAID,
+            reason: `Đã thanh toán qua ${transaction.provider}`,
+            changedBy: transaction.provider,
+          },
+        });
+      }
       await database.paymentTransaction.updateMany({
         where: {
           registrationId: transaction.registrationId,
@@ -402,6 +460,118 @@ export class PaymentsService {
         data: { status: PaymentTransactionStatus.CANCELLED },
       });
     });
+  }
+
+  async expireUnpaidRegistrations() {
+    const now = new Date();
+    const cutoff = new Date(now.getTime() - this.unpaidRegistrationTtlHours() * 60 * 60 * 1000);
+    const registrations = await this.prisma.eventRegistration.findMany({
+      where: {
+        paymentStatus: PaymentStatus.PENDING,
+        feeAmount: { gt: 0 },
+        createdAt: { lte: cutoff },
+        status: { notIn: [RegistrationStatus.CANCELLED, RegistrationStatus.REJECTED] },
+      },
+      select: {
+        id: true,
+        eventId: true,
+        categoryId: true,
+        athleteId: true,
+        status: true,
+        paymentStatus: true,
+      },
+      take: 200,
+    });
+    if (!registrations.length) return 0;
+
+    const reason = `Tự động hủy do chưa thanh toán trong ${this.unpaidRegistrationTtlHours()} giờ`;
+    let expiredCount = 0;
+    for (const registration of registrations) {
+      const expired = await this.prisma.$transaction(async (database) => {
+        const updated = await database.eventRegistration.updateMany({
+          where: {
+            id: registration.id,
+            paymentStatus: PaymentStatus.PENDING,
+            createdAt: { lte: cutoff },
+            status: { notIn: [RegistrationStatus.CANCELLED, RegistrationStatus.REJECTED] },
+          },
+          data: {
+            status: RegistrationStatus.CANCELLED,
+            statusReason: reason,
+            statusChangedAt: now,
+            statusChangedBy: 'SYSTEM',
+            paymentStatus: PaymentStatus.FAILED,
+            paymentStatusReason: reason,
+            paymentStatusChangedAt: now,
+            paymentStatusChangedBy: 'SYSTEM',
+          },
+        });
+        if (!updated.count) return false;
+
+        await database.registrationStatusHistory.create({
+          data: {
+            registrationId: registration.id,
+            fromStatus: registration.status,
+            toStatus: RegistrationStatus.CANCELLED,
+            reason,
+            changedBy: 'SYSTEM',
+          },
+        });
+        await database.paymentStatusHistory.create({
+          data: {
+            registrationId: registration.id,
+            fromStatus: registration.paymentStatus,
+            toStatus: PaymentStatus.FAILED,
+            reason,
+            changedBy: 'SYSTEM',
+          },
+        });
+        await database.paymentTransaction.updateMany({
+          where: { registrationId: registration.id, status: PaymentTransactionStatus.PENDING },
+          data: { status: PaymentTransactionStatus.EXPIRED, failureReason: reason },
+        });
+        await database.competitionEntry.updateMany({
+          where: {
+            eventId: registration.eventId,
+            categoryId: registration.categoryId,
+            athleteId: registration.athleteId,
+          },
+          data: { status: EntryStatus.WITHDRAWN },
+        });
+        return true;
+      });
+      if (expired) expiredCount += 1;
+    }
+    if (expiredCount) this.logger.log(`Đã tự động hủy ${expiredCount} hồ sơ quá hạn thanh toán`);
+    return expiredCount;
+  }
+
+  private async normalizePendingPaymentSessions() {
+    const pending = await this.prisma.paymentTransaction.findMany({
+      where: { status: PaymentTransactionStatus.PENDING },
+      select: { id: true, createdAt: true, expiresAt: true },
+    });
+    const now = new Date();
+    let normalizedCount = 0;
+    for (const transaction of pending) {
+      const expiresAt = this.paymentSessionExpiresAt(transaction.createdAt);
+      const expired = expiresAt <= now;
+      const alreadyNormalized = transaction.expiresAt
+        && Math.abs(transaction.expiresAt.getTime() - expiresAt.getTime()) < 1_000;
+      if (alreadyNormalized && !expired) continue;
+      await this.prisma.paymentTransaction.updateMany({
+        where: { id: transaction.id, status: PaymentTransactionStatus.PENDING },
+        data: {
+          expiresAt,
+          ...(expired ? {
+            status: PaymentTransactionStatus.EXPIRED,
+            failureReason: `Mã thanh toán đã hết hạn sau ${this.paymentSessionTtlMinutes()} phút`,
+          } : {}),
+        },
+      });
+      normalizedCount += 1;
+    }
+    if (normalizedCount) this.logger.log(`Đã chuẩn hóa thời hạn ${normalizedCount} mã thanh toán về ${this.paymentSessionTtlMinutes()} phút`);
   }
 
   private async markFailed(id: string, reason: string, response: unknown) {
@@ -469,6 +639,20 @@ export class PaymentsService {
       expiresAt: transaction.expiresAt,
       ticketCode,
     };
+  }
+
+  private paymentSessionExpiresAt(from = new Date()) {
+    return new Date(from.getTime() + this.paymentSessionTtlMinutes() * 60 * 1000);
+  }
+
+  private paymentSessionTtlMinutes() {
+    const configured = Number(process.env.PAYMENT_SESSION_TTL_MINUTES || 30);
+    return Number.isFinite(configured) && configured > 0 ? configured : 30;
+  }
+
+  private unpaidRegistrationTtlHours() {
+    const configured = Number(process.env.UNPAID_REGISTRATION_TTL_HOURS || 24);
+    return Number.isFinite(configured) && configured > 0 ? configured : 24;
   }
 
   private orderId() {

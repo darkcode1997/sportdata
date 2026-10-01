@@ -365,7 +365,7 @@ export default function EventDetailPage() {
       toast.success({
         content: data.status === 'CONFIRMED'
           ? `Đăng ký đã được xác nhận. Vé A6 ${data.ticketCode}${data.ticketEmailSent ? ' đã được gửi về email.' : ' đã sẵn sàng để tải.'}`
-          : `Đã tiếp nhận hồ sơ ${data.ticketCode}.${data.ticketEmailSent ? ' Vé A6 đã được gửi về email.' : ' Bạn có thể tải vé A6 trong tài khoản.'}${data.paymentStatus === 'PENDING' ? ' Mở trang vé để thanh toán lệ phí.' : ''} Giấy tờ đang chờ xác thực.`,
+          : `Đã tiếp nhận hồ sơ ${data.ticketCode}.${data.paymentStatus === 'PENDING' ? ' Mở trang hồ sơ để thanh toán lệ phí.' : ''} Vé A6 sẽ được phát hành và gửi email sau khi hồ sơ được duyệt.`,
         duration: 6,
       });
       await mutateOwnRegistrationState();
@@ -449,7 +449,7 @@ export default function EventDetailPage() {
                     <div className="min-w-0">
                       <strong className="block text-emerald-200">Bạn đã đăng ký tham gia sự kiện này</strong>
                       <span className="mt-1 block truncate text-sm text-slate-400">
-                        {ownRegistrationState.registration.category.name} · Mã vé {ownRegistrationState.registration.ticketCode}
+                        {ownRegistrationState.registration.category.name} · {ownRegistrationState.registration.status === 'CONFIRMED' ? 'Mã vé' : 'Mã hồ sơ'} {ownRegistrationState.registration.ticketCode}
                       </span>
                     </div>
                   </div>
@@ -457,7 +457,9 @@ export default function EventDetailPage() {
                     <Button type={ownRegistrationState.registration.paymentStatus === 'PENDING' ? 'primary' : 'default'}>
                       {ownRegistrationState.registration.paymentStatus === 'PENDING'
                         ? `Thanh toán ${new Intl.NumberFormat('vi-VN').format(ownRegistrationState.registration.feeAmount)} ${ownRegistrationState.registration.currency}`
-                        : 'Xem vé của tôi'}
+                        : ownRegistrationState.registration.status === 'CONFIRMED'
+                          ? 'Xem vé của tôi'
+                          : 'Theo dõi hồ sơ'}
                     </Button>
                   </Link>
                 </div>

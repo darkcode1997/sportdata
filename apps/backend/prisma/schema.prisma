@@ -633,6 +633,7 @@ model EventRegistration {
   @@index([submissionId])
   @@index([eventId, status])
   @@index([categoryId])
+  @@index([paymentStatus, createdAt])
 }
 
 model RegistrationStatusHistory {

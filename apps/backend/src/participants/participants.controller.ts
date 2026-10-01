@@ -168,7 +168,7 @@ export class ParticipantsController {
 
   @Get('tickets/:ticketCode/pdf')
   async ticketPdfFile(@Param('ticketCode') ticketCode: string, @Res() response: Response) {
-    const ticket = await this.service.getTicket(ticketCode, true);
+    const ticket = await this.service.getIssuedTicket(ticketCode, true);
     const pdf = await this.ticketPdf.generate([ticket]);
     response.setHeader('Content-Type', 'application/pdf');
     response.setHeader('Cache-Control', 'private, no-store');

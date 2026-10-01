@@ -117,8 +117,9 @@ function registrationTicket(registration: Registration): ParticipationTicket {
     ticketCode: registration.ticketCode,
     status: registration.status,
     paymentStatus: registration.paymentStatus,
-    isValid: registration.status === 'CONFIRMED',
-    issuedAt: registration.createdAt,
+    isValid: registration.status === 'CONFIRMED'
+      && (registration.paymentStatus === 'PAID' || registration.paymentStatus === 'NOT_REQUIRED'),
+    issuedAt: registration.status === 'CONFIRMED' ? registration.createdAt : undefined,
     event: {
       ...registration.event,
       ticketBackgroundUrl: registration.event.ticketBackgroundSize
@@ -364,9 +365,36 @@ export default function ParticipantAccountPage() {
           </div>
         ) : registrations.length ? (
           <div className="mx-auto max-w-4xl space-y-7">
-            {registrations.map((registration) => (
+            {registrations.map((registration) => {
+              const ticketIssued = registration.status === 'CONFIRMED'
+                && (registration.paymentStatus === 'PAID' || registration.paymentStatus === 'NOT_REQUIRED');
+              return (
               <div key={registration.id}>
-                <EventParticipationCard ticket={registrationTicket(registration)} />
+                {ticketIssued ? (
+                  <EventParticipationCard ticket={registrationTicket(registration)} />
+                ) : (
+                  <Card className="border-sky-500/20">
+                    <div className="flex flex-wrap items-start justify-between gap-4">
+                      <div>
+                        <span className="text-xs font-bold uppercase tracking-[0.12em] text-sky-500">Hồ sơ đăng ký</span>
+                        <h2 className="mt-1 text-lg font-bold">{registration.event.name}</h2>
+                        <p className="mt-2 text-sm text-slate-500">
+                          {registration.category.name} · Mã hồ sơ {registration.ticketCode}
+                        </p>
+                      </div>
+                      <Tag color={registration.status === 'REJECTED' ? 'error' : registration.status === 'CANCELLED' ? 'default' : 'processing'}>
+                        {registration.status === 'REJECTED'
+                          ? 'Hồ sơ bị từ chối'
+                          : registration.status === 'CANCELLED'
+                            ? 'Hồ sơ đã hủy'
+                            : 'Chờ duyệt hồ sơ'}
+                      </Tag>
+                    </div>
+                    <p className="mt-4 text-sm text-slate-500">
+                      Vé A6 và mã QR check-in chỉ được phát hành sau khi hồ sơ được duyệt.
+                    </p>
+                  </Card>
+                )}
                 <div className="mt-3 flex flex-wrap items-center justify-between gap-3 px-2">
                   <p className="text-xs text-slate-500">
                     Thanh toán: {registration.paymentStatus === 'NOT_REQUIRED'
@@ -379,13 +407,16 @@ export default function ParticipantAccountPage() {
                   </p>
                   <div className="flex flex-wrap gap-2">
                     <Link href={`/tickets/${encodeURIComponent(registration.ticketCode)}`} target="_blank">
-                      <Button icon={<Eye className="h-4 w-4" />}>Xem vé</Button>
+                      <Button icon={<Eye className="h-4 w-4" />}>{ticketIssued ? 'Xem vé' : 'Theo dõi hồ sơ'}</Button>
                     </Link>
-                    <Button href={`/api/participant-auth/tickets/${encodeURIComponent(registration.ticketCode)}/pdf`} icon={<Download className="h-4 w-4" />}>Tải PDF</Button>
+                    {ticketIssued ? (
+                      <Button href={`/api/participant-auth/tickets/${encodeURIComponent(registration.ticketCode)}/pdf`} icon={<Download className="h-4 w-4" />}>Tải PDF</Button>
+                    ) : null}
                   </div>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         ) : (
           <Card><Empty description="Bạn chưa có vé tham dự nào" /></Card>

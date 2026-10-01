@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import useSWR from 'swr';
 import { Alert, Button, Card, Descriptions, Result, Skeleton, Statistic, Tag } from 'antd';
-import { ArrowLeft, CheckCircle2, Medal, Printer, ShieldCheck, Swords, Trophy } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, FileCheck2, Medal, Printer, ShieldCheck, Swords, Trophy } from 'lucide-react';
 import { EventParticipationCard } from '@/components/EventParticipationCard';
 import { PaymentCheckout } from '@/components/PaymentCheckout';
 import { fetcher } from '@/lib/api';
@@ -82,14 +82,16 @@ export default function TicketVerificationPage() {
           <Link href="/events">
             <Button icon={<ArrowLeft className="h-4 w-4" />}>Sự kiện</Button>
           </Link>
-          <Button
-            type="primary"
-            href={`/api/participant-auth/tickets/${encodeURIComponent(ticket.ticketCode)}/pdf`}
-            target="_blank"
-            icon={<Printer className="h-4 w-4" />}
-          >
-            Tải vé A6 PDF
-          </Button>
+          {ticket.isValid ? (
+            <Button
+              type="primary"
+              href={`/api/participant-auth/tickets/${encodeURIComponent(ticket.ticketCode)}/pdf`}
+              target="_blank"
+              icon={<Printer className="h-4 w-4" />}
+            >
+              Tải vé A6 PDF
+            </Button>
+          ) : null}
         </div>
 
         <Alert
@@ -97,15 +99,28 @@ export default function TicketVerificationPage() {
           showIcon
           type={ticket.isValid ? 'success' : ticket.status === 'REJECTED' ? 'error' : 'warning'}
           icon={ticket.isValid ? <CheckCircle2 className="h-5 w-5" /> : undefined}
-          message={ticket.isValid ? 'Thẻ tham dự hợp lệ' : status.label}
+          message={ticket.isValid ? 'Vé tham dự đã được phát hành' : status.label}
           description={ticket.isValid
-            ? 'Thông tin thẻ đã được SportData xác nhận và có thể dùng để check-in sự kiện.'
-            : 'Thẻ chỉ có hiệu lực check-in sau khi hồ sơ được SportData xác nhận.'}
+            ? 'Hồ sơ đã được SportData duyệt. Vé A6 này có thể dùng để check-in sự kiện.'
+            : ticket.status === 'REJECTED' || ticket.status === 'CANCELLED'
+              ? 'Hồ sơ không được phát hành vé. Vui lòng liên hệ ban tổ chức nếu cần hỗ trợ.'
+              : 'Đây là trang theo dõi hồ sơ. Vé A6 chỉ được phát hành sau khi hồ sơ được SportData duyệt.'}
         />
 
         <PaymentCheckout ticket={ticket} onPaid={() => mutate()} />
 
-        <EventParticipationCard ticket={ticket} />
+        {ticket.isValid ? (
+          <EventParticipationCard ticket={ticket} />
+        ) : (
+          <Card className="ticket-page-controls border-sky-500/20 text-center">
+            <FileCheck2 className="mx-auto h-10 w-10 text-sky-400" />
+            <h2 className="mt-3 text-lg font-bold">Vé A6 chưa được phát hành</h2>
+            <p className="mx-auto mt-2 max-w-xl text-sm text-slate-500">
+              Bạn vẫn có thể theo dõi hồ sơ và hoàn tất thanh toán tại trang này. Khi hồ sơ được duyệt,
+              vé sẽ xuất hiện tại đây và được gửi tới email đăng ký.
+            </p>
+          </Card>
+        )}
 
         <div className="ticket-details mt-7 grid gap-6 lg:grid-cols-[1.15fr_.85fr]">
           <Card title="Thông tin vận động viên" extra={<Tag color={status.color}>{status.label}</Tag>}>

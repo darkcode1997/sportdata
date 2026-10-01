@@ -16,6 +16,7 @@ export type ParticipationTicket = {
   paymentStatus?: string;
   feeAmount?: number;
   currency?: string;
+  paymentDueAt?: string | null;
   isValid?: boolean;
   issuedAt?: string;
   event: {

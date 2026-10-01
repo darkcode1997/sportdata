@@ -17,11 +17,13 @@ import {
   Segmented,
   Select,
   Spin,
+  Tag,
   Upload,
 } from 'antd';
 import { Download, FileImage, ImageIcon, Loader2, Plus, RefreshCw, Send, Trash2, UploadCloud, Users } from 'lucide-react';
 import { CameraCaptureButton } from '@/components/CameraCaptureButton';
 import { EventParticipationCard } from '@/components/EventParticipationCard';
+import { PaymentCheckout } from '@/components/PaymentCheckout';
 import { IdentityOcrReviewModal, type IdentityOcrFields, type IdentityOcrResult } from '@/components/IdentityOcrReviewModal';
 import { useSportDataToast } from '@/hooks/useSportDataToast';
 import { fetcher } from '@/lib/api';
@@ -55,6 +57,8 @@ type EventData = {
   ticketPrimaryColor?: string | null;
   ticketSecondaryColor?: string | null;
   ticketAccentColor?: string | null;
+  paymentMode?: 'FREE' | 'MANUAL' | 'ONLINE';
+  paymentProviders?: Array<'MOMO' | 'VNPAY' | 'BANK_QR' | 'VISA'>;
   categories: Category[];
 };
 type AthleteDraft = {
@@ -76,7 +80,7 @@ type AthleteDraft = {
 type SubmissionResult = {
   referenceCode: string;
   ticketEmailSent?: boolean;
-  registrations: { id: string; athleteId: string; athleteName: string; ticketCode: string; status: string; paymentStatus: string; feeAmount: number; currency: string }[];
+  registrations: { id: string; athleteId: string; athleteName: string; ticketCode: string; status: string; paymentStatus: string; feeAmount: number; currency: string; paymentDueAt?: string | null }[];
 };
 type FederationSessionProfile = {
   email: string;
@@ -341,7 +345,7 @@ export default function GuestEventRegistrationPage() {
       link.remove();
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (requestError) {
-      toast.error(participantError(requestError, 'Đăng ký thành công nhưng chưa thể tải PDF. Hãy bấm Tải bộ vé PDF để thử lại.'));
+      toast.error(participantError(requestError, 'Chưa thể tải PDF vé. Vui lòng kiểm tra trạng thái duyệt của tất cả hồ sơ.'));
     } finally {
       setDownloadingPdf(false);
     }
@@ -407,18 +411,26 @@ export default function GuestEventRegistrationPage() {
       const response = await participantApi.post<SubmissionResult>(endpoint, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
-      setResult(response.data);
-      toast.success(response.data.ticketEmailSent
-        ? 'Đã tiếp nhận hồ sơ. Bộ vé A6 đã được gửi về email và đang được tải xuống.'
-        : 'Đã tiếp nhận hồ sơ. Bộ vé A6 đang được tải xuống; email chưa gửi được, bạn có thể tải lại tại đây.');
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      await downloadSubmissionPdf(response.data);
       const payableRegistration = response.data.registrations.length === 1
         ? response.data.registrations[0]
         : undefined;
       if (payableRegistration?.paymentStatus === 'PENDING' && payableRegistration.feeAmount > 0) {
+        toast.success('Đã tiếp nhận hồ sơ. Đang mở mã QR thanh toán; vé A6 sẽ được phát hành sau khi hồ sơ được duyệt.');
         router.push(`/tickets/${encodeURIComponent(payableRegistration.ticketCode)}?payment=1`);
+        return;
       }
+      const allTicketsIssued = response.data.registrations.every((registration) => (
+        registration.status === 'CONFIRMED'
+        && (registration.paymentStatus === 'PAID' || registration.paymentStatus === 'NOT_REQUIRED')
+      ));
+      toast.success(allTicketsIssued
+        ? response.data.ticketEmailSent
+          ? 'Hồ sơ đã được duyệt. Bộ vé A6 đã được gửi về email và đang được tải xuống.'
+          : 'Hồ sơ đã được duyệt. Bộ vé A6 đã sẵn sàng; email chưa gửi được.'
+        : 'Đã tiếp nhận hồ sơ. Vé A6 sẽ được phát hành và gửi email sau khi hồ sơ được duyệt.');
+      setResult(response.data);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      if (allTicketsIssued) await downloadSubmissionPdf(response.data);
     } catch (requestError) {
       toast.error(participantError(requestError, 'Không thể gửi hồ sơ đăng ký'));
     } finally {
@@ -428,21 +440,35 @@ export default function GuestEventRegistrationPage() {
 
   if (isLoading || !event) return <main className="grid min-h-[60vh] place-items-center"><Spin size="large" /></main>;
   if (result) {
+    const allTicketsIssued = result.registrations.every((registration) => (
+      registration.status === 'CONFIRMED'
+      && (registration.paymentStatus === 'PAID' || registration.paymentStatus === 'NOT_REQUIRED')
+    ));
     return (
       <main className="mx-auto min-h-[70vh] max-w-4xl px-4 py-12">
         <Card>
           <Result
             status="success"
             title="Đã tiếp nhận hồ sơ đăng ký"
-            subTitle={`Mã hồ sơ ${result.referenceCode}. Thẻ tham dự đã được tạo ở trạng thái chờ xác nhận và có hiệu lực sau khi CMS duyệt.`}
+            subTitle={`Mã hồ sơ ${result.referenceCode}. Vé A6 chỉ được phát hành sau khi hồ sơ được CMS duyệt.`}
             extra={[
-              <Button key="pdf" type="primary" loading={downloadingPdf} icon={<Download className="h-4 w-4" />} onClick={() => void downloadSubmissionPdf(result)}>
-                {result.registrations.length > 1 ? `Tải bộ ${result.registrations.length} vé PDF` : 'Tải vé PDF'}
-              </Button>,
+              ...(allTicketsIssued ? [
+                <Button key="pdf" type="primary" loading={downloadingPdf} icon={<Download className="h-4 w-4" />} onClick={() => void downloadSubmissionPdf(result)}>
+                  {result.registrations.length > 1 ? `Tải bộ ${result.registrations.length} vé PDF` : 'Tải vé PDF'}
+                </Button>,
+              ] : []),
               <Link key="event" href={`/events/${eventId}`}><Button>Quay lại sự kiện</Button></Link>,
             ]}
           />
-          {result.registrations.length > 1 && (
+          {!allTicketsIssued ? (
+            <Alert
+              className="mb-6"
+              showIcon
+              type="info"
+              message="Đang chờ phát hành vé"
+              description="Bạn có thể hoàn tất thanh toán và theo dõi từng hồ sơ bên dưới. Khi được duyệt, vé A6 và mã QR check-in mới xuất hiện, đồng thời được gửi về email đăng ký."
+            />
+          ) : result.registrations.length > 1 && (
             <Alert className="mb-6" showIcon type="info" message="Mỗi vận động viên có một vé và QR riêng" description="PDF đầu tiên là danh sách đoàn, sau đó mỗi VĐV có một trang vé độc lập để in, gửi hoặc check-in riêng." />
           )}
           <div className="mx-auto max-w-3xl space-y-7">
@@ -454,6 +480,10 @@ export default function GuestEventRegistrationPage() {
               const ticket: ParticipationTicket = {
                 ticketCode: registration.ticketCode,
                 status: registration.status,
+                paymentStatus: registration.paymentStatus,
+                feeAmount: registration.feeAmount,
+                currency: registration.currency,
+                paymentDueAt: registration.paymentDueAt,
                 event: {
                   id: event.id,
                   name: event.name,
@@ -466,6 +496,8 @@ export default function GuestEventRegistrationPage() {
                   ticketPrimaryColor: event.ticketPrimaryColor,
                   ticketSecondaryColor: event.ticketSecondaryColor,
                   ticketAccentColor: event.ticketAccentColor,
+                  paymentMode: event.paymentMode,
+                  paymentProviders: event.paymentProviders,
                 },
                 sport: category?.sport || null,
                 category: { id: category?.id, name: category?.name || 'Hạng đấu đang cập nhật' },
@@ -480,16 +512,37 @@ export default function GuestEventRegistrationPage() {
                   avatarUrl: `/api/participant-auth/avatar/${registration.athleteId}`,
                 },
               };
+              const ticketIssued = registration.status === 'CONFIRMED'
+                && (registration.paymentStatus === 'PAID' || registration.paymentStatus === 'NOT_REQUIRED');
               return (
                 <div key={registration.id}>
-                  <EventParticipationCard ticket={ticket} />
+                  <PaymentCheckout ticket={ticket} />
+                  {ticketIssued ? (
+                    <EventParticipationCard ticket={ticket} />
+                  ) : (
+                    <Card size="small" className="border-sky-500/20">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <strong>{registration.athleteName}</strong>
+                          <p className="mt-1 text-sm text-slate-500">{category?.name || 'Hạng đấu đang cập nhật'} · Mã hồ sơ {registration.ticketCode}</p>
+                        </div>
+                        <Tag color={registration.status === 'REJECTED' ? 'error' : 'processing'}>
+                          {registration.status === 'REJECTED' ? 'Hồ sơ bị từ chối' : 'Chờ duyệt hồ sơ'}
+                        </Tag>
+                      </div>
+                    </Card>
+                  )}
                   <div className="mt-3 flex justify-end">
                     <div className="flex flex-wrap gap-2">
-                      <Link href={`/tickets/${encodeURIComponent(registration.ticketCode)}`} target="_blank"><Button>Xem vé</Button></Link>
+                      <Link href={`/tickets/${encodeURIComponent(registration.ticketCode)}`} target="_blank">
+                        <Button>{ticketIssued ? 'Xem vé' : 'Theo dõi hồ sơ'}</Button>
+                      </Link>
                       {registration.paymentStatus === 'PENDING' && registration.feeAmount > 0 ? (
                         <Link href={`/tickets/${encodeURIComponent(registration.ticketCode)}?payment=1`}><Button type="primary">Thanh toán {new Intl.NumberFormat('vi-VN').format(registration.feeAmount)} {registration.currency}</Button></Link>
                       ) : null}
-                      <Button href={`/api/participant-auth/tickets/${encodeURIComponent(registration.ticketCode)}/pdf`} icon={<Download className="h-4 w-4" />}>Tải PDF riêng</Button>
+                      {ticketIssued ? (
+                        <Button href={`/api/participant-auth/tickets/${encodeURIComponent(registration.ticketCode)}/pdf`} icon={<Download className="h-4 w-4" />}>Tải PDF riêng</Button>
+                      ) : null}
                     </div>
                   </div>
                 </div>
