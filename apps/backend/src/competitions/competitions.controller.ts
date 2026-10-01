@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -8,6 +8,7 @@ import {
   CreateTeamDto,
   GenerateHeatsDto,
   GenerateRoundRobinDto,
+  UpdateEntrySeedDto,
 } from './dto/competition.dto';
 import { CompetitionsService } from './competitions.service';
 
@@ -43,6 +44,12 @@ export class CompetitionsController {
     @Body() dto: CreateEntryDto,
   ) {
     return this.competitions.createEntry(eventId, categoryId, dto);
+  }
+
+  @Patch('entries/:entryId/seed')
+  @Roles(UserRole.ADMIN, UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER)
+  updateEntrySeed(@Param('entryId') entryId: string, @Body() dto: UpdateEntrySeedDto) {
+    return this.competitions.updateEntrySeed(entryId, dto.seed ?? null);
   }
 
   @Post('events/:eventId/categories/:categoryId/heats/generate')

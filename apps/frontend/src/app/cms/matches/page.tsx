@@ -28,6 +28,7 @@ import { api, fetcher } from '@/lib/api';
 import { RemoteAthleteSelect } from '@/components/cms/RemoteAthleteSelect';
 import { SportdataBracket, type BracketDraw } from '@/components/brackets/SportdataBracket';
 import { useSportDataToast } from '@/hooks/useSportDataToast';
+import { AthleteQuickViewModal } from '@/components/cms/AthleteQuickViewModal';
 
 const dateTime = new Intl.DateTimeFormat('vi-VN', {
   day: '2-digit',
@@ -69,6 +70,7 @@ export default function MatchesListPage() {
   const [page, setPage] = useState(1);
   const [drawOpen, setDrawOpen] = useState(false);
   const [drawGenerating, setDrawGenerating] = useState(false);
+  const [selectedAthleteId, setSelectedAthleteId] = useState<string>();
   const toast = useSportDataToast();
   const [drawForm] = Form.useForm();
   const selectedEventId = Form.useWatch('eventId', drawForm);
@@ -237,9 +239,9 @@ export default function MatchesListPage() {
       render: (_, match) => (
         <div>
           <Typography.Text strong>
-            {match.athlete1?.fullName || 'Chờ xác định'}
+            {match.athlete1 ? <Button type="link" className="h-auto !p-0 font-semibold" onClick={() => setSelectedAthleteId(match.athlete1.id)}>{match.athlete1.fullName}</Button> : 'Chờ xác định'}
             <Typography.Text type="secondary"> vs </Typography.Text>
-            {match.athlete2?.fullName || 'Chờ xác định'}
+            {match.athlete2 ? <Button type="link" className="h-auto !p-0 font-semibold" onClick={() => setSelectedAthleteId(match.athlete2.id)}>{match.athlete2.fullName}</Button> : 'Chờ xác định'}
           </Typography.Text>
           <Typography.Text type="secondary" className="mt-1 block text-xs">
             #{match.matchNumber || '—'} · {match.fop || 'Chưa có FOP'}

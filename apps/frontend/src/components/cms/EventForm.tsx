@@ -48,6 +48,9 @@ const eventSchema = z.object({
 }).refine((values) => values.level !== 'CENTER_INTERNAL' || Boolean(values.organizerId), {
   message: 'Sự kiện nội bộ phải chọn đơn vị tổ chức',
   path: ['organizerId'],
+}).refine((values) => values.paymentMode === 'FREE' || values.registrationFee > 0, {
+  message: 'Sự kiện thu phí phải có lệ phí lớn hơn 0',
+  path: ['registrationFee'],
 }).refine((values) => !values.registrationEnabled || Boolean(values.registrationOpenAt && values.registrationCloseAt), {
   message: 'Sự kiện mở đăng ký phải có thời gian bắt đầu và kết thúc đăng ký',
   path: ['registrationCloseAt'],
@@ -536,21 +539,24 @@ export function EventForm({ eventId, initialData }: { eventId?: string; initialD
                     />
                   )}
                 </ControlledField>
-                <ControlledField name="registrationFee" control={control} label="Lệ phí mỗi hạng đấu" error={errors.registrationFee?.message}>
+                <ControlledField name="registrationFee" control={control} label="Lệ phí mỗi hạng đấu" error={errors.registrationFee?.message} wide>
                   {(field) => (
-                    <InputNumber<number>
-                      size="large"
-                      className="w-full"
-                      min={0}
-                      step={10000}
-                      precision={0}
-                      formatter={formatVnd}
-                      parser={parseVnd}
-                      disabled={paymentMode === 'FREE'}
-                      value={field.value}
-                      onChange={(value) => field.onChange(value || 0)}
-                      addonAfter="VND"
-                    />
+                    <div className="w-full max-w-xl">
+                      <InputNumber<number>
+                        size="large"
+                        className="w-full"
+                        style={{ width: '100%' }}
+                        min={0}
+                        step={10000}
+                        precision={0}
+                        formatter={formatVnd}
+                        parser={parseVnd}
+                        disabled={paymentMode === 'FREE'}
+                        value={field.value}
+                        onChange={(value) => field.onChange(value || 0)}
+                        addonAfter="VND"
+                      />
+                    </div>
                   )}
                 </ControlledField>
               </Row>

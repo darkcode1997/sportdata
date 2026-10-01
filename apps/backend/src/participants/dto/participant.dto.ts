@@ -7,6 +7,7 @@ import {
   IsOptional,
   IsString,
   IsBoolean,
+  MaxLength,
   Min,
   MinLength,
 } from 'class-validator';
@@ -14,6 +15,7 @@ import {
   AccountVerificationStatus,
   DocumentVerificationStatus,
   Gender,
+  PaymentStatus,
   RegistrationStatus,
   SportDataAccountType,
 } from '@prisma/client';
@@ -134,6 +136,21 @@ export class CreatePublicRegistrationDto {
 export class UpdateRegistrationStatusDto {
   @IsEnum(RegistrationStatus)
   status: RegistrationStatus;
+
+  @IsString()
+  @MinLength(3)
+  @MaxLength(1000)
+  reason: string;
+}
+
+export class UpdateRegistrationPaymentStatusDto {
+  @IsEnum(PaymentStatus)
+  status: PaymentStatus;
+
+  @IsString()
+  @MinLength(3)
+  @MaxLength(1000)
+  reason: string;
 }
 
 export class UpdateDocumentVerificationDto {

@@ -31,6 +31,7 @@ import {
   UpdateParticipantProfileDto,
   UpdateDocumentVerificationDto,
   UpdateRegistrationStatusDto,
+  UpdateRegistrationPaymentStatusDto,
   UpdateAccountVerificationDto,
 } from './dto/participant.dto';
 import { TicketPdfService } from './ticket-pdf.service';
@@ -213,8 +214,33 @@ export class ParticipantsController {
   @Patch('admin/registrations/:id/status')
   @UseGuards(JwtAuthGuard)
   @Roles(UserRole.ADMIN, UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER)
-  updateRegistrationStatus(@Param('id') id: string, @Body() dto: UpdateRegistrationStatusDto) {
-    return this.service.updateRegistrationStatus(id, dto.status);
+  updateRegistrationStatus(
+    @Req() request: Request & { user?: { email?: string; username?: string; sub?: string } },
+    @Param('id') id: string,
+    @Body() dto: UpdateRegistrationStatusDto,
+  ) {
+    return this.service.updateRegistrationStatus(
+      id,
+      dto.status,
+      dto.reason,
+      request.user?.email || request.user?.username || request.user?.sub || 'CMS',
+    );
+  }
+
+  @Patch('admin/registrations/:id/payment-status')
+  @UseGuards(JwtAuthGuard)
+  @Roles(UserRole.ADMIN, UserRole.GAMES_ADMIN)
+  updateRegistrationPaymentStatus(
+    @Req() request: Request & { user?: { email?: string; username?: string; sub?: string } },
+    @Param('id') id: string,
+    @Body() dto: UpdateRegistrationPaymentStatusDto,
+  ) {
+    return this.service.updateRegistrationPaymentStatus(
+      id,
+      dto.status,
+      dto.reason,
+      request.user?.email || request.user?.username || request.user?.sub || 'CMS',
+    );
   }
 
   @Get('admin/athletes/:athleteId/media/:type')

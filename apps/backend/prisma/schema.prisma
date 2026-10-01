@@ -612,11 +612,19 @@ model EventRegistration {
   federationId        String?
   federation          Federation?             @relation(fields: [federationId], references: [id], onDelete: SetNull)
   status              RegistrationStatus      @default(SUBMITTED)
+  statusReason        String?
+  statusChangedAt     DateTime?
+  statusChangedBy     String?
   paymentStatus       PaymentStatus           @default(NOT_REQUIRED)
+  paymentStatusReason String?
+  paymentStatusChangedAt DateTime?
+  paymentStatusChangedBy String?
   feeAmount           Int                     @default(0)
   currency            String                  @default("VND")
   ticketCode          String                  @unique
   paymentTransactions PaymentTransaction[]
+  statusHistory       RegistrationStatusHistory[]
+  paymentStatusHistory PaymentStatusHistory[]
   createdAt           DateTime                @default(now())
   updatedAt           DateTime                @updatedAt
 
@@ -625,6 +633,32 @@ model EventRegistration {
   @@index([submissionId])
   @@index([eventId, status])
   @@index([categoryId])
+}
+
+model RegistrationStatusHistory {
+  id             String             @id @default(cuid())
+  registrationId String
+  registration   EventRegistration  @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+  fromStatus     RegistrationStatus
+  toStatus       RegistrationStatus
+  reason         String
+  changedBy      String?
+  createdAt      DateTime           @default(now())
+
+  @@index([registrationId, createdAt])
+}
+
+model PaymentStatusHistory {
+  id             String            @id @default(cuid())
+  registrationId String
+  registration   EventRegistration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+  fromStatus     PaymentStatus
+  toStatus       PaymentStatus
+  reason         String
+  changedBy      String?
+  createdAt      DateTime          @default(now())
+
+  @@index([registrationId, createdAt])
 }
 
 model PaymentTransaction {

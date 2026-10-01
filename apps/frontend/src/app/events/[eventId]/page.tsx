@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import useSWR from 'swr';
 import useSWRInfinite from 'swr/infinite';
 import { Button, Card, Empty, Select, Skeleton, Spin, Tag } from 'antd';
@@ -169,6 +169,7 @@ function getRegistrationState(event: EventData) {
 }
 
 export default function EventDetailPage() {
+  const router = useRouter();
   const toast = useSportDataToast();
   const params = useParams<{ eventId: string }>();
   const eventId = params.eventId;
@@ -365,6 +366,9 @@ export default function EventDetailPage() {
         duration: 6,
       });
       await mutateOwnRegistrationState();
+      if (data.paymentStatus === 'PENDING' && data.feeAmount > 0) {
+        router.push(`/tickets/${encodeURIComponent(data.ticketCode)}?payment=1`);
+      }
     } catch (requestError) {
       toast.error(participantError(requestError, 'Không thể đăng ký'));
     } finally {

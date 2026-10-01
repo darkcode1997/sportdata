@@ -391,7 +391,12 @@ function PaymentTab({ event, canEdit, onRefresh }: EventWorkspaceProps & { canEd
   const paymentMode = Form.useWatch('paymentMode', form);
   const paymentProviders = Form.useWatch('paymentProviders', form) || [];
   const needsBank = paymentMode === 'MANUAL' || paymentProviders.includes('BANK_QR');
-  const { data: gatewayConfig } = useSWR<{ enabled: Record<string, boolean>; environment: string }>('/payments/configuration', fetcher);
+  const { data: gatewayConfig } = useSWR<{
+    enabled: Record<string, boolean>;
+    configured: Record<string, boolean>;
+    paymentsEnabled: boolean;
+    environment: string;
+  }>('/payments/configuration', fetcher);
 
   useEffect(() => {
     form.setFieldsValue({
@@ -447,7 +452,7 @@ function PaymentTab({ event, canEdit, onRefresh }: EventWorkspaceProps & { canEd
           <Form.Item name="registrationOpenAt" label="Thời gian mở đăng ký"><Input type="datetime-local" /></Form.Item>
           <Form.Item name="registrationCloseAt" label="Thời gian đóng đăng ký"><Input type="datetime-local" /></Form.Item>
           <Form.Item name="paymentMode" label="Phương thức thanh toán"><Select options={paymentModeOptions} /></Form.Item>
-          <Form.Item name="registrationFee" label="Lệ phí"><InputNumber<number> className="w-full" min={0} step={10000} precision={0} formatter={(value) => value == null ? '' : new Intl.NumberFormat('vi-VN').format(value)} parser={(value) => Number(String(value || '').replace(/[^0-9]/g, ''))} disabled={!canEdit || paymentMode === 'FREE'} addonAfter={Form.useWatch('registrationCurrency', form) || 'VND'} /></Form.Item>
+          <Form.Item name="registrationFee" label="Lệ phí mỗi hạng đấu" rules={[{ validator: (_, value) => paymentMode === 'FREE' || Number(value) > 0 ? Promise.resolve() : Promise.reject(new Error('Lệ phí phải lớn hơn 0')) }]}><InputNumber<number> className="w-full" style={{ width: '100%', minWidth: 260 }} min={0} step={10000} precision={0} formatter={(value) => value == null ? '' : new Intl.NumberFormat('vi-VN').format(value)} parser={(value) => Number(String(value || '').replace(/[^0-9]/g, ''))} disabled={!canEdit || paymentMode === 'FREE'} addonAfter={Form.useWatch('registrationCurrency', form) || 'VND'} /></Form.Item>
           <Form.Item name="registrationCurrency" label="Đơn vị tiền tệ"><Select options={[{ value: 'VND', label: 'VND' }]} /></Form.Item>
         </div>
 
@@ -462,9 +467,13 @@ function PaymentTab({ event, canEdit, onRefresh }: EventWorkspaceProps & { canEd
               label: (
                 <span>
                   {option.label}{' '}
-                  {gatewayConfig && option.value !== 'BANK_QR' ? (
-                    <Tag color={gatewayConfig.enabled[option.value] ? 'success' : 'default'}>
-                      {gatewayConfig.enabled[option.value] ? 'Sẵn sàng' : 'Chưa cấu hình ENV'}
+                  {gatewayConfig ? (
+                    <Tag color={gatewayConfig.enabled[option.value] ? 'success' : gatewayConfig.configured[option.value] ? 'default' : 'warning'}>
+                      {gatewayConfig.enabled[option.value]
+                        ? 'Sẵn sàng'
+                        : gatewayConfig.configured[option.value]
+                          ? 'Đang tắt trong hệ thống'
+                          : 'Thiếu cấu hình ENV'}
                     </Tag>
                   ) : null}
                 </span>

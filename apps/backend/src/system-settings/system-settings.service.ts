@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { AthleteMediaType, DocumentVerificationStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { UpdateSystemSettingsDto } from './dto/update-system-settings.dto';
 
@@ -68,6 +69,20 @@ export class SystemSettingsService {
       create: { id: SETTINGS_ID, ...data },
       update: data,
     });
+    if (dto.identityOcrEnabled === false) {
+      await this.prisma.athleteMedia.updateMany({
+        where: {
+          type: { in: [AthleteMediaType.CCCD_FRONT, AthleteMediaType.CCCD_BACK, AthleteMediaType.PASSPORT] },
+          verificationStatus: DocumentVerificationStatus.PENDING,
+        },
+        data: {
+          verificationStatus: DocumentVerificationStatus.VERIFIED,
+          verificationNote: 'Tự động duyệt vì OCR CCCD / Hộ chiếu đang tắt.',
+          verifiedAt: new Date(),
+          verifiedBy: 'SYSTEM:OCR_DISABLED',
+        },
+      });
+    }
     return this.get();
   }
 

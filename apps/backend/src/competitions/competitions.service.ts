@@ -103,6 +103,29 @@ export class CompetitionsService {
     });
   }
 
+  async updateEntrySeed(entryId: string, seed: number | null) {
+    const entry = await this.prisma.competitionEntry.findUnique({ where: { id: entryId } });
+    if (!entry) throw new NotFoundException('Không tìm thấy lượt thi đấu');
+    if (seed !== null) {
+      const duplicate = await this.prisma.competitionEntry.findFirst({
+        where: {
+          id: { not: entryId },
+          eventId: entry.eventId,
+          categoryId: entry.categoryId,
+          seed,
+          status: { not: EntryStatus.WITHDRAWN },
+        },
+        select: { id: true },
+      });
+      if (duplicate) throw new BadRequestException(`Hạt giống số ${seed} đã được sử dụng trong hạng đấu này`);
+    }
+    return this.prisma.competitionEntry.update({
+      where: { id: entryId },
+      data: { seed },
+      include: ENTRY_INCLUDE,
+    });
+  }
+
   async createEntry(eventId: string, categoryId: string, dto: CreateEntryDto) {
     if (dto.type === EntryType.INDIVIDUAL && (!dto.athleteId || dto.teamId)) {
       throw new BadRequestException('Lượt đăng ký cá nhân chỉ được chọn một vận động viên');

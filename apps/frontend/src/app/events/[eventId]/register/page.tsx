@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import useSWR from 'swr';
 import dayjs, { type Dayjs } from 'dayjs';
 import {
@@ -76,7 +76,7 @@ type AthleteDraft = {
 type SubmissionResult = {
   referenceCode: string;
   ticketEmailSent?: boolean;
-  registrations: { id: string; athleteId: string; athleteName: string; ticketCode: string; status: string }[];
+  registrations: { id: string; athleteId: string; athleteName: string; ticketCode: string; status: string; paymentStatus: string; feeAmount: number; currency: string }[];
 };
 type FederationSessionProfile = {
   email: string;
@@ -186,6 +186,7 @@ function DocumentPicker({
 }
 
 export default function GuestEventRegistrationPage() {
+  const router = useRouter();
   const toast = useSportDataToast();
   const params = useParams<{ eventId: string }>();
   const eventId = params.eventId;
@@ -412,6 +413,12 @@ export default function GuestEventRegistrationPage() {
         : 'Đã tiếp nhận hồ sơ. Bộ vé A6 đang được tải xuống; email chưa gửi được, bạn có thể tải lại tại đây.');
       window.scrollTo({ top: 0, behavior: 'smooth' });
       await downloadSubmissionPdf(response.data);
+      const payableRegistration = response.data.registrations.length === 1
+        ? response.data.registrations[0]
+        : undefined;
+      if (payableRegistration?.paymentStatus === 'PENDING' && payableRegistration.feeAmount > 0) {
+        router.push(`/tickets/${encodeURIComponent(payableRegistration.ticketCode)}?payment=1`);
+      }
     } catch (requestError) {
       toast.error(participantError(requestError, 'Không thể gửi hồ sơ đăng ký'));
     } finally {
@@ -479,6 +486,9 @@ export default function GuestEventRegistrationPage() {
                   <div className="mt-3 flex justify-end">
                     <div className="flex flex-wrap gap-2">
                       <Link href={`/tickets/${encodeURIComponent(registration.ticketCode)}`} target="_blank"><Button>Xem vé</Button></Link>
+                      {registration.paymentStatus === 'PENDING' && registration.feeAmount > 0 ? (
+                        <Link href={`/tickets/${encodeURIComponent(registration.ticketCode)}?payment=1`}><Button type="primary">Thanh toán {new Intl.NumberFormat('vi-VN').format(registration.feeAmount)} {registration.currency}</Button></Link>
+                      ) : null}
                       <Button href={`/api/participant-auth/tickets/${encodeURIComponent(registration.ticketCode)}/pdf`} icon={<Download className="h-4 w-4" />}>Tải PDF riêng</Button>
                     </div>
                   </div>

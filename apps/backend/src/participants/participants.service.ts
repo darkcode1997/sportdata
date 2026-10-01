@@ -17,6 +17,7 @@ import {
   Gender,
   PaymentMode,
   PaymentStatus,
+  PaymentTransactionStatus,
   Prisma,
   RegistrationStatus,
   RegistrationSubmissionType,
@@ -37,6 +38,7 @@ import {
 } from './dto/participant.dto';
 import { IdentityOcrService, type IdentityOcrFields, type IdentityOcrResult } from './identity-ocr.service';
 import { TicketEmailService } from './ticket-email.service';
+import { SystemSettingsService } from '../system-settings/system-settings.service';
 
 const mediaSelect = {
   id: true,
@@ -90,6 +92,7 @@ export class ParticipantsService {
     private readonly jwtService: JwtService,
     private readonly identityOcr: IdentityOcrService,
     private readonly ticketEmail: TicketEmailService,
+    private readonly systemSettings: SystemSettingsService,
   ) {}
 
   async register(dto: ParticipantRegisterDto) {
@@ -307,10 +310,14 @@ export class ParticipantsService {
     if (!file) throw new BadRequestException('Vui lòng chọn tệp cần tải lên');
     const profile = await this.getProfile(accountId);
     this.validateFile(type, file);
-    const ocr = type === AthleteMediaType.AVATAR ? null : await this.identityOcr.read(file, type);
+    const settings = await this.systemSettings.get();
+    const autoVerify = type !== AthleteMediaType.AVATAR && !settings.values.identityOcrEnabled;
+    const ocr = type === AthleteMediaType.AVATAR || autoVerify ? null : await this.identityOcr.read(file, type);
     const verificationStatus = type === AthleteMediaType.AVATAR
       ? null
-      : DocumentVerificationStatus.PENDING;
+      : autoVerify
+        ? DocumentVerificationStatus.VERIFIED
+        : DocumentVerificationStatus.PENDING;
     await this.prisma.athleteMedia.upsert({
       where: { athleteId_type: { athleteId: profile.athlete.id, type } },
       create: {
@@ -320,6 +327,9 @@ export class ParticipantsService {
         mimeType: file.mimetype,
         size: file.size,
         verificationStatus,
+        verificationNote: autoVerify ? 'Tự động duyệt vì OCR CCCD / Hộ chiếu đang tắt.' : null,
+        verifiedAt: autoVerify ? new Date() : null,
+        verifiedBy: autoVerify ? 'SYSTEM:OCR_DISABLED' : null,
         ...(ocr ? this.ocrPersistence(ocr) : {}),
       },
       update: {
@@ -327,9 +337,9 @@ export class ParticipantsService {
         mimeType: file.mimetype,
         size: file.size,
         verificationStatus,
-        verificationNote: null,
-        verifiedAt: null,
-        verifiedBy: null,
+        verificationNote: autoVerify ? 'Tự động duyệt vì OCR CCCD / Hộ chiếu đang tắt.' : null,
+        verifiedAt: autoVerify ? new Date() : null,
+        verifiedBy: autoVerify ? 'SYSTEM:OCR_DISABLED' : null,
         ...(ocr ? this.ocrPersistence(ocr) : {
           ocrStatus: DocumentOcrStatus.NOT_REQUESTED,
           ocrProvider: null,
@@ -515,6 +525,8 @@ export class ParticipantsService {
     });
     if (!event?.isPublished) throw new NotFoundException('Sự kiện không tồn tại hoặc chưa công khai');
     this.validateRegistrationWindow(event);
+    const systemSettings = await this.systemSettings.get();
+    const autoVerifyIdentity = !systemSettings.values.identityOcrEnabled;
 
     const countries = await this.prisma.country.findMany({
       where: { id: { in: athletes.map((athlete) => athlete.countryId || '').filter(Boolean) } },
@@ -615,10 +627,10 @@ export class ParticipantsService {
       for (const item of prepared) {
         const name = this.splitName(item.fullName);
         const media = [
-          item.files.avatar && this.mediaCreate(AthleteMediaType.AVATAR, item.files.avatar, false),
-          item.files.cccdFront && this.mediaCreate(AthleteMediaType.CCCD_FRONT, item.files.cccdFront, true, item.athlete.identityOcr),
-          item.files.cccdBack && this.mediaCreate(AthleteMediaType.CCCD_BACK, item.files.cccdBack, true),
-          item.files.passport && this.mediaCreate(AthleteMediaType.PASSPORT, item.files.passport, true, item.athlete.identityOcr),
+          item.files.avatar && this.mediaCreate(AthleteMediaType.AVATAR, item.files.avatar, false, undefined, autoVerifyIdentity),
+          item.files.cccdFront && this.mediaCreate(AthleteMediaType.CCCD_FRONT, item.files.cccdFront, true, item.athlete.identityOcr, autoVerifyIdentity),
+          item.files.cccdBack && this.mediaCreate(AthleteMediaType.CCCD_BACK, item.files.cccdBack, true, undefined, autoVerifyIdentity),
+          item.files.passport && this.mediaCreate(AthleteMediaType.PASSPORT, item.files.passport, true, item.athlete.identityOcr, autoVerifyIdentity),
         ].filter(Boolean) as Prisma.AthleteMediaCreateWithoutAthleteInput[];
         const createdAthlete = await transaction.athlete.create({
           data: {
@@ -632,6 +644,7 @@ export class ParticipantsService {
             media: { create: media },
           },
         });
+        const canConfirmImmediately = autoVerifyIdentity && event.paymentMode === PaymentMode.FREE;
         const registration = await transaction.eventRegistration.create({
           data: {
             eventId: event.id,
@@ -640,19 +653,31 @@ export class ParticipantsService {
             submissionId: submission.id,
             categoryId: item.category.id,
             federationId: item.athlete.federationId || null,
-            status: RegistrationStatus.SUBMITTED,
+            status: canConfirmImmediately ? RegistrationStatus.CONFIRMED : RegistrationStatus.SUBMITTED,
             paymentStatus: event.paymentMode === PaymentMode.FREE ? PaymentStatus.NOT_REQUIRED : PaymentStatus.PENDING,
             feeAmount: event.paymentMode === PaymentMode.FREE ? 0 : event.registrationFee,
             currency: event.registrationCurrency,
             ticketCode: this.ticketCode(),
           },
         });
+        if (canConfirmImmediately) {
+          await this.syncCompetitionEntry(transaction, {
+            eventId: event.id,
+            categoryId: item.category.id,
+            athleteId: createdAthlete.id,
+            countryId: item.athlete.countryId!,
+            confirmed: true,
+          });
+        }
         registrations.push({
           id: registration.id,
           athleteId: createdAthlete.id,
           athleteName: createdAthlete.fullName,
           ticketCode: registration.ticketCode,
           status: registration.status,
+          paymentStatus: registration.paymentStatus,
+          feeAmount: registration.feeAmount,
+          currency: registration.currency,
         });
       }
 
@@ -660,7 +685,9 @@ export class ParticipantsService {
         submissionId: submission.id,
         referenceCode,
         type: submission.type,
-        status: RegistrationStatus.SUBMITTED,
+        status: registrations.every((registration) => registration.status === RegistrationStatus.CONFIRMED)
+          ? RegistrationStatus.CONFIRMED
+          : RegistrationStatus.SUBMITTED,
         registrations,
       };
     });
@@ -670,7 +697,7 @@ export class ParticipantsService {
   }
 
   async createRegistration(accountId: string, dto: CreatePublicRegistrationDto) {
-    const profile = await this.getProfile(accountId);
+    let profile = await this.getProfile(accountId);
     const existingRegistration = await this.prisma.eventRegistration.findFirst({
       where: { eventId: dto.eventId, athleteId: profile.athlete.id },
       select: { ticketCode: true },
@@ -700,6 +727,11 @@ export class ParticipantsService {
       throw new BadRequestException('Sự kiện này không nhận vận động viên tự do');
     }
 
+    const settings = await this.systemSettings.get();
+    if (!settings.values.identityOcrEnabled) {
+      await this.autoVerifyIdentityMedia(profile.athlete.id);
+      profile = await this.getProfile(accountId);
+    }
     const identity = this.identityDocumentState(profile.athlete.media);
     if (!profile.athlete.media.some((item) => item.type === AthleteMediaType.AVATAR)) {
       throw new BadRequestException('Cần tải ảnh đại diện trước khi đăng ký');
@@ -899,14 +931,34 @@ export class ParticipantsService {
   }
 
   async listAllRegistrations(eventId?: string) {
-    return this.prisma.eventRegistration.findMany({
+    const registrations = await this.prisma.eventRegistration.findMany({
       where: eventId ? { eventId } : undefined,
       include: this.registrationInclude(),
       orderBy: { createdAt: 'desc' },
     });
+    const entries = registrations.length
+      ? await this.prisma.competitionEntry.findMany({
+          where: {
+            athleteId: { in: registrations.map((item) => item.athleteId) },
+            eventId: { in: registrations.map((item) => item.eventId) },
+            categoryId: { in: registrations.map((item) => item.categoryId) },
+          },
+          select: { id: true, eventId: true, categoryId: true, athleteId: true, seed: true, status: true },
+        })
+      : [];
+    const entriesByRegistration = new Map(entries.map((entry) => [
+      `${entry.eventId}:${entry.categoryId}:${entry.athleteId}`,
+      entry,
+    ]));
+    return registrations.map((registration) => ({
+      ...registration,
+      competitionEntry: entriesByRegistration.get(
+        `${registration.eventId}:${registration.categoryId}:${registration.athleteId}`,
+      ) || null,
+    }));
   }
 
-  async updateRegistrationStatus(id: string, status: RegistrationStatus) {
+  async updateRegistrationStatus(id: string, status: RegistrationStatus, reason: string, changedBy?: string) {
     const registration = await this.prisma.eventRegistration.findUnique({
       where: { id },
       include: {
@@ -915,6 +967,8 @@ export class ParticipantsService {
       },
     });
     if (!registration) throw new NotFoundException('Không tìm thấy lượt đăng ký');
+    if (registration.status === status) throw new BadRequestException('Hồ sơ đang ở trạng thái này');
+    const normalizedReason = reason.trim();
     const athlete = await this.prisma.athlete.findUnique({
       where: { id: registration.athleteId },
       select: {
@@ -937,7 +991,24 @@ export class ParticipantsService {
       throw new BadRequestException('Hồ sơ phải hoàn tất thanh toán trước khi xác nhận tham dự');
     }
     const updated = await this.prisma.$transaction(async (transaction) => {
-      await transaction.eventRegistration.update({ where: { id }, data: { status } });
+      await transaction.eventRegistration.update({
+        where: { id },
+        data: {
+          status,
+          statusReason: normalizedReason,
+          statusChangedAt: new Date(),
+          statusChangedBy: changedBy || 'CMS',
+        },
+      });
+      await transaction.registrationStatusHistory.create({
+        data: {
+          registrationId: id,
+          fromStatus: registration.status,
+          toStatus: status,
+          reason: normalizedReason,
+          changedBy: changedBy || 'CMS',
+        },
+      });
       await this.syncCompetitionEntry(transaction, {
         eventId: registration.eventId,
         categoryId: registration.categoryId,
@@ -962,6 +1033,56 @@ export class ParticipantsService {
       }
     }
     return updated;
+  }
+
+  async updateRegistrationPaymentStatus(id: string, status: PaymentStatus, reason: string, changedBy?: string) {
+    const registration = await this.prisma.eventRegistration.findUnique({ where: { id } });
+    if (!registration) throw new NotFoundException('Không tìm thấy lượt đăng ký');
+    if (registration.paymentStatus === status) throw new BadRequestException('Thanh toán đang ở trạng thái này');
+    if (status === PaymentStatus.NOT_REQUIRED && registration.feeAmount > 0) {
+      throw new BadRequestException('Hồ sơ có lệ phí không thể chuyển sang trạng thái miễn thanh toán');
+    }
+    const normalizedReason = reason.trim();
+    return this.prisma.$transaction(async (transaction) => {
+      await transaction.eventRegistration.update({
+        where: { id },
+        data: {
+          paymentStatus: status,
+          paymentStatusReason: normalizedReason,
+          paymentStatusChangedAt: new Date(),
+          paymentStatusChangedBy: changedBy || 'CMS',
+        },
+      });
+      await transaction.paymentStatusHistory.create({
+        data: {
+          registrationId: id,
+          fromStatus: registration.paymentStatus,
+          toStatus: status,
+          reason: normalizedReason,
+          changedBy: changedBy || 'CMS',
+        },
+      });
+      if (status === PaymentStatus.PAID) {
+        await transaction.paymentTransaction.updateMany({
+          where: { registrationId: id, status: PaymentTransactionStatus.PENDING },
+          data: {
+            status: PaymentTransactionStatus.PAID,
+            paidAt: new Date(),
+            failureReason: null,
+            responsePayload: { manuallyApproved: true, reason: normalizedReason, changedBy: changedBy || 'CMS' },
+          },
+        });
+      } else if (status === PaymentStatus.FAILED) {
+        await transaction.paymentTransaction.updateMany({
+          where: { registrationId: id, status: PaymentTransactionStatus.PENDING },
+          data: { status: PaymentTransactionStatus.FAILED, failureReason: normalizedReason },
+        });
+      }
+      return transaction.eventRegistration.findUniqueOrThrow({
+        where: { id },
+        include: this.registrationInclude(),
+      });
+    });
   }
 
   private async syncCompetitionEntry(
@@ -1050,6 +1171,8 @@ export class ParticipantsService {
         orderBy: { createdAt: 'desc' as const },
         take: 5,
       },
+      statusHistory: { orderBy: { createdAt: 'desc' as const }, take: 10 },
+      paymentStatusHistory: { orderBy: { createdAt: 'desc' as const }, take: 10 },
     } as const;
   }
 
@@ -1065,6 +1188,22 @@ export class ParticipantsService {
     const passportVerified = hasPassport
       && byType.get(AthleteMediaType.PASSPORT) === DocumentVerificationStatus.VERIFIED;
     return { complete: hasCccd || hasPassport, verified: cccdVerified || passportVerified };
+  }
+
+  private async autoVerifyIdentityMedia(athleteId: string) {
+    await this.prisma.athleteMedia.updateMany({
+      where: {
+        athleteId,
+        type: { in: [AthleteMediaType.CCCD_FRONT, AthleteMediaType.CCCD_BACK, AthleteMediaType.PASSPORT] },
+        verificationStatus: { not: DocumentVerificationStatus.VERIFIED },
+      },
+      data: {
+        verificationStatus: DocumentVerificationStatus.VERIFIED,
+        verificationNote: 'Tự động duyệt vì OCR CCCD / Hộ chiếu đang tắt.',
+        verifiedAt: new Date(),
+        verifiedBy: 'SYSTEM:OCR_DISABLED',
+      },
+    });
   }
 
   private aggregateStatistics(statistics: Array<{
@@ -1100,6 +1239,7 @@ export class ParticipantsService {
     file: Express.Multer.File,
     requiresVerification: boolean,
     previewOcr?: GuestAthleteInput['identityOcr'],
+    autoVerify = false,
   ) {
     const hasConfirmedPreview = Boolean(previewOcr?.userConfirmed && previewOcr.fields);
     return {
@@ -1107,7 +1247,16 @@ export class ParticipantsService {
       data: file.buffer,
       mimeType: file.mimetype,
       size: file.size,
-      verificationStatus: requiresVerification ? DocumentVerificationStatus.PENDING : null,
+      verificationStatus: requiresVerification
+        ? autoVerify
+          ? DocumentVerificationStatus.VERIFIED
+          : DocumentVerificationStatus.PENDING
+        : null,
+      verificationNote: requiresVerification && autoVerify
+        ? 'Tự động duyệt vì OCR CCCD / Hộ chiếu đang tắt.'
+        : null,
+      verifiedAt: requiresVerification && autoVerify ? new Date() : null,
+      verifiedBy: requiresVerification && autoVerify ? 'SYSTEM:OCR_DISABLED' : null,
       ...(hasConfirmedPreview ? {
         ocrStatus: DocumentOcrStatus.COMPLETED,
         ocrProvider: previewOcr?.provider?.slice(0, 50) || 'FPT_AI',

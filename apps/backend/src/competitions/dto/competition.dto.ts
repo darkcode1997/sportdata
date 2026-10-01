@@ -42,6 +42,15 @@ export class CreateEntryDto {
   @ApiPropertyOptional() @IsString() @IsOptional() notes?: string;
 }
 
+export class UpdateEntrySeedDto {
+  @ApiPropertyOptional({ nullable: true, description: 'Bỏ trống để xóa hạt giống' })
+  @IsInt()
+  @Min(1)
+  @Type(() => Number)
+  @IsOptional()
+  seed?: number | null;
+}
+
 export class GenerateHeatsDto {
   @ApiProperty({ type: [String] }) @IsArray() @ArrayMinSize(2) @ArrayUnique() @IsString({ each: true }) entryIds: string[];
   @ApiPropertyOptional({ default: 8 }) @IsInt() @Min(2) @Max(16) @Type(() => Number) @IsOptional() laneCount?: number;

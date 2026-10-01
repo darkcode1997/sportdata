@@ -13,6 +13,7 @@ import { GenerateDrawDto, SeedingMode } from './dto/generate-draw.dto';
 import {
   BracketSide,
   DrawType,
+  EntryStatus,
   Match,
   MatchStatus,
   MatchType,
@@ -90,6 +91,7 @@ type SeedAthlete = {
   id: string;
   countryId: string;
   federationId: string | null;
+  seed?: number | null;
 };
 
 type GeneratedMatch = Prisma.MatchCreateManyInput;
@@ -700,7 +702,7 @@ export class MatchesService {
       throw new BadRequestException('Thể thức loại kép cần ít nhất 4 vận động viên');
     }
 
-    const [event, category, athletes] = await Promise.all([
+    const [event, category, athletes, entries] = await Promise.all([
       this.prisma.event.findUnique({ where: { id: eventId }, select: { id: true, startDate: true } }),
       this.prisma.category.findFirst({
         where: { id: categoryId, events: { some: { id: eventId } } },
@@ -713,6 +715,15 @@ export class MatchesService {
           categories: { some: { id: categoryId } },
         },
         select: { id: true, countryId: true, federationId: true },
+      }),
+      this.prisma.competitionEntry.findMany({
+        where: {
+          eventId,
+          categoryId,
+          athleteId: { in: dto.athleteIds },
+          status: EntryStatus.VERIFIED,
+        },
+        select: { athleteId: true, seed: true },
       }),
     ]);
 
@@ -731,9 +742,11 @@ export class MatchesService {
       if (!division) throw new BadRequestException('Phân hạng không thuộc hạng mục này');
     }
 
-    const orderedAthletes = dto.athleteIds.map(
-      (id) => athletes.find((athlete) => athlete.id === id) as SeedAthlete,
-    );
+    const seeds = new Map(entries.map((entry) => [entry.athleteId, entry.seed]));
+    const orderedAthletes = dto.athleteIds.map((id) => ({
+      ...(athletes.find((athlete) => athlete.id === id) as SeedAthlete),
+      seed: seeds.get(id) ?? null,
+    }));
     const fopNames = Array.from(new Set(
       (dto.fops?.length ? dto.fops : dto.fop ? [dto.fop] : [])
         .map((name) => name.trim())
@@ -1019,6 +1032,11 @@ export class MatchesService {
     mode: SeedingMode,
   ): Array<SeedAthlete | null> {
     let ordered = [...athletes];
+    if (mode !== 'ORDERED' && mode !== 'RANDOM') {
+      ordered.sort((left, right) => (
+        (left.seed ?? Number.MAX_SAFE_INTEGER) - (right.seed ?? Number.MAX_SAFE_INTEGER)
+      ));
+    }
     if (mode === 'RANDOM') ordered = this.shuffle(ordered);
     if (mode === 'COUNTRY_SEPARATED') ordered = this.spreadByGroup(ordered, (athlete) => athlete.countryId);
     if (mode === 'FEDERATION_SEPARATED') {

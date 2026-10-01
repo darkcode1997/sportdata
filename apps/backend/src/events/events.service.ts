@@ -4,7 +4,7 @@ import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
 import { QueryEventsDto } from './dto/query-events.dto';
 import { QueryEligibleAthletesDto } from './dto/query-eligible-athletes.dto';
-import { EventLevel, Prisma } from '@prisma/client';
+import { EventLevel, PaymentMode, PaymentProvider, Prisma } from '@prisma/client';
 import { createHash } from 'crypto';
 
 @Injectable()
@@ -50,6 +50,11 @@ export class EventsService {
       data.registrationCloseAt,
       data.startDate,
     );
+    Object.assign(data, this.normalizePaymentConfig(
+      data.paymentMode ?? PaymentMode.FREE,
+      data.registrationFee ?? 0,
+      data.paymentProviders,
+    ));
 
     const event = await this.prisma.event.create({
       data: {
@@ -246,8 +251,22 @@ export class EventsService {
       this.prisma.athlete.count({ where }),
     ]);
 
+    const entrySeeds = items.length
+      ? await this.prisma.competitionEntry.findMany({
+          where: { eventId, categoryId, athleteId: { in: items.map((item) => item.id) } },
+          select: { athleteId: true, seed: true },
+        })
+      : [];
+    const seedByAthlete = new Map(entrySeeds.map((entry) => [entry.athleteId, entry.seed]));
+    const seededItems = items
+      .map((item) => ({ ...item, seed: seedByAthlete.get(item.id) ?? null }))
+      .sort((left, right) => (
+        (left.seed ?? Number.MAX_SAFE_INTEGER) - (right.seed ?? Number.MAX_SAFE_INTEGER)
+        || left.fullName.localeCompare(right.fullName, 'vi')
+      ));
+
     return {
-      items,
+      items: seededItems,
       total,
       page,
       limit,
@@ -323,6 +342,11 @@ export class EventsService {
       data.registrationCloseAt === undefined ? existingEvent.registrationCloseAt : data.registrationCloseAt,
       data.startDate || existingEvent.startDate,
     );
+    Object.assign(data, this.normalizePaymentConfig(
+      data.paymentMode ?? existingEvent.paymentMode,
+      data.registrationFee ?? existingEvent.registrationFee,
+      data.paymentProviders ?? existingEvent.paymentProviders,
+    ));
 
     const event = await this.prisma.event.update({
       where: { id },
@@ -742,5 +766,28 @@ export class EventsService {
     if (eventStart && close > new Date(eventStart)) {
       throw new BadRequestException('Thời gian đóng đăng ký không được sau thời gian bắt đầu sự kiện');
     }
+  }
+
+  private normalizePaymentConfig(
+    paymentMode: PaymentMode,
+    registrationFee: number,
+    paymentProviders?: PaymentProvider[],
+  ) {
+    if (paymentMode !== PaymentMode.FREE && registrationFee <= 0) {
+      throw new BadRequestException('Sự kiện thu phí phải có lệ phí mỗi hạng đấu lớn hơn 0');
+    }
+    if (paymentMode === PaymentMode.FREE) {
+      return { paymentMode, registrationFee: 0, paymentProviders: [] as PaymentProvider[] };
+    }
+    if (paymentMode === PaymentMode.MANUAL) {
+      return { paymentMode, registrationFee, paymentProviders: [PaymentProvider.BANK_QR] };
+    }
+    return {
+      paymentMode,
+      registrationFee,
+      paymentProviders: paymentProviders?.length
+        ? Array.from(new Set(paymentProviders))
+        : [PaymentProvider.MOMO, PaymentProvider.VNPAY, PaymentProvider.VISA],
+    };
   }
 }
