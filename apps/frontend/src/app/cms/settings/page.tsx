@@ -159,7 +159,7 @@ export default function SystemSettingsPage() {
                 settingKey="identityOcrEnabled"
                 title="OCR CCCD / Hộ chiếu"
                 code="IDENTITY_OCR_ENABLED"
-                description="Tự động đọc thông tin giấy tờ bằng FPT.AI. Khi tắt hoặc thiếu API key, ảnh vẫn được lưu để CMS kiểm duyệt thủ công."
+                description="Tự động đọc thông tin giấy tờ bằng FPT.AI. Khi tắt, CCCD/Hộ chiếu được tự động xác thực để hồ sơ tiếp tục chạy; khi bật nhưng thiếu API key, hệ thống giữ trạng thái chờ để CMS kiểm tra."
                 icon={<FileScan className="h-5 w-5" />}
                 settings={settings}
                 saving={savingKey === 'identityOcrEnabled'}

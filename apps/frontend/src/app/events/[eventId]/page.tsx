@@ -115,6 +115,9 @@ interface OwnRegistrationState {
     id: string;
     ticketCode: string;
     status: string;
+    paymentStatus: string;
+    feeAmount: number;
+    currency: string;
     createdAt: string;
     category: { id: string; name: string; sport?: { id: string; name: string } | null };
   } | null;
@@ -450,8 +453,12 @@ export default function EventDetailPage() {
                       </span>
                     </div>
                   </div>
-                  <Link href={`/tickets/${encodeURIComponent(ownRegistrationState.registration.ticketCode)}`} target="_blank">
-                    <Button>Xem vé của tôi</Button>
+                  <Link href={`/tickets/${encodeURIComponent(ownRegistrationState.registration.ticketCode)}${ownRegistrationState.registration.paymentStatus === 'PENDING' ? '?payment=1' : ''}`}>
+                    <Button type={ownRegistrationState.registration.paymentStatus === 'PENDING' ? 'primary' : 'default'}>
+                      {ownRegistrationState.registration.paymentStatus === 'PENDING'
+                        ? `Thanh toán ${new Intl.NumberFormat('vi-VN').format(ownRegistrationState.registration.feeAmount)} ${ownRegistrationState.registration.currency}`
+                        : 'Xem vé của tôi'}
+                    </Button>
                   </Link>
                 </div>
               ) : (

@@ -29,7 +29,7 @@ export function AthleteQuickViewModal({ athleteId, open, onClose }: AthleteQuick
       {isLoading || !athlete ? <Skeleton active avatar paragraph={{ rows: 6 }} /> : (
         <div className="space-y-5">
           <div className="flex items-center gap-4 rounded-2xl bg-slate-500/5 p-4">
-            <Avatar size={72} src={athlete.photoUrl || undefined} icon={<UserRound className="h-8 w-8" />} />
+            <Avatar size={72} src={athlete.photoUrl || `/api/participant-auth/avatar/${athlete.id}`} icon={<UserRound className="h-8 w-8" />} />
             <div>
               <Typography.Title level={3} className="!mb-1">{athlete.fullName}</Typography.Title>
               <Space wrap>
@@ -58,8 +58,8 @@ export function AthleteQuickViewModal({ athleteId, open, onClose }: AthleteQuick
           <div>
             <Typography.Title level={5}>Thành tích theo giải đấu</Typography.Title>
             {statistics.length ? (
-              <Table
-                rowKey={(row) => `${row.eventId}:${row.sportId}:${row.categoryId}`}
+              <Table<any>
+                rowKey={(row: any) => `${row.eventId}:${row.sportId}:${row.categoryId}`}
                 size="small"
                 pagination={false}
                 dataSource={statistics}

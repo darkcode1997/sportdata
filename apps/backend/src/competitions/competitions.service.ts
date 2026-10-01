@@ -17,7 +17,7 @@ import {
 
 const ENTRY_INCLUDE = {
   country: { select: { id: true, code: true, name: true, flagUrl: true } },
-  athlete: { select: { id: true, fullName: true, gender: true, birthDate: true, weight: true } },
+  athlete: { select: { id: true, fullName: true, gender: true, birthDate: true, weight: true, federation: { select: { id: true, name: true } } } },
   team: {
     include: {
       members: {
@@ -217,15 +217,8 @@ export class CompetitionsService {
     ]);
     if (!event || !category) throw new NotFoundException('Không tìm thấy sự kiện hoặc hạng mục');
     const laneCount = dto.laneCount || category.laneCount || 8;
-    const ordered = [...entries].sort((a, b) => (a.seed || Number.MAX_SAFE_INTEGER) - (b.seed || Number.MAX_SAFE_INTEGER));
-    const heatCount = Math.ceil(ordered.length / laneCount);
-    const buckets: EntryRow[][] = Array.from({ length: heatCount }, () => []);
-    ordered.forEach((entry, index) => {
-      const block = Math.floor(index / heatCount);
-      const offset = index % heatCount;
-      const heatIndex = block % 2 === 0 ? offset : heatCount - 1 - offset;
-      buckets[heatIndex].push(entry);
-    });
+    const heatCount = Math.ceil(entries.length / laneCount);
+    const buckets = this.distributeEntries(entries, heatCount, 'lượt chạy');
     const maximum = await this.prisma.match.aggregate({ where: { eventId }, _max: { matchNumber: true } });
     let matchNumber = (maximum._max.matchNumber || 0) + 1;
     const round = dto.round || 1;
@@ -292,13 +285,7 @@ export class CompetitionsService {
     if (!event || !category) throw new NotFoundException('Không tìm thấy sự kiện hoặc hạng mục');
     const groupCount = dto.groupCount || 1;
     if (groupCount > Math.floor(entries.length / 2)) throw new BadRequestException('Mỗi bảng vòng tròn phải có ít nhất hai lượt đăng ký');
-    const ordered = [...entries].sort((a, b) => (a.seed || Number.MAX_SAFE_INTEGER) - (b.seed || Number.MAX_SAFE_INTEGER));
-    const groups: EntryRow[][] = Array.from({ length: groupCount }, () => []);
-    ordered.forEach((entry, index) => {
-      const block = Math.floor(index / groupCount);
-      const offset = index % groupCount;
-      groups[block % 2 === 0 ? offset : groupCount - 1 - offset].push(entry);
-    });
+    const groups = this.distributeEntries(entries, groupCount, 'bảng đấu');
     const maximum = await this.prisma.match.aggregate({ where: { eventId }, _max: { matchNumber: true } });
     let matchNumber = (maximum._max.matchNumber || 0) + 1;
     const prefix = dto.namePrefix?.trim() || 'Bảng';
@@ -365,6 +352,71 @@ export class CompetitionsService {
     if (entries.length !== entryIds.length) throw new BadRequestException('Có lượt đăng ký không hợp lệ hoặc đã ngừng tham gia');
     const byId = new Map(entries.map((entry) => [entry.id, entry]));
     return entryIds.map((id) => byId.get(id) as EntryRow);
+  }
+
+  /**
+   * Distribute seeds before unseeded entries. Seeded athletes from the same
+   * federation/club are never put in the same pool. Unseeded athletes keep the
+   * usual balanced snake distribution and are not subject to this constraint.
+   */
+  private distributeEntries(entries: EntryRow[], bucketCount: number, bucketLabel: string) {
+    const ordered = [...entries].sort((left, right) => (
+      (left.seed ?? Number.MAX_SAFE_INTEGER) - (right.seed ?? Number.MAX_SAFE_INTEGER)
+    ));
+    const buckets: EntryRow[][] = Array.from({ length: bucketCount }, () => []);
+    const seeded = ordered.filter((entry) => entry.seed !== null);
+    const unseeded = ordered.filter((entry) => entry.seed === null);
+    const federationSeeds = new Map<string, { name: string; count: number }>();
+
+    seeded.forEach((entry) => {
+      const federation = entry.athlete?.federation;
+      if (!federation) return;
+      const current = federationSeeds.get(federation.id);
+      federationSeeds.set(federation.id, {
+        name: federation.name,
+        count: (current?.count || 0) + 1,
+      });
+    });
+
+    const impossible = [...federationSeeds.values()].find(({ count }) => count > bucketCount);
+    if (impossible) {
+      throw new BadRequestException(
+        `Đơn vị/CLB "${impossible.name}" có ${impossible.count} vận động viên hạt giống nhưng chỉ có ${bucketCount} ${bucketLabel}. Vui lòng tăng số ${bucketLabel} hoặc bỏ bớt hạt giống.`,
+      );
+    }
+
+    const preferredBucket = (position: number) => {
+      const block = Math.floor(position / bucketCount);
+      const offset = position % bucketCount;
+      return block % 2 === 0 ? offset : bucketCount - 1 - offset;
+    };
+    const chooseBucket = (entry: EntryRow, position: number) => {
+      const federationId = entry.athlete?.federation?.id;
+      const eligible = buckets
+        .map((bucket, index) => ({ bucket, index }))
+        .filter(({ bucket }) => !federationId || !bucket.some((member) => member.athlete?.federation?.id === federationId));
+      if (!eligible.length) {
+        throw new BadRequestException('Không thể tách các vận động viên hạt giống cùng đơn vị/CLB sang các bảng khác nhau.');
+      }
+      const smallestSize = Math.min(...eligible.map(({ bucket }) => bucket.length));
+      const balanced = eligible.filter(({ bucket }) => bucket.length === smallestSize);
+      const preferred = preferredBucket(position);
+      return balanced.find(({ index }) => index === preferred)?.index ?? balanced[0].index;
+    };
+
+    seeded.forEach((entry, index) => buckets[chooseBucket(entry, index)].push(entry));
+    unseeded.forEach((entry, index) => {
+      const smallestSize = Math.min(...buckets.map((bucket) => bucket.length));
+      const candidates = buckets
+        .map((bucket, bucketIndex) => ({ bucket, bucketIndex }))
+        .filter(({ bucket }) => bucket.length === smallestSize);
+      const preferred = preferredBucket(seeded.length + index);
+      const bucketIndex = candidates.find((candidate) => candidate.bucketIndex === preferred)?.bucketIndex
+        ?? candidates[0].bucketIndex;
+      buckets[bucketIndex].push(entry);
+    });
+
+    return buckets;
   }
 
   private assertAthleteEligibility(

@@ -797,23 +797,54 @@ export class ParticipantsService {
     });
     if (!account?.athlete) throw new NotFoundException('Không tìm thấy hồ sơ vận động viên của tài khoản');
 
-    const registration = await this.prisma.eventRegistration.findFirst({
+    let registration = await this.prisma.eventRegistration.findFirst({
       where: { eventId: eventId.trim(), athleteId: account.athlete.id },
       select: {
         id: true,
         ticketCode: true,
         status: true,
+        paymentStatus: true,
+        feeAmount: true,
+        currency: true,
         createdAt: true,
+        event: { select: { paymentMode: true, registrationFee: true, registrationCurrency: true } },
         category: { select: { id: true, name: true, sport: { select: { id: true, name: true } } } },
       },
       orderBy: { createdAt: 'desc' },
     });
 
+    if (
+      registration
+      && registration.paymentStatus === PaymentStatus.PENDING
+      && registration.feeAmount === 0
+      && registration.event.paymentMode !== PaymentMode.FREE
+      && registration.event.registrationFee > 0
+    ) {
+      registration = await this.prisma.eventRegistration.update({
+        where: { id: registration.id },
+        data: {
+          feeAmount: registration.event.registrationFee,
+          currency: registration.event.registrationCurrency,
+        },
+        select: {
+          id: true,
+          ticketCode: true,
+          status: true,
+          paymentStatus: true,
+          feeAmount: true,
+          currency: true,
+          createdAt: true,
+          event: { select: { paymentMode: true, registrationFee: true, registrationCurrency: true } },
+          category: { select: { id: true, name: true, sport: { select: { id: true, name: true } } } },
+        },
+      });
+    }
+
     return { registered: Boolean(registration), registration };
   }
 
   async getTicket(ticketCode: string, includeAssets = false) {
-    const registration = await this.prisma.eventRegistration.findUnique({
+    let registration = await this.prisma.eventRegistration.findUnique({
       where: { ticketCode: ticketCode.trim().toUpperCase() },
       include: {
         event: { include: { sport: true } },
@@ -834,6 +865,25 @@ export class ParticipantsService {
       },
     });
     if (!registration) throw new NotFoundException('Không tìm thấy thẻ tham dự');
+    if (
+      registration.paymentStatus === PaymentStatus.PENDING
+      && registration.feeAmount === 0
+      && registration.event.paymentMode !== PaymentMode.FREE
+      && registration.event.registrationFee > 0
+    ) {
+      await this.prisma.eventRegistration.update({
+        where: { id: registration.id },
+        data: {
+          feeAmount: registration.event.registrationFee,
+          currency: registration.event.registrationCurrency,
+        },
+      });
+      registration = {
+        ...registration,
+        feeAmount: registration.event.registrationFee,
+        currency: registration.event.registrationCurrency,
+      };
+    }
 
     const sportId = registration.category.sportId;
     const sportStatistics = registration.athlete.statistics.filter((item) => item.sportId === sportId);
@@ -864,7 +914,11 @@ export class ParticipantsService {
         ticketSecondaryColor: registration.event.ticketSecondaryColor,
         ticketAccentColor: registration.event.ticketAccentColor,
         paymentMode: registration.event.paymentMode,
-        paymentProviders: registration.event.paymentProviders,
+        paymentProviders: registration.event.paymentProviders.length
+          ? registration.event.paymentProviders
+          : registration.event.paymentMode === PaymentMode.MANUAL
+            ? ['BANK_QR']
+            : [],
         ticketBackgroundUrl: registration.event.ticketBackgroundSize
           ? `/api/events/${registration.event.id}/ticket-background`
           : null,
@@ -931,6 +985,34 @@ export class ParticipantsService {
   }
 
   async listAllRegistrations(eventId?: string) {
+    const paidEvents = await this.prisma.event.findMany({
+      where: {
+        ...(eventId ? { id: eventId } : {}),
+        paymentMode: { not: PaymentMode.FREE },
+        registrationFee: { gt: 0 },
+      },
+      select: { id: true, registrationFee: true, registrationCurrency: true },
+    });
+    await Promise.all(paidEvents.map((event) => this.prisma.eventRegistration.updateMany({
+      where: { eventId: event.id, paymentStatus: PaymentStatus.PENDING, feeAmount: 0 },
+      data: { feeAmount: event.registrationFee, currency: event.registrationCurrency },
+    })));
+    const settings = await this.systemSettings.get();
+    if (!settings.values.identityOcrEnabled) {
+      await this.prisma.athleteMedia.updateMany({
+        where: {
+          type: { in: [AthleteMediaType.CCCD_FRONT, AthleteMediaType.CCCD_BACK, AthleteMediaType.PASSPORT] },
+          verificationStatus: DocumentVerificationStatus.PENDING,
+          ...(eventId ? { athlete: { publicRegistrations: { some: { eventId } } } } : {}),
+        },
+        data: {
+          verificationStatus: DocumentVerificationStatus.VERIFIED,
+          verificationNote: 'Tự động duyệt vì OCR CCCD / Hộ chiếu đang tắt.',
+          verifiedAt: new Date(),
+          verifiedBy: 'SYSTEM:OCR_DISABLED',
+        },
+      });
+    }
     const registrations = await this.prisma.eventRegistration.findMany({
       where: eventId ? { eventId } : undefined,
       include: this.registrationInclude(),

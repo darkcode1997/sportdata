@@ -291,15 +291,15 @@ model User {
 // value and keep credentials outside the database; this row stores only the
 // operator's on/off choices so changes can take effect without a redeploy.
 model SystemSetting {
-  id                       String   @id @default("global")
-  identityOcrEnabled       Boolean?
-  paymentsEnabled          Boolean?
-  momoEnabled              Boolean?
-  vnpayEnabled             Boolean?
-  bankQrEnabled            Boolean?
-  ticketEmailEnabled       Boolean?
-  createdAt                DateTime @default(now())
-  updatedAt                DateTime @updatedAt
+  id                 String   @id @default("global")
+  identityOcrEnabled Boolean?
+  paymentsEnabled    Boolean?
+  momoEnabled        Boolean?
+  vnpayEnabled       Boolean?
+  bankQrEnabled      Boolean?
+  ticketEmailEnabled Boolean?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 }
 
 model ParticipantAccount {
@@ -598,35 +598,35 @@ model RegistrationSubmission {
 }
 
 model EventRegistration {
-  id                  String                  @id @default(cuid())
-  eventId             String
-  event               Event                   @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  athleteId           String
-  athlete             Athlete                 @relation(fields: [athleteId], references: [id], onDelete: Cascade)
-  accountId           String?
-  account             ParticipantAccount?     @relation(fields: [accountId], references: [id], onDelete: SetNull)
-  submissionId        String?
-  submission          RegistrationSubmission? @relation(fields: [submissionId], references: [id], onDelete: SetNull)
-  categoryId          String
-  category            Category                @relation(fields: [categoryId], references: [id])
-  federationId        String?
-  federation          Federation?             @relation(fields: [federationId], references: [id], onDelete: SetNull)
-  status              RegistrationStatus      @default(SUBMITTED)
-  statusReason        String?
-  statusChangedAt     DateTime?
-  statusChangedBy     String?
-  paymentStatus       PaymentStatus           @default(NOT_REQUIRED)
-  paymentStatusReason String?
+  id                     String                      @id @default(cuid())
+  eventId                String
+  event                  Event                       @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  athleteId              String
+  athlete                Athlete                     @relation(fields: [athleteId], references: [id], onDelete: Cascade)
+  accountId              String?
+  account                ParticipantAccount?         @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  submissionId           String?
+  submission             RegistrationSubmission?     @relation(fields: [submissionId], references: [id], onDelete: SetNull)
+  categoryId             String
+  category               Category                    @relation(fields: [categoryId], references: [id])
+  federationId           String?
+  federation             Federation?                 @relation(fields: [federationId], references: [id], onDelete: SetNull)
+  status                 RegistrationStatus          @default(SUBMITTED)
+  statusReason           String?
+  statusChangedAt        DateTime?
+  statusChangedBy        String?
+  paymentStatus          PaymentStatus               @default(NOT_REQUIRED)
+  paymentStatusReason    String?
   paymentStatusChangedAt DateTime?
   paymentStatusChangedBy String?
-  feeAmount           Int                     @default(0)
-  currency            String                  @default("VND")
-  ticketCode          String                  @unique
-  paymentTransactions PaymentTransaction[]
-  statusHistory       RegistrationStatusHistory[]
-  paymentStatusHistory PaymentStatusHistory[]
-  createdAt           DateTime                @default(now())
-  updatedAt           DateTime                @updatedAt
+  feeAmount              Int                         @default(0)
+  currency               String                      @default("VND")
+  ticketCode             String                      @unique
+  paymentTransactions    PaymentTransaction[]
+  statusHistory          RegistrationStatusHistory[]
+  paymentStatusHistory   PaymentStatusHistory[]
+  createdAt              DateTime                    @default(now())
+  updatedAt              DateTime                    @updatedAt
 
   @@unique([eventId, athleteId, categoryId])
   @@index([accountId, createdAt])

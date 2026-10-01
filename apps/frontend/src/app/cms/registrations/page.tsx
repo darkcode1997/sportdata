@@ -2,17 +2,21 @@
 
 import { useMemo, useState } from 'react';
 import useSWR from 'swr';
-import { Button, Card, Select, Space, Table, Tag, Typography } from 'antd';
+import { Button, Card, Input, Modal, Select, Table, Tag, Typography } from 'antd';
 import { CheckCircle2, Eye, RefreshCw, TicketCheck, XCircle } from 'lucide-react';
 import { api, fetcher } from '@/lib/api';
 import { CmsPageHeader } from '@/components/cms/CmsPageHeader';
 import { useSportDataToast } from '@/hooks/useSportDataToast';
+import { AthleteQuickViewModal } from '@/components/cms/AthleteQuickViewModal';
 
 type Registration = {
   id: string;
   ticketCode: string;
   status: string;
   paymentStatus: string;
+  feeAmount: number;
+  currency: string;
+  statusReason?: string | null;
   createdAt: string;
   event: { id: string; name: string };
   category: { name: string; sport?: { name: string } };
@@ -43,6 +47,10 @@ type EventItem = { id: string; name: string };
 export default function CmsRegistrationsPage() {
   const [eventId, setEventId] = useState('');
   const toast = useSportDataToast();
+  const [pendingStatus, setPendingStatus] = useState<{ item: Registration; status: string }>();
+  const [reason, setReason] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [selectedAthleteId, setSelectedAthleteId] = useState<string>();
   const { data: registrations = [], isLoading, mutate } = useSWR<Registration[]>(
     `/participant-auth/admin/registrations${eventId ? `?eventId=${eventId}` : ''}`,
     fetcher,
@@ -50,13 +58,19 @@ export default function CmsRegistrationsPage() {
   const { data: eventResponse } = useSWR<{ items: EventItem[] }>('/events?limit=200', fetcher);
   const events = useMemo(() => eventResponse?.items || [], [eventResponse]);
 
-  const changeStatus = async (id: string, status: string) => {
+  const changeStatus = async () => {
+    if (!pendingStatus || reason.trim().length < 3) return;
+    setSaving(true);
     try {
-      await api.patch(`/participant-auth/admin/registrations/${id}/status`, { status });
+      await api.patch(`/participant-auth/admin/registrations/${pendingStatus.item.id}/status`, { status: pendingStatus.status, reason: reason.trim() });
       await mutate();
       toast.success('Đã cập nhật trạng thái đăng ký.');
+      setPendingStatus(undefined);
+      setReason('');
     } catch (requestError: any) {
       toast.error(requestError.response?.data?.message || 'Không thể cập nhật trạng thái.');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -121,10 +135,16 @@ export default function CmsRegistrationsPage() {
               key: 'athlete',
               width: 240,
               render: (_, item) => (
-                <div><strong>{item.athlete.fullName}</strong><div className="text-xs text-slate-500">{item.athlete.country.code} · {item.athlete.federation?.name || 'VĐV tự do'} · {item.athlete.weight ? `${item.athlete.weight} kg` : 'chưa cân'}</div></div>
+                <div><Button type="link" className="h-auto !p-0 font-semibold" onClick={() => setSelectedAthleteId(item.athlete.id)}>{item.athlete.fullName}</Button><div className="text-xs text-slate-500">{item.athlete.country.code} · {item.athlete.federation?.name || 'VĐV tự do'} · {item.athlete.weight ? `${item.athlete.weight} kg` : 'chưa cân'}</div></div>
               ),
             },
             { title: 'Sự kiện', dataIndex: ['event', 'name'], width: 260 },
+            {
+              title: 'Thanh toán',
+              key: 'payment',
+              width: 170,
+              render: (_, item) => <div><Tag color={item.paymentStatus === 'PAID' || item.paymentStatus === 'NOT_REQUIRED' ? 'success' : item.paymentStatus === 'FAILED' ? 'error' : 'processing'}>{{ NOT_REQUIRED: 'Miễn thanh toán', PENDING: 'Chờ thanh toán', PAID: 'Đã duyệt', FAILED: 'Thất bại' }[item.paymentStatus] || item.paymentStatus}</Tag>{item.feeAmount > 0 ? <div className="mt-1 text-xs tabular-nums">{new Intl.NumberFormat('vi-VN').format(item.feeAmount)} {item.currency}</div> : null}</div>,
+            },
             {
               title: 'Hạng đấu',
               key: 'category',
@@ -201,7 +221,7 @@ export default function CmsRegistrationsPage() {
                   <Select
                     value={item.status}
                     className="w-full"
-                    onChange={(status) => changeStatus(item.id, status)}
+                    onChange={(status) => status !== item.status && setPendingStatus({ item, status })}
                     options={[
                       { value: 'SUBMITTED', label: 'Chờ duyệt' },
                       { value: 'CONFIRMED', label: identityVerified ? 'Đã xác nhận' : 'Cần xác thực giấy tờ', disabled: !identityVerified },
@@ -215,6 +235,20 @@ export default function CmsRegistrationsPage() {
           ]}
         />
       </Card>
+      <Modal
+        open={Boolean(pendingStatus)}
+        title="Cập nhật trạng thái đăng ký"
+        okText="Xác nhận thay đổi"
+        cancelText="Hủy"
+        confirmLoading={saving}
+        okButtonProps={{ disabled: reason.trim().length < 3 }}
+        onOk={() => void changeStatus()}
+        onCancel={() => { if (!saving) { setPendingStatus(undefined); setReason(''); } }}
+      >
+        <p className="mb-3 text-sm text-slate-500">Mọi thay đổi trạng thái đều phải có lý do và được lưu lịch sử.</p>
+        <Input.TextArea rows={4} showCount maxLength={1000} value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Nhập lý do (bắt buộc)" />
+      </Modal>
+      <AthleteQuickViewModal athleteId={selectedAthleteId} open={Boolean(selectedAthleteId)} onClose={() => setSelectedAthleteId(undefined)} />
     </div>
   );
 }

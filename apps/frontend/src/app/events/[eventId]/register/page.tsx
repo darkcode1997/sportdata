@@ -298,8 +298,8 @@ export default function GuestEventRegistrationPage() {
       const response = await participantApi.post<IdentityOcrResult>('/participant-auth/ocr/preview', form);
       if (response.data.status === 'COMPLETED') {
         setOcrReview({ athleteKey, result: response.data });
-      } else {
-        toast.warning(response.data.message || 'Không đọc được giấy tờ. Bạn vẫn có thể nhập tay và gửi CMS kiểm duyệt.');
+      } else if (response.data.message) {
+        toast.warning(response.data.message);
       }
     } catch (requestError) {
       toast.error(participantError(requestError, 'Không thể đọc dữ liệu giấy tờ'));

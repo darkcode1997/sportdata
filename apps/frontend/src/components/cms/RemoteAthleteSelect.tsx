@@ -8,6 +8,7 @@ import { fetcher } from '@/lib/api';
 type AthleteOption = {
   id: string;
   fullName: string;
+  seed?: number | null;
   country?: { id?: string; code?: string; name?: string } | null;
   federation?: { id?: string; code?: string | null; name?: string } | null;
 };
@@ -141,9 +142,7 @@ export function RemoteAthleteSelect({
     .filter((athlete) => !excluded.has(athlete.id) || selectedIds.has(athlete.id))
     .map((athlete) => ({
       value: athlete.id,
-      label: athlete.country?.code
-        ? `${athlete.fullName} · ${athlete.country.code}`
-        : athlete.fullName,
+      label: `${athlete.seed ? `#${athlete.seed} · ` : ''}${athlete.fullName}${athlete.country?.code ? ` · ${athlete.country.code}` : ''}`,
       countryLabel: [athlete.country?.name, athlete.country?.code].filter(Boolean).join(' · ') || 'Khác',
       federationLabel: [athlete.federation?.name, athlete.federation?.code].filter(Boolean).join(' · ') || 'VĐV tự do',
     }));

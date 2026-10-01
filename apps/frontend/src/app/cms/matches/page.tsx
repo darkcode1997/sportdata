@@ -693,6 +693,11 @@ export default function MatchesListPage() {
           </Flex>
         </Card>
       )}
+      <AthleteQuickViewModal
+        athleteId={selectedAthleteId}
+        open={Boolean(selectedAthleteId)}
+        onClose={() => setSelectedAthleteId(undefined)}
+      />
     </div>
   );
 }

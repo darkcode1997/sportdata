@@ -53,7 +53,6 @@ export class IdentityOcrService {
         confidence: null,
         fields: {},
         fieldConfidence: {},
-        message: 'OCR tự động đang tạm tắt. Ảnh vẫn được lưu và hồ sơ tiếp tục chuyển sang CMS để kiểm duyệt thủ công.',
       };
     }
 

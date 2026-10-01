@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import {
   PaymentProvider,
+  PaymentMode,
   PaymentStatus,
   PaymentTransactionStatus,
   Prisma,
@@ -34,11 +35,27 @@ export class PaymentsService {
     if (!await this.settings.enabled('paymentsEnabled')) {
       throw new ServiceUnavailableException('Thanh toán trực tuyến đang tạm tắt');
     }
-    const registration = await this.prisma.eventRegistration.findUnique({
+    let registration = await this.prisma.eventRegistration.findUnique({
       where: { ticketCode: dto.ticketCode.trim().toUpperCase() },
       include: { event: true, athlete: { select: { fullName: true } } },
     });
     if (!registration) throw new NotFoundException('Không tìm thấy lượt đăng ký');
+    if (
+      registration.paymentStatus === PaymentStatus.PENDING
+      && registration.feeAmount === 0
+      && registration.event.paymentMode !== PaymentMode.FREE
+      && registration.event.registrationFee > 0
+    ) {
+      await this.prisma.eventRegistration.update({
+        where: { id: registration.id },
+        data: { feeAmount: registration.event.registrationFee, currency: registration.event.registrationCurrency },
+      });
+      registration = {
+        ...registration,
+        feeAmount: registration.event.registrationFee,
+        currency: registration.event.registrationCurrency,
+      };
+    }
     if (registration.paymentStatus === PaymentStatus.PAID) {
       return {
         status: PaymentTransactionStatus.PAID,
@@ -55,7 +72,12 @@ export class PaymentsService {
     if (dto.provider === PaymentProvider.MOMO && registration.feeAmount < 1_000) {
       throw new BadRequestException('MoMo yêu cầu số tiền thanh toán tối thiểu 1.000 VND');
     }
-    if (!registration.event.paymentProviders.includes(dto.provider)) {
+    const allowedProviders = registration.event.paymentProviders.length
+      ? registration.event.paymentProviders
+      : registration.event.paymentMode === PaymentMode.MANUAL
+        ? [PaymentProvider.BANK_QR]
+        : [];
+    if (!allowedProviders.includes(dto.provider)) {
       throw new BadRequestException('Phương thức thanh toán chưa được bật cho sự kiện này');
     }
 

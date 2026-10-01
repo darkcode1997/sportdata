@@ -6,6 +6,18 @@ ADD COLUMN "paymentStatusReason" TEXT,
 ADD COLUMN "paymentStatusChangedAt" TIMESTAMP(3),
 ADD COLUMN "paymentStatusChangedBy" TEXT;
 
+-- Repair legacy paid-event registrations that were created with a zero fee.
+UPDATE "EventRegistration" AS registration
+SET
+  "feeAmount" = event."registrationFee",
+  "currency" = event."registrationCurrency"
+FROM "Event" AS event
+WHERE registration."eventId" = event."id"
+  AND registration."paymentStatus" = 'PENDING'
+  AND registration."feeAmount" = 0
+  AND event."paymentMode" <> 'FREE'
+  AND event."registrationFee" > 0;
+
 CREATE TABLE "RegistrationStatusHistory" (
   "id" TEXT NOT NULL,
   "registrationId" TEXT NOT NULL,

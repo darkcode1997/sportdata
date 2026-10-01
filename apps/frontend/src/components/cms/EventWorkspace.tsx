@@ -12,6 +12,7 @@ import {
   Form,
   Input,
   InputNumber,
+  Modal,
   Popconfirm,
   Segmented,
   Select,
@@ -47,6 +48,7 @@ import { useSportDataToast } from '@/hooks/useSportDataToast';
 import { EventParticipationCard } from '@/components/EventParticipationCard';
 import { SportdataBracket, type BracketDraw } from '@/components/brackets/SportdataBracket';
 import type { ParticipationTicket } from '@/lib/ticket-types';
+import { AthleteQuickViewModal } from '@/components/cms/AthleteQuickViewModal';
 
 type EventWorkspaceProps = {
   event: any;
@@ -58,6 +60,10 @@ type Registration = {
   ticketCode: string;
   status: string;
   paymentStatus: string;
+  feeAmount: number;
+  currency: string;
+  statusReason?: string | null;
+  paymentStatusReason?: string | null;
   event: { id: string; name: string };
   category: { name: string; sport?: { name: string } };
   athlete: {
@@ -77,6 +83,14 @@ type Registration = {
     currency: string;
     createdAt: string;
   }>;
+  competitionEntry?: { id: string; seed?: number | null; status: string } | null;
+};
+
+const paymentStatusLabels: Record<string, { label: string; color: string }> = {
+  NOT_REQUIRED: { label: 'Miễn thanh toán', color: 'success' },
+  PENDING: { label: 'Chờ thanh toán', color: 'processing' },
+  PAID: { label: 'Đã duyệt', color: 'success' },
+  FAILED: { label: 'Thanh toán thất bại', color: 'error' },
 };
 
 const paymentModeOptions = [
@@ -98,6 +112,26 @@ const ticketThemePresets = [
   { value: 'EMERALD', label: 'Emerald', description: 'Xanh lá, bố cục tối giản', layout: 'MINIMAL', primary: '#059669', secondary: '#064E3B', accent: '#0EA5E9' },
   { value: 'ROYAL', label: 'Royal', description: 'Tím hoàng gia và vàng', layout: 'STRIPE', primary: '#4F46E5', secondary: '#1E1B4B', accent: '#D97706' },
 ] as const;
+
+function SeedInput({ value, disabled, onSave }: { value?: number | null; disabled?: boolean; onSave: (value: number | null) => void }) {
+  const [draft, setDraft] = useState<number | null>(value ?? null);
+  useEffect(() => setDraft(value ?? null), [value]);
+  return (
+    <InputNumber
+      min={1}
+      precision={0}
+      value={draft}
+      disabled={disabled}
+      placeholder="Seed"
+      className="w-full"
+      onChange={(nextValue) => setDraft(nextValue == null ? null : Number(nextValue))}
+      onBlur={() => {
+        if ((draft ?? null) !== (value ?? null)) onSave(draft);
+      }}
+      onPressEnter={(event) => event.currentTarget.blur()}
+    />
+  );
+}
 
 function dateTimeInput(value?: string | null) {
   if (!value) return '';
@@ -189,14 +223,42 @@ function EventOverview({ event, canEdit }: { event: any; canEdit: boolean }) {
 function RegistrationsTab({ eventId, canOperate, canConfirmPayment }: { eventId: string; canOperate: boolean; canConfirmPayment: boolean }) {
   const toast = useSportDataToast();
   const { data: registrations = [], isLoading, mutate } = useSWR<Registration[]>(`/participant-auth/admin/registrations?eventId=${eventId}`, fetcher);
+  const [reviewChange, setReviewChange] = useState<{ kind: 'registration' | 'payment'; item: Registration; nextStatus: string }>();
+  const [reviewReason, setReviewReason] = useState('');
+  const [reviewSaving, setReviewSaving] = useState(false);
+  const [selectedAthleteId, setSelectedAthleteId] = useState<string>();
 
-  const changeStatus = async (id: string, status: string) => {
+  const submitStatusChange = async () => {
+    if (!reviewChange || reviewReason.trim().length < 3) return;
+    setReviewSaving(true);
     try {
-      await api.patch(`/participant-auth/admin/registrations/${id}/status`, { status });
+      const endpoint = reviewChange.kind === 'payment'
+        ? `/participant-auth/admin/registrations/${reviewChange.item.id}/payment-status`
+        : `/participant-auth/admin/registrations/${reviewChange.item.id}/status`;
+      await api.patch(endpoint, { status: reviewChange.nextStatus, reason: reviewReason.trim() });
       await mutate();
-      toast.success(status === 'CONFIRMED' ? 'Đã xác nhận hồ sơ và gửi lại vé A6 qua email.' : 'Đã cập nhật trạng thái đăng ký.');
+      toast.success(reviewChange.kind === 'payment'
+        ? 'Đã cập nhật trạng thái thanh toán.'
+        : reviewChange.nextStatus === 'CONFIRMED'
+          ? 'Đã xác nhận hồ sơ và gửi lại vé A6 qua email.'
+          : 'Đã cập nhật trạng thái đăng ký.');
+      setReviewChange(undefined);
+      setReviewReason('');
     } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Không thể cập nhật trạng thái đăng ký.');
+      toast.error(error.response?.data?.message || 'Không thể cập nhật trạng thái.');
+    } finally {
+      setReviewSaving(false);
+    }
+  };
+
+  const updateSeed = async (item: Registration, seed: number | null) => {
+    if (!item.competitionEntry) return;
+    try {
+      await api.patch(`/competitions/entries/${item.competitionEntry.id}/seed`, { seed });
+      await mutate();
+      toast.success(seed ? `Đã đặt ${item.athlete.fullName} là hạt giống số ${seed}.` : 'Đã xóa hạt giống.');
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Không thể cập nhật hạt giống.');
     }
   };
 
@@ -224,17 +286,8 @@ function RegistrationsTab({ eventId, canOperate, canConfirmPayment }: { eventId:
     }
   };
 
-  const confirmBankTransfer = async (orderId: string) => {
-    try {
-      await api.patch(`/payments/transactions/${encodeURIComponent(orderId)}/manual-confirm`);
-      await mutate();
-      toast.success('Đã xác nhận chuyển khoản và cập nhật hồ sơ sang đã thanh toán.');
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Không thể xác nhận chuyển khoản.');
-    }
-  };
-
   return (
+    <>
     <Card
       title={`${registrations.length} lượt đăng ký`}
       extra={<Button icon={<RefreshCw className="h-4 w-4" />} onClick={() => mutate()}>Làm mới</Button>}
@@ -244,7 +297,7 @@ function RegistrationsTab({ eventId, canOperate, canConfirmPayment }: { eventId:
         rowKey="id"
         loading={isLoading}
         dataSource={registrations}
-        scroll={{ x: 1050 }}
+        scroll={{ x: 1700 }}
         pagination={{ pageSize: 15, showSizeChanger: true }}
         locale={{ emptyText: 'Chưa có vận động viên đăng ký.' }}
         columns={[
@@ -252,9 +305,21 @@ function RegistrationsTab({ eventId, canOperate, canConfirmPayment }: { eventId:
             title: 'Vận động viên',
             key: 'athlete',
             width: 250,
-            render: (_, item) => <div><strong>{item.athlete.fullName}</strong><div className="text-xs text-slate-500">{item.athlete.country?.code || '—'} · {item.athlete.federation?.name || 'VĐV tự do'} · {item.athlete.weight ? `${item.athlete.weight} kg` : 'chưa cân'}</div></div>,
+            render: (_, item) => <div><Button type="link" className="h-auto !p-0 font-semibold" onClick={() => setSelectedAthleteId(item.athlete.id)}>{item.athlete.fullName}</Button><div className="text-xs text-slate-500">{item.athlete.country?.code || '—'} · {item.athlete.federation?.name || 'VĐV tự do'} · {item.athlete.weight ? `${item.athlete.weight} kg` : 'chưa cân'}</div></div>,
           },
           { title: 'Hạng đấu', key: 'category', width: 240, render: (_, item) => `${item.category.sport?.name || ''} · ${item.category.name}` },
+          {
+            title: 'Hạt giống',
+            key: 'seed',
+            width: 130,
+            render: (_, item) => (
+              <SeedInput
+                value={item.competitionEntry?.seed}
+                disabled={!canOperate || !item.competitionEntry || item.status !== 'CONFIRMED'}
+                onSave={(value) => void updateSeed(item, value)}
+              />
+            ),
+          },
           {
             title: 'Giấy tờ xác minh',
             key: 'documents',
@@ -285,21 +350,24 @@ function RegistrationsTab({ eventId, canOperate, canConfirmPayment }: { eventId:
             key: 'payment',
             width: 210,
             render: (_, item) => {
-              const bankTransaction = item.paymentTransactions?.find((transaction) => transaction.provider === 'BANK_QR' && transaction.status === 'PENDING');
+              const badge = paymentStatusLabels[item.paymentStatus] || { label: item.paymentStatus, color: 'default' };
               return (
                 <Space direction="vertical" size={4}>
-                  <Tag color={item.paymentStatus === 'PAID' || item.paymentStatus === 'NOT_REQUIRED' ? 'success' : 'processing'}>{item.paymentStatus}</Tag>
-                  {bankTransaction && canConfirmPayment ? (
-                    <Popconfirm
-                      title="Xác nhận đã nhận tiền?"
-                      description={`${new Intl.NumberFormat('vi-VN').format(bankTransaction.amount)} ${bankTransaction.currency} · ${bankTransaction.orderId}`}
-                      okText="Xác nhận"
-                      cancelText="Hủy"
-                      onConfirm={() => confirmBankTransfer(bankTransaction.orderId)}
-                    >
-                      <Button size="small" type="link">Xác nhận chuyển khoản</Button>
-                    </Popconfirm>
-                  ) : null}
+                  {canConfirmPayment && item.paymentStatus !== 'NOT_REQUIRED' ? (
+                    <Select
+                      size="small"
+                      value={item.paymentStatus}
+                      className="min-w-40"
+                      onChange={(nextStatus) => nextStatus !== item.paymentStatus && setReviewChange({ kind: 'payment', item, nextStatus })}
+                      options={[
+                        { value: 'PENDING', label: 'Chờ thanh toán' },
+                        { value: 'PAID', label: 'Duyệt thanh toán' },
+                        { value: 'FAILED', label: 'Thanh toán thất bại' },
+                      ]}
+                    />
+                  ) : <Tag color={badge.color}>{badge.label}</Tag>}
+                  {item.feeAmount > 0 ? <span className="text-xs tabular-nums text-slate-500">{new Intl.NumberFormat('vi-VN').format(item.feeAmount)} {item.currency}</span> : null}
+                  {item.paymentStatusReason ? <span className="max-w-44 text-xs text-slate-500">Lý do: {item.paymentStatusReason}</span> : null}
                 </Space>
               );
             },
@@ -318,30 +386,70 @@ function RegistrationsTab({ eventId, canOperate, canConfirmPayment }: { eventId:
             render: (_, item) => {
               const states = new Map((item.athlete.media || []).map((media) => [media.type, media.verificationStatus]));
               const identityVerified = (states.get('CCCD_FRONT') === 'VERIFIED' && states.get('CCCD_BACK') === 'VERIFIED') || states.get('PASSPORT') === 'VERIFIED';
-              return canOperate ? (
-                <Select
-                  value={item.status}
-                  className="w-full"
-                  onChange={(status) => changeStatus(item.id, status)}
-                  options={[
-                    { value: 'SUBMITTED', label: 'Chờ duyệt' },
-                    { value: 'CONFIRMED', label: identityVerified ? 'Đã xác nhận' : 'Cần xác thực giấy tờ', disabled: !identityVerified },
-                    { value: 'REJECTED', label: 'Từ chối' },
-                    { value: 'CANCELLED', label: 'Đã hủy' },
-                  ]}
-                />
-              ) : <Tag>{item.status}</Tag>;
+              return (
+                <Space direction="vertical" size={4} className="w-full">
+                  {canOperate ? (
+                    <Select
+                      value={item.status}
+                      className="w-full"
+                      onChange={(nextStatus) => nextStatus !== item.status && setReviewChange({ kind: 'registration', item, nextStatus })}
+                      options={[
+                        { value: 'SUBMITTED', label: 'Chờ duyệt' },
+                        { value: 'CONFIRMED', label: identityVerified ? 'Đã xác nhận' : 'Cần xác thực giấy tờ', disabled: !identityVerified },
+                        { value: 'REJECTED', label: 'Từ chối' },
+                        { value: 'CANCELLED', label: 'Đã hủy' },
+                      ]}
+                    />
+                  ) : <Tag>{item.status}</Tag>}
+                  {item.statusReason ? <span className="max-w-44 text-xs text-slate-500">Lý do: {item.statusReason}</span> : null}
+                </Space>
+              );
             },
           },
         ]}
       />
     </Card>
+    <Modal
+      open={Boolean(reviewChange)}
+      title={reviewChange?.kind === 'payment' ? 'Cập nhật trạng thái thanh toán' : 'Cập nhật trạng thái đăng ký'}
+      okText="Xác nhận thay đổi"
+      cancelText="Hủy"
+      confirmLoading={reviewSaving}
+      okButtonProps={{ disabled: reviewReason.trim().length < 3 }}
+      onOk={() => void submitStatusChange()}
+      onCancel={() => {
+        if (!reviewSaving) {
+          setReviewChange(undefined);
+          setReviewReason('');
+        }
+      }}
+    >
+      <p className="mb-3 text-sm text-slate-500">
+        {reviewChange?.item.athlete.fullName} · Mọi thay đổi đều được lưu lịch sử để đối soát.
+      </p>
+      <Input.TextArea
+        autoFocus
+        rows={4}
+        maxLength={1000}
+        showCount
+        value={reviewReason}
+        onChange={(event) => setReviewReason(event.target.value)}
+        placeholder="Nhập lý do thay đổi (bắt buộc, tối thiểu 3 ký tự)"
+      />
+    </Modal>
+    <AthleteQuickViewModal
+      athleteId={selectedAthleteId}
+      open={Boolean(selectedAthleteId)}
+      onClose={() => setSelectedAthleteId(undefined)}
+    />
+    </>
   );
 }
 
 function MatchesTab({ event }: { event: any }) {
   const [categoryId, setCategoryId] = useState<string>(event.categories?.[0]?.id || '');
   const [view, setView] = useState<'tree' | 'list'>('tree');
+  const [selectedAthleteId, setSelectedAthleteId] = useState<string>();
   const query = new URLSearchParams({ eventId: event.id, limit: '200' });
   if (categoryId) query.set('categoryId', categoryId);
   const { data, isLoading, mutate } = useSWR<any>(`/matches?${query}`, fetcher);
@@ -371,8 +479,8 @@ function MatchesTab({ event }: { event: any }) {
             columns={[
               { title: '#', dataIndex: 'matchNumber', width: 70 },
               { title: 'Vòng', dataIndex: 'round', width: 90 },
-              { title: 'VĐV 1', dataIndex: ['athlete1', 'fullName'] },
-              { title: 'VĐV 2', dataIndex: ['athlete2', 'fullName'] },
+              { title: 'VĐV 1', render: (_: unknown, match: any) => match.athlete1 ? <Button type="link" className="h-auto !p-0" onClick={() => setSelectedAthleteId(match.athlete1.id)}>{match.athlete1.fullName}</Button> : 'Chờ xác định' },
+              { title: 'VĐV 2', render: (_: unknown, match: any) => match.athlete2 ? <Button type="link" className="h-auto !p-0" onClick={() => setSelectedAthleteId(match.athlete2.id)}>{match.athlete2.fullName}</Button> : 'Chờ xác định' },
               { title: 'Sân', dataIndex: 'fop', width: 120 },
               { title: 'Trạng thái', dataIndex: 'status', width: 130, render: (value) => <Tag>{value}</Tag> },
               { title: '', width: 60, render: (_: unknown, match: any) => <Button type="text" href={`/cms/matches/${match.id}/edit`} icon={<Eye className="h-4 w-4" />} /> },
@@ -380,6 +488,7 @@ function MatchesTab({ event }: { event: any }) {
           />
         </Card>
       )}
+      <AthleteQuickViewModal athleteId={selectedAthleteId} open={Boolean(selectedAthleteId)} onClose={() => setSelectedAthleteId(undefined)} />
     </div>
   );
 }
@@ -684,8 +793,18 @@ function BracketTab({ event, canOperate }: { event: any; canOperate: boolean }) 
   const [groupCount, setGroupCount] = useState(1);
   const [generating, setGenerating] = useState(false);
   const category = event.categories?.find((item: any) => item.id === categoryId);
-  const { data: entries = [], isLoading } = useSWR<any[]>(categoryId ? `/competitions/events/${event.id}/categories/${categoryId}/entries` : null, fetcher);
+  const { data: entries = [], isLoading, mutate: mutateEntries } = useSWR<any[]>(categoryId ? `/competitions/events/${event.id}/categories/${categoryId}/entries` : null, fetcher);
   const activeEntries = entries.filter((entry) => entry.status !== 'WITHDRAWN' && entry.athlete?.id);
+
+  const updateSeed = async (entry: any, seed: number | null) => {
+    try {
+      await api.patch(`/competitions/entries/${entry.id}/seed`, { seed });
+      await mutateEntries();
+      toast.success(seed ? `Đã đặt hạt giống số ${seed}.` : 'Đã xóa hạt giống.');
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Không thể cập nhật hạt giống.');
+    }
+  };
 
   const generate = async () => {
     if (!categoryId || activeEntries.length < 2) {
@@ -754,7 +873,7 @@ function BracketTab({ event, canOperate }: { event: any; canOperate: boolean }) 
         </div>
       </Card>
       <Card title={`2. Danh sách đầu vào (${activeEntries.length} VĐV)`} loading={isLoading}>
-        {activeEntries.length ? <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">{activeEntries.map((entry) => <div key={entry.id} className="rounded-xl border border-slate-300/15 px-3 py-2"><strong>{entry.athlete.fullName}</strong><div className="text-xs text-slate-500">Seed {entry.seed || '—'} · {entry.athlete.federation?.name || 'VĐV tự do'}</div></div>)}</div> : <Empty description="Chưa có lượt đăng ký đã xác nhận cho hạng đấu này." />}
+        {activeEntries.length ? <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">{activeEntries.map((entry) => <div key={entry.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-300/15 px-3 py-2"><div className="min-w-0"><strong className="block truncate">{entry.athlete.fullName}</strong><div className="truncate text-xs text-slate-500">{entry.athlete.federation?.name || 'VĐV tự do'}</div></div><div className="w-24"><SeedInput value={entry.seed} disabled={!canOperate} onSave={(value) => void updateSeed(entry, value)} /></div></div>)}</div> : <Empty description="Chưa có lượt đăng ký đã xác nhận cho hạng đấu này." />}
       </Card>
     </div>
   );
