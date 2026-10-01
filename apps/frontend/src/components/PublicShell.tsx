@@ -3,8 +3,8 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
-import { Button, ConfigProvider, Drawer, Flex, Menu as AntMenu, Tooltip } from 'antd';
-import { BarChart3, CalendarDays, LogIn, LogOut, Mail, Menu, Moon, Newspaper, Sun, Trophy, UserRound, X } from 'lucide-react';
+import { Button, ConfigProvider, Drawer, Dropdown, Flex, Menu as AntMenu, Tooltip } from 'antd';
+import { BarChart3, CalendarDays, ChevronDown, LogIn, LogOut, Mail, Menu, Moon, Newspaper, Sun, Trophy, UserRound, X } from 'lucide-react';
 import {
   applyDocumentColorMode,
   createSportdataTheme,
@@ -75,6 +75,12 @@ export function PublicShell({ children }: { children: React.ReactNode }) {
     });
   };
 
+  const signOut = () => {
+    clearParticipantSession();
+    setParticipant(null);
+    router.push('/');
+  };
+
   const themeToggle = (
     <Tooltip title={isLight ? 'Chuyển sang giao diện tối' : 'Chuyển sang giao diện sáng'}>
       <Button
@@ -125,14 +131,32 @@ export function PublicShell({ children }: { children: React.ReactNode }) {
           </nav>
 
           <div className="flex items-center gap-2">
-            <Link href={participant ? accountHref : '/account/login'} className="hidden sm:block">
-              <Button
-                type={participant ? 'default' : 'primary'}
-                icon={participant ? <UserRound className="h-4 w-4" /> : <LogIn className="h-4 w-4" />}
+            {participant ? (
+              <Dropdown
+                placement="bottomRight"
+                trigger={['click']}
+                menu={{
+                  items: [
+                    { key: 'profile', icon: <UserRound className="h-4 w-4" />, label: 'Hồ sơ tài khoản' },
+                    { type: 'divider' },
+                    { key: 'logout', danger: true, icon: <LogOut className="h-4 w-4" />, label: 'Đăng xuất' },
+                  ],
+                  onClick: ({ key }) => {
+                    if (key === 'logout') signOut();
+                    if (key === 'profile') router.push(accountHref);
+                  },
+                }}
               >
-                {participant ? participant.displayName : 'Đăng nhập'}
-              </Button>
-            </Link>
+                <Button className="hidden sm:!inline-flex" icon={<UserRound className="h-4 w-4" />}>
+                  <span className="max-w-40 truncate">{participant.displayName}</span>
+                  <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+                </Button>
+              </Dropdown>
+            ) : (
+              <Link href="/account/login" className="hidden sm:block">
+                <Button type="primary" icon={<LogIn className="h-4 w-4" />}>Đăng nhập</Button>
+              </Link>
+            )}
             {themeToggle}
             <Button
               type="text"
@@ -210,9 +234,7 @@ export function PublicShell({ children }: { children: React.ReactNode }) {
                 className="mt-2"
                 icon={<LogOut className="h-4 w-4" />}
                 onClick={() => {
-                  clearParticipantSession();
-                  setParticipant(null);
-                  router.push('/');
+                  signOut();
                   setMenuOpen(false);
                 }}
               >
