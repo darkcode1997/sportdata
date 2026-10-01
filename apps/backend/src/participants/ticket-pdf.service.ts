@@ -178,6 +178,7 @@ export class TicketPdfService {
   private ticketPage(ticket: TicketPayload): Content[] {
     const verificationUrl = `${(process.env.FRONTEND_URL || "http://localhost:3001").replace(/\/$/, "")}/tickets/${encodeURIComponent(ticket.ticketCode)}`;
     const status = this.status(ticket.status);
+    const theme = this.ticketTheme(ticket);
     const background = this.dataUrl(
       ticket.assets?.backgroundData,
       ticket.assets?.backgroundMimeType,
@@ -187,18 +188,285 @@ export class TicketPdfService {
       ticket.assets?.avatarMimeType,
     );
 
-    return [
-      ...(background
-        ? [
+    const backgroundLayer: Content[] = background
+      ? [
+          {
+            image: background,
+            width: A6_WIDTH,
+            height: A6_HEIGHT,
+            absolutePosition: { x: 0, y: 0 },
+          },
+        ]
+      : [];
+
+    const photo: Content = {
+      table: {
+        widths: [91],
+        heights: [116],
+        body: [
+          [
+            avatar
+              ? {
+                  image: avatar,
+                  fit: [89, 114],
+                  alignment: "center",
+                  margin: [1, 1, 1, 1],
+                  fillColor: "#ffffff",
+                }
+              : {
+                  text: "ẢNH\nVẬN ĐỘNG VIÊN",
+                  alignment: "center",
+                  color: "#64748b",
+                  bold: true,
+                  margin: [0, 45, 0, 45],
+                  fillColor: "#f8fafc",
+                },
+          ],
+        ],
+      },
+      layout: {
+        hLineColor: () => theme.secondary,
+        vLineColor: () => theme.secondary,
+        hLineWidth: () => 1,
+        vLineWidth: () => 1,
+      },
+    };
+
+    const qrAndCategory: Content = {
+      stack: [
+        {
+          qr: verificationUrl,
+          fit: 72,
+          alignment: "center",
+          margin: [0, 0, 0, 2],
+          foreground: "#07111f",
+          background: "#ffffff",
+        },
+        {
+          text: "QUÉT VÉ",
+          alignment: "center",
+          color: theme.accent,
+          bold: true,
+          fontSize: 6,
+        },
+        {
+          table: {
+            widths: ["*"],
+            body: [
+              [
+                {
+                  stack: [
+                    {
+                      text: "HẠNG THI ĐẤU",
+                      alignment: "center",
+                      color: "#e2e8f0",
+                      bold: true,
+                      fontSize: 6,
+                    },
+                    {
+                      text: ticket.category.name.toLocaleUpperCase("vi"),
+                      alignment: "center",
+                      color: "#ffffff",
+                      bold: true,
+                      fontSize: 10,
+                      margin: [3, 4, 3, 2],
+                    },
+                  ],
+                  fillColor: theme.primary,
+                  margin: [4, 5, 4, 5],
+                },
+              ],
+            ],
+          },
+          layout: {
+            hLineColor: () => theme.secondary,
+            vLineColor: () => theme.secondary,
+            hLineWidth: () => 1,
+            vLineWidth: () => 1,
+          },
+          margin: [0, 5, 0, 0],
+        },
+      ],
+    };
+
+    const details: Content = {
+      table: {
+        widths: [51, "*"],
+        body: [
+          [
             {
-              image: background,
-              width: A6_WIDTH,
-              height: A6_HEIGHT,
-              absolutePosition: { x: 0, y: 0 },
-            } as Content,
-          ]
-        : []),
-      {
+              text: "Họ và tên:",
+              bold: true,
+              fontSize: 8.5,
+              border: [false, false, false, false],
+            },
+            {
+              text: ticket.athlete.fullName.toLocaleUpperCase("vi"),
+              bold: true,
+              fontSize: 10.5,
+              border: [false, false, false, true],
+              borderColor: ["#ffffff", "#ffffff", "#ffffff", theme.secondary],
+            },
+          ],
+          [
+            {
+              text: "Đơn vị:",
+              bold: true,
+              fontSize: 8.5,
+              margin: [0, 3, 0, 0],
+              border: [false, false, false, false],
+            },
+            {
+              text: ticket.athlete.federation?.name || "Vận động viên tự do",
+              bold: true,
+              fontSize: 8.5,
+              margin: [0, 3, 0, 0],
+              border: [false, false, false, true],
+              borderColor: ["#ffffff", "#ffffff", "#ffffff", theme.secondary],
+            },
+          ],
+          [
+            {
+              text: "Quốc gia:",
+              bold: true,
+              fontSize: 8,
+              margin: [0, 3, 0, 0],
+              border: [false, false, false, false],
+            },
+            {
+              text: ticket.athlete.country?.name || "—",
+              fontSize: 8,
+              margin: [0, 3, 0, 0],
+              border: [false, false, false, true],
+              borderColor: ["#ffffff", "#ffffff", "#ffffff", theme.secondary],
+            },
+          ],
+        ],
+      },
+      layout: {
+        paddingLeft: () => 3,
+        paddingRight: () => 3,
+        paddingTop: () => 3,
+        paddingBottom: () => 3,
+      },
+      fillColor: "#ffffff",
+    };
+
+    const footer: Content = {
+      table: {
+        widths: ["*"],
+        body: [
+          [
+            {
+              stack: [
+                {
+                  text: `${this.date(ticket.event.startDate)}${ticket.event.location ? ` · ${ticket.event.location}` : ""}`,
+                  alignment: "center",
+                  color: "#ffffff",
+                  bold: true,
+                  fontSize: 7,
+                },
+                {
+                  text: `${ticket.ticketCode}  •  SPORTDATA.VN`,
+                  alignment: "center",
+                  color: "#e2e8f0",
+                  bold: true,
+                  fontSize: 6.5,
+                  characterSpacing: 0.5,
+                  margin: [0, 3, 0, 0],
+                },
+              ],
+              margin: [6, 7, 6, 7],
+              fillColor: theme.secondary,
+            },
+          ],
+        ],
+      },
+      layout: "noBorders",
+    };
+
+    const classicHeader: Content = {
+      table: {
+        widths: ["*"],
+        body: [
+          [
+            {
+              stack: [
+                {
+                  columns: [
+                    {
+                      text: "SPORTDATA VIỆT NAM",
+                      bold: true,
+                      color: theme.primary,
+                      fontSize: 8,
+                      characterSpacing: 1.2,
+                    },
+                    {
+                      text: status.label,
+                      alignment: "right",
+                      bold: true,
+                      color: status.color,
+                      fontSize: 6.5,
+                    },
+                  ],
+                },
+                {
+                  text: ticket.event.name.toLocaleUpperCase("vi"),
+                  alignment: "center",
+                  bold: true,
+                  color: theme.secondary,
+                  fontSize: 15,
+                  margin: [4, 8, 4, 0],
+                },
+                {
+                  text: (ticket.sport?.name || "GIẢI ĐẤU THỂ THAO").toLocaleUpperCase("vi"),
+                  alignment: "center",
+                  bold: true,
+                  fontSize: 7,
+                  characterSpacing: 1,
+                  margin: [0, 4, 0, 1],
+                },
+              ],
+              margin: [9, 7, 9, 7],
+              fillColor: "#ffffff",
+            },
+          ],
+        ],
+      },
+      layout: "noBorders",
+    };
+
+    const media: Content = {
+      columns: [
+        { width: 105, stack: [photo] },
+        { width: "*", stack: [qrAndCategory] },
+      ],
+      columnGap: 18,
+    };
+
+    const athleteTitle: Content = {
+      table: {
+        widths: ["*"],
+        body: [
+          [
+            {
+              text: "VẬN ĐỘNG VIÊN",
+              alignment: "center",
+              bold: true,
+              color: theme.primary,
+              fontSize: 20,
+              characterSpacing: 1,
+              margin: [4, 5, 4, 5],
+              fillColor: "#ffffff",
+            },
+          ],
+        ],
+      },
+      layout: "noBorders",
+    };
+
+    if (theme.layout === "STRIPE") {
+      const stripeHeader: Content = {
         table: {
           widths: ["*"],
           body: [
@@ -210,7 +478,7 @@ export class TicketPdfService {
                       {
                         text: "SPORTDATA VIỆT NAM",
                         bold: true,
-                        color: "#0284c7",
+                        color: "#ffffff",
                         fontSize: 8,
                         characterSpacing: 1.2,
                       },
@@ -218,7 +486,7 @@ export class TicketPdfService {
                         text: status.label,
                         alignment: "right",
                         bold: true,
-                        color: status.color,
+                        color: "#ffffff",
                         fontSize: 6.5,
                       },
                     ],
@@ -227,218 +495,114 @@ export class TicketPdfService {
                     text: ticket.event.name.toLocaleUpperCase("vi"),
                     alignment: "center",
                     bold: true,
-                    color: "#075985",
+                    color: "#ffffff",
                     fontSize: 15,
                     margin: [4, 8, 4, 0],
                   },
                   {
-                    text: (
-                      ticket.sport?.name || "GIẢI ĐẤU THỂ THAO"
-                    ).toLocaleUpperCase("vi"),
+                    text: (ticket.sport?.name || "GIẢI ĐẤU THỂ THAO").toLocaleUpperCase("vi"),
                     alignment: "center",
                     bold: true,
+                    color: "#e2e8f0",
                     fontSize: 7,
                     characterSpacing: 1,
                     margin: [0, 4, 0, 1],
                   },
                 ],
-                margin: [9, 7, 9, 7],
-                fillColor: "#ffffff",
+                margin: [9, 9, 9, 9],
+                fillColor: theme.secondary,
               },
             ],
           ],
         },
         layout: "noBorders",
-        margin: [0, 0, 0, 7],
-      },
-      {
-        columns: [
-          {
-            width: 105,
-            stack: [
+      };
+
+      return [
+        ...backgroundLayer,
+        { ...stripeHeader, margin: [0, 0, 0, 8] },
+        { ...media, margin: [18, 0, 18, 7] },
+        { ...athleteTitle, margin: [0, 0, 0, 6] },
+        { ...details, margin: [8, 0, 8, 6] },
+        { ...footer, margin: [0, 10, 0, 0] },
+      ];
+    }
+
+    if (theme.layout === "MINIMAL") {
+      const minimalHeader: Content = {
+        table: {
+          widths: [5, "*"],
+          body: [
+            [
+              { text: "", fillColor: theme.accent },
               {
-                text: "ẢNH 3 × 4",
-                alignment: "center",
-                bold: true,
-                color: "#475569",
-                fontSize: 6.5,
-                margin: [0, 0, 0, 3],
-              },
-              {
-                table: {
-                  widths: [91],
-                  heights: [116],
-                  body: [
-                    [
-                      avatar
-                        ? {
-                            image: avatar,
-                            fit: [89, 114],
-                            alignment: "center",
-                            margin: [1, 1, 1, 1],
-                            fillColor: "#ffffff",
-                          }
-                        : {
-                            text: "ẢNH\nVẬN ĐỘNG VIÊN",
-                            alignment: "center",
-                            color: "#64748b",
-                            bold: true,
-                            margin: [0, 45, 0, 45],
-                            fillColor: "#f8fafc",
-                          },
+                stack: [
+                  {
+                    columns: [
+                      {
+                        text: "SPORTDATA VIỆT NAM",
+                        bold: true,
+                        color: theme.primary,
+                        fontSize: 7.5,
+                        characterSpacing: 1.1,
+                      },
+                      {
+                        text: status.label,
+                        alignment: "right",
+                        bold: true,
+                        color: status.color,
+                        fontSize: 6.3,
+                      },
                     ],
-                  ],
-                },
-                layout: {
-                  hLineColor: () => "#0f172a",
-                  vLineColor: () => "#0f172a",
-                  hLineWidth: () => 1,
-                  vLineWidth: () => 1,
-                },
+                  },
+                  {
+                    text: ticket.event.name.toLocaleUpperCase("vi"),
+                    bold: true,
+                    color: theme.secondary,
+                    fontSize: 14,
+                    margin: [0, 6, 0, 0],
+                  },
+                  {
+                    text: (ticket.sport?.name || "GIẢI ĐẤU THỂ THAO").toLocaleUpperCase("vi"),
+                    bold: true,
+                    color: "#475569",
+                    fontSize: 6.5,
+                    characterSpacing: 1,
+                    margin: [0, 3, 0, 0],
+                  },
+                ],
+                fillColor: "#ffffff",
+                margin: [9, 7, 9, 7],
               },
             ],
-          },
+          ],
+        },
+        layout: "noBorders",
+      };
+
+      const minimalMedia: Content = {
+        columns: [
+          { width: 105, stack: [photo] },
           {
             width: "*",
             stack: [
               {
-                qr: verificationUrl,
-                fit: 72,
+                text: "VẬN ĐỘNG\nVIÊN",
                 alignment: "center",
-                margin: [0, 0, 0, 2],
-                foreground: "#07111f",
-                background: "#ffffff",
-              },
-              {
-                text: "QUÉT VÉ",
-                alignment: "center",
-                color: "#047857",
                 bold: true,
-                fontSize: 6,
+                color: theme.primary,
+                fontSize: 16,
+                lineHeight: 0.9,
+                margin: [0, 2, 0, 8],
               },
-              {
-                table: {
-                  widths: ["*"],
-                  body: [
-                    [
-                      {
-                        stack: [
-                          {
-                            text: "HẠNG THI ĐẤU",
-                            alignment: "center",
-                            color: "#dbeafe",
-                            bold: true,
-                            fontSize: 6,
-                          },
-                          {
-                            text: ticket.category.name.toLocaleUpperCase("vi"),
-                            alignment: "center",
-                            color: "#ffffff",
-                            bold: true,
-                            fontSize: 10,
-                            margin: [3, 4, 3, 2],
-                          },
-                        ],
-                        fillColor: "#0284c7",
-                        margin: [4, 5, 4, 5],
-                      },
-                    ],
-                  ],
-                },
-                layout: "noBorders",
-                margin: [0, 5, 0, 0],
-              },
+              qrAndCategory,
             ],
           },
         ],
         columnGap: 18,
-        margin: [18, 0, 18, 7],
-      },
-      {
-        table: {
-          widths: ["*"],
-          body: [
-            [
-              {
-                text: "VẬN ĐỘNG VIÊN",
-                alignment: "center",
-                bold: true,
-                color: "#0284c7",
-                fontSize: 20,
-                characterSpacing: 1,
-                margin: [4, 5, 4, 5],
-                fillColor: "#ffffff",
-              },
-            ],
-          ],
-        },
-        layout: "noBorders",
-        margin: [0, 0, 0, 6],
-      },
-      {
-        table: {
-          widths: [51, "*"],
-          body: [
-            [
-              {
-                text: "Họ và tên:",
-                bold: true,
-                fontSize: 8.5,
-                border: [false, false, false, false],
-              },
-              {
-                text: ticket.athlete.fullName.toLocaleUpperCase("vi"),
-                bold: true,
-                fontSize: 10.5,
-                border: [false, false, false, true],
-                borderColor: ["#ffffff", "#ffffff", "#ffffff", "#334155"],
-              },
-            ],
-            [
-              {
-                text: "Đơn vị:",
-                bold: true,
-                fontSize: 8.5,
-                margin: [0, 3, 0, 0],
-                border: [false, false, false, false],
-              },
-              {
-                text: ticket.athlete.federation?.name || "Vận động viên tự do",
-                bold: true,
-                fontSize: 8.5,
-                margin: [0, 3, 0, 0],
-                border: [false, false, false, true],
-                borderColor: ["#ffffff", "#ffffff", "#ffffff", "#334155"],
-              },
-            ],
-            [
-              {
-                text: "Quốc gia:",
-                bold: true,
-                fontSize: 8,
-                margin: [0, 3, 0, 0],
-                border: [false, false, false, false],
-              },
-              {
-                text: ticket.athlete.country?.name || "—",
-                fontSize: 8,
-                margin: [0, 3, 0, 0],
-                border: [false, false, false, true],
-                borderColor: ["#ffffff", "#ffffff", "#ffffff", "#94a3b8"],
-              },
-            ],
-          ],
-        },
-        layout: {
-          paddingLeft: () => 3,
-          paddingRight: () => 3,
-          paddingTop: () => 3,
-          paddingBottom: () => 3,
-        },
-        fillColor: "#ffffff",
-        margin: [8, 0, 8, 6],
-      },
-      {
+      };
+
+      const minimalFooter: Content = {
         table: {
           widths: ["*"],
           body: [
@@ -448,30 +612,69 @@ export class TicketPdfService {
                   {
                     text: `${this.date(ticket.event.startDate)}${ticket.event.location ? ` · ${ticket.event.location}` : ""}`,
                     alignment: "center",
-                    color: "#ffffff",
+                    color: theme.secondary,
                     bold: true,
                     fontSize: 7,
                   },
                   {
-                    text: `${ticket.ticketCode}  •  SPORTDATA.VN`,
+                    text: ticket.ticketCode,
                     alignment: "center",
-                    color: "#bae6fd",
+                    color: theme.primary,
                     bold: true,
                     fontSize: 6.5,
                     characterSpacing: 0.5,
                     margin: [0, 3, 0, 0],
                   },
                 ],
-                margin: [6, 7, 6, 7],
-                fillColor: "#075985",
+                margin: [6, 6, 6, 6],
+                fillColor: "#ffffff",
               },
             ],
           ],
         },
-        layout: "noBorders",
-        margin: [0, 18, 0, 0],
-      },
+        layout: {
+          hLineColor: () => theme.primary,
+          vLineColor: () => "#ffffff",
+          hLineWidth: (index: number) => (index === 0 ? 1 : 0),
+          vLineWidth: () => 0,
+        },
+      };
+
+      return [
+        ...backgroundLayer,
+        { ...minimalHeader, margin: [0, 0, 0, 11] },
+        { ...minimalMedia, margin: [18, 0, 18, 9] },
+        { ...details, margin: [8, 0, 8, 6] },
+        { ...minimalFooter, margin: [0, 17, 0, 0] },
+      ];
+    }
+
+    return [
+      ...backgroundLayer,
+      { ...classicHeader, margin: [0, 0, 0, 9] },
+      { ...media, margin: [18, 0, 18, 7] },
+      { ...athleteTitle, margin: [0, 0, 0, 6] },
+      { ...details, margin: [8, 0, 8, 6] },
+      { ...footer, margin: [0, 18, 0, 0] },
     ];
+  }
+
+  private ticketTheme(ticket: TicketPayload) {
+    const validHex = /^#[0-9a-f]{6}$/i;
+    const pick = (value: string | null | undefined, fallback: string) =>
+      validHex.test(value || "") ? value! : fallback;
+    const layout = ["CLASSIC", "STRIPE", "MINIMAL"].includes(
+      ticket.event.ticketLayout || "",
+    )
+      ? ticket.event.ticketLayout!
+      : "CLASSIC";
+
+    return {
+      layout,
+      primary: pick(ticket.event.ticketPrimaryColor, "#0284C7"),
+      secondary: pick(ticket.event.ticketSecondaryColor, "#075985"),
+      accent: pick(ticket.event.ticketAccentColor, "#059669"),
+    };
   }
 
   private dataUrl(data?: Buffer | null, mimeType?: string | null) {

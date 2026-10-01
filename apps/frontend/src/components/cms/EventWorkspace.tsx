@@ -29,7 +29,9 @@ import {
   Eye,
   Images,
   List,
+  LayoutTemplate,
   Network,
+  Palette,
   Pencil,
   RefreshCw,
   Settings2,
@@ -73,6 +75,13 @@ const paymentModeOptions = [
   { value: 'BANK_TRANSFER', label: 'Chuyển khoản' },
   { value: 'ONLINE', label: 'Thanh toán trực tuyến' },
 ];
+
+const ticketThemePresets = [
+  { value: 'OCEAN', label: 'Ocean', description: 'Xanh thể thao, bố cục cổ điển', layout: 'CLASSIC', primary: '#0284C7', secondary: '#075985', accent: '#059669' },
+  { value: 'CRIMSON', label: 'Crimson', description: 'Đỏ mạnh, đầu vé dạng dải', layout: 'STRIPE', primary: '#DC2626', secondary: '#7F1D1D', accent: '#F59E0B' },
+  { value: 'EMERALD', label: 'Emerald', description: 'Xanh lá, bố cục tối giản', layout: 'MINIMAL', primary: '#059669', secondary: '#064E3B', accent: '#0EA5E9' },
+  { value: 'ROYAL', label: 'Royal', description: 'Tím hoàng gia và vàng', layout: 'STRIPE', primary: '#4F46E5', secondary: '#1E1B4B', accent: '#D97706' },
+] as const;
 
 function dateTimeInput(value?: string | null) {
   if (!value) return '';
@@ -379,7 +388,25 @@ function PaymentTab({ event, canEdit, onRefresh }: EventWorkspaceProps & { canEd
 
 function TicketDesignTab({ event, canEdit, onRefresh }: EventWorkspaceProps & { canEdit: boolean }) {
   const toast = useSportDataToast();
+  const [form] = Form.useForm();
   const [uploading, setUploading] = useState(false);
+  const [savingTheme, setSavingTheme] = useState(false);
+  const selectedPreset = Form.useWatch('ticketThemePreset', form) || event.ticketThemePreset || 'OCEAN';
+  const selectedLayout = Form.useWatch('ticketLayout', form) || event.ticketLayout || 'CLASSIC';
+  const primaryColor = Form.useWatch('ticketPrimaryColor', form) || event.ticketPrimaryColor || '#0284C7';
+  const secondaryColor = Form.useWatch('ticketSecondaryColor', form) || event.ticketSecondaryColor || '#075985';
+  const accentColor = Form.useWatch('ticketAccentColor', form) || event.ticketAccentColor || '#059669';
+
+  useEffect(() => {
+    form.setFieldsValue({
+      ticketThemePreset: event.ticketThemePreset || 'OCEAN',
+      ticketLayout: event.ticketLayout || 'CLASSIC',
+      ticketPrimaryColor: event.ticketPrimaryColor || '#0284C7',
+      ticketSecondaryColor: event.ticketSecondaryColor || '#075985',
+      ticketAccentColor: event.ticketAccentColor || '#059669',
+    });
+  }, [event, form]);
+
   const sampleTicket: ParticipationTicket = {
     ticketCode: 'SD-A6-PREVIEW',
     status: 'CONFIRMED',
@@ -390,10 +417,38 @@ function TicketDesignTab({ event, canEdit, onRefresh }: EventWorkspaceProps & { 
       endDate: event.endDate,
       location: event.location,
       ticketBackgroundUrl: event.ticketBackgroundUrl,
+      ticketThemePreset: selectedPreset,
+      ticketLayout: selectedLayout,
+      ticketPrimaryColor: primaryColor,
+      ticketSecondaryColor: secondaryColor,
+      ticketAccentColor: accentColor,
     },
     sport: event.sports?.[0] || event.sport,
     category: { name: event.categories?.[0]?.name || 'Hạng đấu / nội dung' },
     athlete: { fullName: 'NGUYỄN VĂN ĐỘNG VIÊN', country: { name: 'Việt Nam' }, federation: { name: 'Đơn vị / CLB' } },
+  };
+
+  const applyPreset = (preset: (typeof ticketThemePresets)[number]) => {
+    form.setFieldsValue({
+      ticketThemePreset: preset.value,
+      ticketLayout: preset.layout,
+      ticketPrimaryColor: preset.primary,
+      ticketSecondaryColor: preset.secondary,
+      ticketAccentColor: preset.accent,
+    });
+  };
+
+  const saveTheme = async (values: any) => {
+    setSavingTheme(true);
+    try {
+      await api.patch(`/events/${event.id}`, values);
+      await onRefresh();
+      toast.success('Đã lưu theme vé A6 cho sự kiện. Vé PDF mới sẽ dùng cấu hình này.');
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Không thể lưu theme vé.');
+    } finally {
+      setSavingTheme(false);
+    }
   };
 
   const uploadProps: UploadProps = {
@@ -440,16 +495,61 @@ function TicketDesignTab({ event, canEdit, onRefresh }: EventWorkspaceProps & { 
   };
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[380px_1fr]">
-      <Card title="Nền vé riêng của sự kiện">
-        <p className="mb-5 text-sm text-slate-500">Dùng ảnh dọc đúng tỉ lệ A6 (105 × 148 mm), JPG/PNG tối đa 6 MB. Hệ thống sẽ đặt avatar, QR và thông tin vào vùng an toàn phía trên nền.</p>
-        <Space wrap>
-          <Upload {...uploadProps}><Button type="primary" loading={uploading} icon={<UploadCloud className="h-4 w-4" />}>{event.ticketBackgroundUrl ? 'Thay ảnh nền' : 'Tải ảnh nền'}</Button></Upload>
-          {event.ticketBackgroundUrl && canEdit && <Popconfirm title="Xóa ảnh nền vé?" onConfirm={remove} okText="Xóa" cancelText="Hủy"><Button danger icon={<Trash2 className="h-4 w-4" />}>Xóa nền</Button></Popconfirm>}
-        </Space>
-        <div className="mt-6 rounded-xl border border-sky-500/20 bg-sky-500/5 p-4 text-sm text-slate-500">
-          PDF xuất ra đúng A6. Với danh sách đội/CLB, trang đầu là bìa hồ sơ; các trang sau là từng vé A6 độc lập để in và phát cho VĐV.
+    <div className="grid gap-6 xl:grid-cols-[430px_1fr]">
+      <Card title={<span className="flex items-center gap-2"><Palette className="h-5 w-5 text-sky-500" />Theme & nền vé</span>}>
+        <Form
+          form={form}
+          layout="vertical"
+          disabled={!canEdit}
+          onFinish={saveTheme}
+          onValuesChange={(changed) => {
+            if ('ticketLayout' in changed || 'ticketPrimaryColor' in changed || 'ticketSecondaryColor' in changed || 'ticketAccentColor' in changed) {
+              form.setFieldValue('ticketThemePreset', 'CUSTOM');
+            }
+          }}
+        >
+          <Form.Item name="ticketThemePreset" hidden><Input /></Form.Item>
+          <Form.Item label="Bộ theme dựng sẵn">
+            <div className="grid grid-cols-2 gap-3">
+              {ticketThemePresets.map((preset) => (
+                <button
+                  key={preset.value}
+                  type="button"
+                  onClick={() => applyPreset(preset)}
+                  className={`rounded-xl border p-3 text-left transition ${selectedPreset === preset.value ? 'border-sky-500 bg-sky-500/10 ring-1 ring-sky-500' : 'border-slate-200/15 hover:border-sky-500/60'}`}
+                >
+                  <span className="mb-2 flex gap-1.5">
+                    {[preset.primary, preset.secondary, preset.accent].map((item) => <i key={item} className="h-4 w-4 rounded-full border border-white/30" style={{ backgroundColor: item }} />)}
+                  </span>
+                  <strong className="block">{preset.label}</strong>
+                  <span className="mt-1 block text-xs text-slate-500">{preset.description}</span>
+                </button>
+              ))}
+            </div>
+          </Form.Item>
+
+          <Form.Item name="ticketLayout" label={<span className="flex items-center gap-2"><LayoutTemplate className="h-4 w-4" />Bố cục vé</span>}>
+            <Segmented block options={[{ value: 'CLASSIC', label: 'Cổ điển' }, { value: 'STRIPE', label: 'Dải màu' }, { value: 'MINIMAL', label: 'Tối giản' }]} />
+          </Form.Item>
+
+          <div className="grid grid-cols-3 gap-3">
+            <Form.Item name="ticketPrimaryColor" label="Màu chính"><Input type="color" className="h-10 p-1" /></Form.Item>
+            <Form.Item name="ticketSecondaryColor" label="Màu đậm"><Input type="color" className="h-10 p-1" /></Form.Item>
+            <Form.Item name="ticketAccentColor" label="Điểm nhấn"><Input type="color" className="h-10 p-1" /></Form.Item>
+          </div>
+
+          {canEdit && <Button htmlType="submit" type="primary" block loading={savingTheme}>Lưu theme vé</Button>}
+        </Form>
+
+        <div className="mt-6 border-t border-slate-200/10 pt-6">
+          <h3 className="font-bold">Ảnh nền riêng của sự kiện</h3>
+          <p className="mb-4 mt-2 text-sm text-slate-500">Ảnh dọc đúng tỉ lệ A6 (105 × 148 mm), JPG/PNG tối đa 6 MB. Mỗi sự kiện có thể dùng nền riêng kết hợp với theme đã chọn.</p>
+          <Space wrap>
+            <Upload {...uploadProps}><Button loading={uploading} icon={<UploadCloud className="h-4 w-4" />}>{event.ticketBackgroundUrl ? 'Thay ảnh nền' : 'Tải ảnh nền'}</Button></Upload>
+            {event.ticketBackgroundUrl && canEdit && <Popconfirm title="Xóa ảnh nền vé?" onConfirm={remove} okText="Xóa" cancelText="Hủy"><Button danger icon={<Trash2 className="h-4 w-4" />}>Xóa nền</Button></Popconfirm>}
+          </Space>
         </div>
+        <div className="mt-6 rounded-xl border border-sky-500/20 bg-sky-500/5 p-4 text-sm text-slate-500">PDF xuất đúng A6. Bản xem trước, PDF tải xuống và vé gửi email đều dùng cùng theme của sự kiện.</div>
       </Card>
       <Card title="Xem trước vùng in A6" extra={<Tag color="blue">105 × 148 mm</Tag>}>
         <EventParticipationCard ticket={sampleTicket} />
