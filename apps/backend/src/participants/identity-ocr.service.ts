@@ -42,6 +42,17 @@ export class IdentityOcrService {
       return this.failure('Ảnh vượt quá giới hạn 5 MB của dịch vụ OCR.');
     }
 
+    if (!this.isEnabled(process.env.IDENTITY_OCR_ENABLED)) {
+      return {
+        status: 'NOT_CONFIGURED',
+        provider: null,
+        confidence: null,
+        fields: {},
+        fieldConfidence: {},
+        message: 'OCR tự động đang tạm tắt. Ảnh vẫn được lưu và hồ sơ tiếp tục chuyển sang CMS để kiểm duyệt thủ công.',
+      };
+    }
+
     const apiKey = process.env.FPT_AI_API_KEY?.trim();
     if (!apiKey) {
       return {
@@ -127,6 +138,10 @@ export class IdentityOcrService {
 
   private failure(message: string, provider: IdentityOcrResult['provider'] = null): IdentityOcrResult {
     return { status: 'FAILED', provider, confidence: null, fields: {}, fieldConfidence: {}, message };
+  }
+
+  private isEnabled(value?: string) {
+    return ['1', 'true', 'yes', 'on'].includes((value || '').trim().toLowerCase());
   }
 
   private text(value: ProviderField): string | undefined {

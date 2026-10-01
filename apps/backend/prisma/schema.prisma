@@ -220,6 +220,21 @@ enum PaymentStatus {
   FAILED
 }
 
+enum PaymentProvider {
+  MOMO
+  VNPAY
+  BANK_QR
+  VISA
+}
+
+enum PaymentTransactionStatus {
+  PENDING
+  PAID
+  FAILED
+  CANCELLED
+  EXPIRED
+}
+
 model Country {
   id          String             @id @default(cuid())
   code        String             @unique
@@ -234,19 +249,19 @@ model Country {
 }
 
 model Federation {
-  id                  String              @id @default(cuid())
+  id                  String               @id @default(cuid())
   code                String?
   name                String
-  type                FederationType      @default(NATIONAL_FEDERATION)
+  type                FederationType       @default(NATIONAL_FEDERATION)
   countryId           String
-  country             Country             @relation(fields: [countryId], references: [id])
+  country             Country              @relation(fields: [countryId], references: [id])
   athletes            Athlete[]
-  organizedEvents     Event[]             @relation("EventOrganizer")
-  participatingEvents Event[]             @relation("EventParticipatingFederations")
+  organizedEvents     Event[]              @relation("EventOrganizer")
+  participatingEvents Event[]              @relation("EventParticipatingFederations")
   publicRegistrations EventRegistration[]
   accounts            ParticipantAccount[]
-  createdAt           DateTime            @default(now())
-  updatedAt           DateTime            @updatedAt
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
 
   @@unique([countryId, code])
   @@index([countryId])
@@ -457,6 +472,10 @@ model Event {
   registrationFee          Int                      @default(0)
   registrationCurrency     String                   @default("VND")
   paymentMode              PaymentMode              @default(FREE)
+  paymentProviders         PaymentProvider[]        @default([])
+  bankCode                 String?
+  bankAccountNumber        String?
+  bankAccountName          String?
   registrations            EventRegistration[]
   registrationSubmissions  RegistrationSubmission[]
   statistics               Statistic[]
@@ -558,32 +577,57 @@ model RegistrationSubmission {
 }
 
 model EventRegistration {
-  id            String                  @id @default(cuid())
-  eventId       String
-  event         Event                   @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  athleteId     String
-  athlete       Athlete                 @relation(fields: [athleteId], references: [id], onDelete: Cascade)
-  accountId     String?
-  account       ParticipantAccount?     @relation(fields: [accountId], references: [id], onDelete: SetNull)
-  submissionId  String?
-  submission    RegistrationSubmission? @relation(fields: [submissionId], references: [id], onDelete: SetNull)
-  categoryId    String
-  category      Category                @relation(fields: [categoryId], references: [id])
-  federationId  String?
-  federation    Federation?             @relation(fields: [federationId], references: [id], onDelete: SetNull)
-  status        RegistrationStatus      @default(SUBMITTED)
-  paymentStatus PaymentStatus           @default(NOT_REQUIRED)
-  feeAmount     Int                     @default(0)
-  currency      String                  @default("VND")
-  ticketCode    String                  @unique
-  createdAt     DateTime                @default(now())
-  updatedAt     DateTime                @updatedAt
+  id                  String                  @id @default(cuid())
+  eventId             String
+  event               Event                   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  athleteId           String
+  athlete             Athlete                 @relation(fields: [athleteId], references: [id], onDelete: Cascade)
+  accountId           String?
+  account             ParticipantAccount?     @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  submissionId        String?
+  submission          RegistrationSubmission? @relation(fields: [submissionId], references: [id], onDelete: SetNull)
+  categoryId          String
+  category            Category                @relation(fields: [categoryId], references: [id])
+  federationId        String?
+  federation          Federation?             @relation(fields: [federationId], references: [id], onDelete: SetNull)
+  status              RegistrationStatus      @default(SUBMITTED)
+  paymentStatus       PaymentStatus           @default(NOT_REQUIRED)
+  feeAmount           Int                     @default(0)
+  currency            String                  @default("VND")
+  ticketCode          String                  @unique
+  paymentTransactions PaymentTransaction[]
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
 
   @@unique([eventId, athleteId, categoryId])
   @@index([accountId, createdAt])
   @@index([submissionId])
   @@index([eventId, status])
   @@index([categoryId])
+}
+
+model PaymentTransaction {
+  id                    String                   @id @default(cuid())
+  registrationId        String
+  registration          EventRegistration        @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+  provider              PaymentProvider
+  orderId               String                   @unique
+  amount                Int
+  currency              String                   @default("VND")
+  status                PaymentTransactionStatus @default(PENDING)
+  providerTransactionId String?
+  checkoutUrl           String?
+  qrCodeUrl             String?
+  requestPayload        Json?
+  responsePayload       Json?
+  failureReason         String?
+  paidAt                DateTime?
+  expiresAt             DateTime?
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
+
+  @@index([registrationId, createdAt])
+  @@index([provider, status])
 }
 
 model Match {

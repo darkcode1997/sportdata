@@ -24,6 +24,7 @@ services:
       DATABASE_URL: postgresql://sportdata:sportdata@postgres:5432/sportdata?schema=public
       PORT: 4000
       FRONTEND_URL: http://localhost:${FRONTEND_HOST_PORT:-3000}
+      BACKEND_PUBLIC_URL: http://localhost:${BACKEND_HOST_PORT:-4000}
       JWT_SECRET: ${JWT_SECRET:-sportdata-dev-secret-change-me-please}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
       # Seed is an explicit data operation. A normal restart must never rebuild
@@ -47,9 +48,21 @@ services:
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_FROM: ${SMTP_FROM:-SportData CMS <no-reply@sportdata.local>}
+      IDENTITY_OCR_ENABLED: ${IDENTITY_OCR_ENABLED:-false}
       FPT_AI_API_KEY: ${FPT_AI_API_KEY:-}
       FPT_AI_ID_ENDPOINT: ${FPT_AI_ID_ENDPOINT:-https://api.fpt.ai/vision/idr/vnm/}
       FPT_AI_PASSPORT_ENDPOINT: ${FPT_AI_PASSPORT_ENDPOINT:-https://api.fpt.ai/vision/passport/vnm}
+      MOMO_ENABLED: ${MOMO_ENABLED:-false}
+      MOMO_PARTNER_CODE: ${MOMO_PARTNER_CODE:-}
+      MOMO_ACCESS_KEY: ${MOMO_ACCESS_KEY:-}
+      MOMO_SECRET_KEY: ${MOMO_SECRET_KEY:-}
+      MOMO_API_URL: ${MOMO_API_URL:-https://test-payment.momo.vn}
+      MOMO_PARTNER_NAME: ${MOMO_PARTNER_NAME:-SportData}
+      MOMO_STORE_ID: ${MOMO_STORE_ID:-SportData}
+      VNPAY_ENABLED: ${VNPAY_ENABLED:-false}
+      VNPAY_TMN_CODE: ${VNPAY_TMN_CODE:-}
+      VNPAY_HASH_SECRET: ${VNPAY_HASH_SECRET:-}
+      VNPAY_PAYMENT_URL: ${VNPAY_PAYMENT_URL:-https://sandbox.vnpayment.vn/paymentv2/vpcpay.html}
     ports:
       - "${BACKEND_HOST_PORT:-4000}:4000"
     depends_on:

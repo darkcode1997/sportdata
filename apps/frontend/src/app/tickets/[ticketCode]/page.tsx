@@ -6,6 +6,7 @@ import useSWR from 'swr';
 import { Alert, Button, Card, Descriptions, Result, Skeleton, Statistic, Tag } from 'antd';
 import { ArrowLeft, CheckCircle2, Medal, Printer, ShieldCheck, Swords, Trophy } from 'lucide-react';
 import { EventParticipationCard } from '@/components/EventParticipationCard';
+import { PaymentCheckout } from '@/components/PaymentCheckout';
 import { fetcher } from '@/lib/api';
 import type { ParticipationTicket, TicketStatistics } from '@/lib/ticket-types';
 
@@ -40,7 +41,7 @@ function medalTotal(statistics?: TicketStatistics) {
 export default function TicketVerificationPage() {
   const params = useParams<{ ticketCode: string }>();
   const ticketCode = decodeURIComponent(params.ticketCode || '').toUpperCase();
-  const { data: ticket, error, isLoading } = useSWR<ParticipationTicket>(
+  const { data: ticket, error, isLoading, mutate } = useSWR<ParticipationTicket>(
     ticketCode ? `/participant-auth/tickets/${encodeURIComponent(ticketCode)}` : null,
     fetcher,
   );
@@ -101,6 +102,8 @@ export default function TicketVerificationPage() {
             ? 'Thông tin thẻ đã được SportData xác nhận và có thể dùng để check-in sự kiện.'
             : 'Thẻ chỉ có hiệu lực check-in sau khi hồ sơ được SportData xác nhận.'}
         />
+
+        <PaymentCheckout ticket={ticket} onPaid={() => mutate()} />
 
         <EventParticipationCard ticket={ticket} />
 

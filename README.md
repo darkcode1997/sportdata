@@ -35,7 +35,15 @@ Luồng Phase 1 cho Ju-Jitsu:
 
 ### OCR CCCD và hộ chiếu
 
-Đặt `FPT_AI_API_KEY` trong `.env` để bật đọc tự động. Sau khi người dùng chọn ảnh CCCD mặt trước hoặc hộ chiếu, hệ thống hiển thị các trường OCR để sửa và xác nhận trước khi lưu. OCR không tự đánh dấu giấy tờ là hợp lệ; trạng thái xác thực cuối cùng vẫn do CMS hoặc dịch vụ eKYC/NFC quyết định. Nếu chưa cấu hình khóa API hoặc OCR lỗi, người dùng vẫn có thể nhập tay và gửi ảnh để kiểm duyệt.
+Đặt `IDENTITY_OCR_ENABLED=true` và cấu hình `FPT_AI_API_KEY` trong `.env` để bật đọc tự động. Khi `IDENTITY_OCR_ENABLED=false`, backend không gọi dịch vụ OCR; ảnh giấy tờ vẫn được lưu, người dùng tiếp tục nhập thông tin và hồ sơ được chuyển sang CMS kiểm duyệt thủ công. Sau khi người dùng chọn ảnh CCCD mặt trước hoặc hộ chiếu, hệ thống hiển thị các trường OCR để sửa và xác nhận trước khi lưu. OCR không tự đánh dấu giấy tờ là hợp lệ; trạng thái xác thực cuối cùng vẫn do CMS hoặc dịch vụ eKYC/NFC quyết định.
+
+### Thanh toán MoMo, VNPAY, VietQR và thẻ quốc tế
+
+- Chuyển khoản `BANK_QR` dùng VietQR và được ADMIN/GAMES_ADMIN đối soát, xác nhận thủ công trong tab đăng ký của sự kiện.
+- `MOMO`, `VNPAY` và `VISA` được tạo từ tab Payment của từng sự kiện. `VISA` đi qua luồng thẻ quốc tế `INTCARD` của VNPAY; SportData không thu thập hoặc lưu số thẻ/CVV.
+- Mặc định `MOMO_ENABLED=false` và `VNPAY_ENABLED=false`. Điền merchant credentials trong `.env`, cấu hình `BACKEND_PUBLIC_URL` là HTTPS công khai rồi mới bật từng cổng.
+- Callback cần khai báo với nhà cung cấp: `POST /api/payments/momo/ipn` và `GET /api/payments/vnpay/ipn`. URL trả người dùng của VNPAY là `GET /api/payments/vnpay/return`.
+- Môi trường local không nhận được callback từ Internet. Khi kiểm thử sandbox, dùng một URL HTTPS public/tunnel và cập nhật `BACKEND_PUBLIC_URL`; chỉ IPN có chữ ký hợp lệ mới cập nhật hồ sơ sang `PAID`.
 
 ### Các loại tài khoản
 

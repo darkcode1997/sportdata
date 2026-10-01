@@ -14,6 +14,8 @@ export type ParticipationTicket = {
   ticketCode: string;
   status: TicketStatus | string;
   paymentStatus?: string;
+  feeAmount?: number;
+  currency?: string;
   isValid?: boolean;
   issuedAt?: string;
   event: {
@@ -29,6 +31,8 @@ export type ParticipationTicket = {
     ticketPrimaryColor?: string | null;
     ticketSecondaryColor?: string | null;
     ticketAccentColor?: string | null;
+    paymentMode?: 'FREE' | 'MANUAL' | 'ONLINE';
+    paymentProviders?: Array<'MOMO' | 'VNPAY' | 'BANK_QR' | 'VISA'>;
   };
   sport?: {
     id?: string;

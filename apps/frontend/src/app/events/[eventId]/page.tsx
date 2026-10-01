@@ -361,7 +361,7 @@ export default function EventDetailPage() {
       toast.success({
         content: data.status === 'CONFIRMED'
           ? `Đăng ký đã được xác nhận. Vé A6 ${data.ticketCode}${data.ticketEmailSent ? ' đã được gửi về email.' : ' đã sẵn sàng để tải.'}`
-          : `Đã tiếp nhận hồ sơ ${data.ticketCode}.${data.ticketEmailSent ? ' Vé A6 đã được gửi về email.' : ' Bạn có thể tải vé A6 trong tài khoản.'} Giấy tờ đang chờ xác thực.`,
+          : `Đã tiếp nhận hồ sơ ${data.ticketCode}.${data.ticketEmailSent ? ' Vé A6 đã được gửi về email.' : ' Bạn có thể tải vé A6 trong tài khoản.'}${data.paymentStatus === 'PENDING' ? ' Mở trang vé để thanh toán lệ phí.' : ''} Giấy tờ đang chờ xác thực.`,
         duration: 6,
       });
       await mutateOwnRegistrationState();

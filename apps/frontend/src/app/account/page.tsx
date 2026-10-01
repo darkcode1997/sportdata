@@ -369,7 +369,13 @@ export default function ParticipantAccountPage() {
                 <EventParticipationCard ticket={registrationTicket(registration)} />
                 <div className="mt-3 flex flex-wrap items-center justify-between gap-3 px-2">
                   <p className="text-xs text-slate-500">
-                    Thanh toán: {registration.paymentStatus === 'NOT_REQUIRED' ? 'Miễn phí · Không cần thanh toán' : 'Chờ thanh toán'}
+                    Thanh toán: {registration.paymentStatus === 'NOT_REQUIRED'
+                      ? 'Miễn phí · Không cần thanh toán'
+                      : registration.paymentStatus === 'PAID'
+                        ? 'Đã thanh toán'
+                        : registration.paymentStatus === 'FAILED'
+                          ? 'Thanh toán chưa thành công'
+                          : 'Chờ thanh toán'}
                   </p>
                   <div className="flex flex-wrap gap-2">
                     <Link href={`/tickets/${encodeURIComponent(registration.ticketCode)}`} target="_blank">

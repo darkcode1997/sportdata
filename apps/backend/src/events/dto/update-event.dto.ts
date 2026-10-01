@@ -1,6 +1,6 @@
-import { IsString, IsOptional, IsBoolean, IsDateString, IsArray, IsInt, Min, IsIn, Matches } from 'class-validator';
+import { IsString, IsOptional, IsBoolean, IsDateString, IsArray, IsInt, Min, IsIn, Matches, MaxLength } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { EventLevel, PaymentMode } from '@prisma/client';
+import { EventLevel, PaymentMode, PaymentProvider } from '@prisma/client';
 import { IsEnum } from 'class-validator';
 
 export class UpdateEventDto {
@@ -118,6 +118,30 @@ export class UpdateEventDto {
   @IsOptional()
   @IsEnum(PaymentMode)
   paymentMode?: PaymentMode;
+
+  @ApiPropertyOptional({ enum: PaymentProvider, isArray: true })
+  @IsOptional()
+  @IsArray()
+  @IsEnum(PaymentProvider, { each: true })
+  paymentProviders?: PaymentProvider[];
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  bankCode?: string | null;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  bankAccountNumber?: string | null;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(150)
+  bankAccountName?: string | null;
 
   @ApiPropertyOptional({ enum: ['OCEAN', 'CRIMSON', 'EMERALD', 'ROYAL', 'CUSTOM'] })
   @IsOptional()

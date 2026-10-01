@@ -21,6 +21,7 @@ import { CompetitionsModule } from './competitions/competitions.module';
 import { OperationsModule } from './operations/operations.module';
 import { BannersModule } from './banners/banners.module';
 import { ParticipantsModule } from './participants/participants.module';
+import { PaymentsModule } from './payments/payments.module';
 
 @Module({
   imports: [
@@ -46,6 +47,7 @@ import { ParticipantsModule } from './participants/participants.module';
     OperationsModule,
     BannersModule,
     ParticipantsModule,
+    PaymentsModule,
   ],
 })
 export class AppModule {}

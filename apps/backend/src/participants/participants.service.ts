@@ -813,7 +813,11 @@ export class ParticipantsService {
       ticketCode: registration.ticketCode,
       status: registration.status,
       paymentStatus: registration.paymentStatus,
-      isValid: registration.status === RegistrationStatus.CONFIRMED,
+      feeAmount: registration.feeAmount,
+      currency: registration.currency,
+      isValid: registration.status === RegistrationStatus.CONFIRMED
+        && (registration.paymentStatus === PaymentStatus.PAID
+          || registration.paymentStatus === PaymentStatus.NOT_REQUIRED),
       issuedAt: registration.createdAt,
       event: {
         id: registration.event.id,
@@ -827,6 +831,8 @@ export class ParticipantsService {
         ticketPrimaryColor: registration.event.ticketPrimaryColor,
         ticketSecondaryColor: registration.event.ticketSecondaryColor,
         ticketAccentColor: registration.event.ticketAccentColor,
+        paymentMode: registration.event.paymentMode,
+        paymentProviders: registration.event.paymentProviders,
         ticketBackgroundUrl: registration.event.ticketBackgroundSize
           ? `/api/events/${registration.event.id}/ticket-background`
           : null,
@@ -922,6 +928,13 @@ export class ParticipantsService {
     if (!athlete) throw new NotFoundException('Không tìm thấy vận động viên');
     if (status === RegistrationStatus.CONFIRMED && !this.identityDocumentState(athlete.media).verified) {
       throw new BadRequestException('Chỉ có thể xác nhận khi CCCD hai mặt hoặc hộ chiếu đã được xác thực');
+    }
+    if (
+      status === RegistrationStatus.CONFIRMED
+      && registration.paymentStatus !== PaymentStatus.PAID
+      && registration.paymentStatus !== PaymentStatus.NOT_REQUIRED
+    ) {
+      throw new BadRequestException('Hồ sơ phải hoàn tất thanh toán trước khi xác nhận tham dự');
     }
     const updated = await this.prisma.$transaction(async (transaction) => {
       await transaction.eventRegistration.update({ where: { id }, data: { status } });
@@ -1033,6 +1046,10 @@ export class ParticipantsService {
         },
       },
       submission: true,
+      paymentTransactions: {
+        orderBy: { createdAt: 'desc' as const },
+        take: 5,
+      },
     } as const;
   }
 

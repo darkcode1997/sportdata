@@ -3,8 +3,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import useSWR, { useSWRConfig } from 'swr';
 import {
+  Alert,
   Button,
   Card,
+  Checkbox,
   Descriptions,
   Empty,
   Form,
@@ -67,13 +69,27 @@ type Registration = {
     media: Array<{ type: string; verificationStatus?: string | null }>;
   };
   submission?: { type: string; organizationName?: string; contactName: string; referenceCode: string } | null;
+  paymentTransactions?: Array<{
+    orderId: string;
+    provider: 'MOMO' | 'VNPAY' | 'BANK_QR' | 'VISA';
+    status: string;
+    amount: number;
+    currency: string;
+    createdAt: string;
+  }>;
 };
 
 const paymentModeOptions = [
   { value: 'FREE', label: 'Miễn phí' },
-  { value: 'CASH', label: 'Thu tiền mặt' },
-  { value: 'BANK_TRANSFER', label: 'Chuyển khoản' },
-  { value: 'ONLINE', label: 'Thanh toán trực tuyến' },
+  { value: 'MANUAL', label: 'Chuyển khoản QR · đối soát thủ công' },
+  { value: 'ONLINE', label: 'Cổng thanh toán trực tuyến' },
+];
+
+const paymentProviderOptions = [
+  { value: 'MOMO', label: 'Ví MoMo' },
+  { value: 'VNPAY', label: 'VNPAY QR / ngân hàng' },
+  { value: 'VISA', label: 'Visa / Mastercard qua VNPAY' },
+  { value: 'BANK_QR', label: 'Chuyển khoản VietQR' },
 ];
 
 const ticketThemePresets = [
@@ -94,6 +110,7 @@ export function EventWorkspace({ event, onRefresh }: EventWorkspaceProps) {
   const { data: currentUser } = useSWR<any>('/auth/profile', fetcher);
   const canEditEvent = ['ADMIN', 'CONTENT', 'GAMES_ADMIN'].includes(currentUser?.role);
   const canOperate = ['ADMIN', 'GAMES_ADMIN', 'SPORT_MANAGER'].includes(currentUser?.role);
+  const canConfirmPayment = ['ADMIN', 'GAMES_ADMIN'].includes(currentUser?.role);
 
   return (
     <Tabs
@@ -109,7 +126,7 @@ export function EventWorkspace({ event, onRefresh }: EventWorkspaceProps) {
         {
           key: 'registrations',
           label: <span className="flex items-center gap-2"><TicketCheck className="h-4 w-4" />Đăng ký thi đấu</span>,
-          children: <RegistrationsTab eventId={event.id} canOperate={canOperate} />,
+          children: <RegistrationsTab eventId={event.id} canOperate={canOperate} canConfirmPayment={canConfirmPayment} />,
         },
         {
           key: 'matches',
@@ -169,7 +186,7 @@ function EventOverview({ event, canEdit }: { event: any; canEdit: boolean }) {
   );
 }
 
-function RegistrationsTab({ eventId, canOperate }: { eventId: string; canOperate: boolean }) {
+function RegistrationsTab({ eventId, canOperate, canConfirmPayment }: { eventId: string; canOperate: boolean; canConfirmPayment: boolean }) {
   const toast = useSportDataToast();
   const { data: registrations = [], isLoading, mutate } = useSWR<Registration[]>(`/participant-auth/admin/registrations?eventId=${eventId}`, fetcher);
 
@@ -204,6 +221,16 @@ function RegistrationsTab({ eventId, canOperate }: { eventId: string; canOperate
       toast.success(status === 'VERIFIED' ? 'Đã xác thực giấy tờ.' : 'Đã từ chối giấy tờ.');
     } catch (error: any) {
       toast.error(error.response?.data?.message || 'Không thể cập nhật giấy tờ.');
+    }
+  };
+
+  const confirmBankTransfer = async (orderId: string) => {
+    try {
+      await api.patch(`/payments/transactions/${encodeURIComponent(orderId)}/manual-confirm`);
+      await mutate();
+      toast.success('Đã xác nhận chuyển khoản và cập nhật hồ sơ sang đã thanh toán.');
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Không thể xác nhận chuyển khoản.');
     }
   };
 
@@ -253,7 +280,30 @@ function RegistrationsTab({ eventId, canOperate }: { eventId: string; canOperate
               ? <div><Tag color={item.submission.type === 'GROUP' ? 'purple' : 'blue'}>{item.submission.type === 'GROUP' ? 'Danh sách đội / CLB' : 'Khách'}</Tag><div className="mt-1 text-xs">{item.submission.organizationName || item.submission.contactName}</div><code className="text-xs text-slate-500">{item.submission.referenceCode}</code></div>
               : <Tag>Tài khoản SportData</Tag>,
           },
-          { title: 'Thanh toán', dataIndex: 'paymentStatus', width: 140, render: (value) => <Tag color={value === 'PAID' || value === 'NOT_REQUIRED' ? 'success' : 'processing'}>{value}</Tag> },
+          {
+            title: 'Thanh toán',
+            key: 'payment',
+            width: 210,
+            render: (_, item) => {
+              const bankTransaction = item.paymentTransactions?.find((transaction) => transaction.provider === 'BANK_QR' && transaction.status === 'PENDING');
+              return (
+                <Space direction="vertical" size={4}>
+                  <Tag color={item.paymentStatus === 'PAID' || item.paymentStatus === 'NOT_REQUIRED' ? 'success' : 'processing'}>{item.paymentStatus}</Tag>
+                  {bankTransaction && canConfirmPayment ? (
+                    <Popconfirm
+                      title="Xác nhận đã nhận tiền?"
+                      description={`${new Intl.NumberFormat('vi-VN').format(bankTransaction.amount)} ${bankTransaction.currency} · ${bankTransaction.orderId}`}
+                      okText="Xác nhận"
+                      cancelText="Hủy"
+                      onConfirm={() => confirmBankTransfer(bankTransaction.orderId)}
+                    >
+                      <Button size="small" type="link">Xác nhận chuyển khoản</Button>
+                    </Popconfirm>
+                  ) : null}
+                </Space>
+              );
+            },
+          },
           {
             title: 'Vé A6',
             dataIndex: 'ticketCode',
@@ -339,6 +389,9 @@ function PaymentTab({ event, canEdit, onRefresh }: EventWorkspaceProps & { canEd
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
   const paymentMode = Form.useWatch('paymentMode', form);
+  const paymentProviders = Form.useWatch('paymentProviders', form) || [];
+  const needsBank = paymentMode === 'MANUAL' || paymentProviders.includes('BANK_QR');
+  const { data: gatewayConfig } = useSWR<{ enabled: Record<string, boolean>; environment: string }>('/payments/configuration', fetcher);
 
   useEffect(() => {
     form.setFieldsValue({
@@ -348,6 +401,10 @@ function PaymentTab({ event, canEdit, onRefresh }: EventWorkspaceProps & { canEd
       paymentMode: event.paymentMode || 'FREE',
       registrationFee: event.registrationFee || 0,
       registrationCurrency: event.registrationCurrency || 'VND',
+      paymentProviders: event.paymentProviders || [],
+      bankCode: event.bankCode || '',
+      bankAccountNumber: event.bankAccountNumber || '',
+      bankAccountName: event.bankAccountName || '',
     });
   }, [event, form]);
 
@@ -359,6 +416,12 @@ function PaymentTab({ event, canEdit, onRefresh }: EventWorkspaceProps & { canEd
         registrationOpenAt: values.registrationOpenAt ? new Date(values.registrationOpenAt).toISOString() : null,
         registrationCloseAt: values.registrationCloseAt ? new Date(values.registrationCloseAt).toISOString() : null,
         registrationFee: values.paymentMode === 'FREE' ? 0 : values.registrationFee || 0,
+        registrationCurrency: 'VND',
+        paymentProviders: values.paymentMode === 'FREE'
+          ? []
+          : values.paymentMode === 'MANUAL'
+            ? ['BANK_QR']
+            : values.paymentProviders,
       });
       await onRefresh();
       toast.success('Đã lưu cấu hình đăng ký và thanh toán.');
@@ -372,14 +435,59 @@ function PaymentTab({ event, canEdit, onRefresh }: EventWorkspaceProps & { canEd
   return (
     <Card title={<span className="flex items-center gap-2"><BadgeDollarSign className="h-5 w-5 text-emerald-500" />Đăng ký & thanh toán</span>}>
       <Form form={form} layout="vertical" onFinish={save} disabled={!canEdit} className="max-w-4xl">
+        <Alert
+          className="mb-5"
+          showIcon
+          type="info"
+          message="SportData không lưu dữ liệu thẻ"
+          description="MoMo, VNPAY và Visa/Mastercard chuyển người dùng sang trang bảo mật của nhà cung cấp. Chuyển khoản VietQR được CMS đối soát và xác nhận thủ công."
+        />
         <Form.Item name="registrationEnabled" label="Mở cổng đăng ký" valuePropName="checked"><Switch /></Form.Item>
         <div className="grid gap-4 md:grid-cols-2">
           <Form.Item name="registrationOpenAt" label="Thời gian mở đăng ký"><Input type="datetime-local" /></Form.Item>
           <Form.Item name="registrationCloseAt" label="Thời gian đóng đăng ký"><Input type="datetime-local" /></Form.Item>
           <Form.Item name="paymentMode" label="Phương thức thanh toán"><Select options={paymentModeOptions} /></Form.Item>
           <Form.Item name="registrationFee" label="Lệ phí"><InputNumber className="w-full" min={0} disabled={!canEdit || paymentMode === 'FREE'} addonAfter={Form.useWatch('registrationCurrency', form) || 'VND'} /></Form.Item>
-          <Form.Item name="registrationCurrency" label="Đơn vị tiền tệ"><Select options={[{ value: 'VND', label: 'VND' }, { value: 'USD', label: 'USD' }]} /></Form.Item>
+          <Form.Item name="registrationCurrency" label="Đơn vị tiền tệ"><Select options={[{ value: 'VND', label: 'VND' }]} /></Form.Item>
         </div>
+
+        {paymentMode === 'ONLINE' ? (
+          <Form.Item
+            name="paymentProviders"
+            label="Cổng thanh toán hiển thị cho vận động viên"
+            rules={[{ required: true, message: 'Chọn ít nhất một cổng thanh toán' }]}
+          >
+            <Checkbox.Group className="grid gap-3 sm:grid-cols-2" options={paymentProviderOptions.map((option) => ({
+              ...option,
+              label: (
+                <span>
+                  {option.label}{' '}
+                  {gatewayConfig && option.value !== 'BANK_QR' ? (
+                    <Tag color={gatewayConfig.enabled[option.value] ? 'success' : 'default'}>
+                      {gatewayConfig.enabled[option.value] ? 'Sẵn sàng' : 'Chưa cấu hình ENV'}
+                    </Tag>
+                  ) : null}
+                </span>
+              ),
+            }))} />
+          </Form.Item>
+        ) : null}
+
+        {needsBank ? (
+          <Card size="small" className="mb-5" title="Tài khoản nhận chuyển khoản VietQR">
+            <div className="grid gap-4 md:grid-cols-3">
+              <Form.Item name="bankCode" label="Mã ngân hàng" rules={[{ required: true, message: 'Nhập mã ngân hàng' }]}>
+                <Input placeholder="VD: VCB, BIDV, MB" />
+              </Form.Item>
+              <Form.Item name="bankAccountNumber" label="Số tài khoản" rules={[{ required: true, message: 'Nhập số tài khoản' }]}>
+                <Input autoComplete="off" />
+              </Form.Item>
+              <Form.Item name="bankAccountName" label="Tên chủ tài khoản" rules={[{ required: true, message: 'Nhập tên chủ tài khoản' }]}>
+                <Input placeholder="SPORTDATA VIET NAM" />
+              </Form.Item>
+            </div>
+          </Card>
+        ) : null}
         {canEdit && <Button htmlType="submit" type="primary" loading={saving}>Lưu cấu hình payment</Button>}
       </Form>
     </Card>

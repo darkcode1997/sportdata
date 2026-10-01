@@ -485,6 +485,10 @@ export class EventsService {
       registrationFee: true,
       registrationCurrency: true,
       paymentMode: true,
+      paymentProviders: true,
+      bankCode: true,
+      bankAccountNumber: true,
+      bankAccountName: true,
       organizerId: true,
       organizer: {
         select: {

@@ -6,6 +6,7 @@ import type { Content, TDocumentDefinitions } from "pdfmake/interfaces";
 export type TicketPayload = {
   ticketCode: string;
   status: string;
+  paymentStatus?: string;
   isValid?: boolean;
   event: {
     name: string;
@@ -177,7 +178,7 @@ export class TicketPdfService {
 
   private ticketPage(ticket: TicketPayload): Content[] {
     const verificationUrl = `${(process.env.FRONTEND_URL || "http://localhost:3001").replace(/\/$/, "")}/tickets/${encodeURIComponent(ticket.ticketCode)}`;
-    const status = this.status(ticket.status);
+    const status = this.status(ticket.status, ticket.isValid, ticket.paymentStatus);
     const theme = this.ticketTheme(ticket);
     const background = this.dataUrl(
       ticket.assets?.backgroundData,
@@ -683,9 +684,11 @@ export class TicketPdfService {
     return `data:${mimeType};base64,${Buffer.from(data).toString("base64")}`;
   }
 
-  private status(value: string) {
-    if (value === "CONFIRMED")
+  private status(value: string, isValid?: boolean, paymentStatus?: string) {
+    if (value === "CONFIRMED" && isValid)
       return { label: "VÉ HỢP LỆ", color: "#047857", background: "#ecfdf5" };
+    if (paymentStatus === "PENDING")
+      return { label: "CHỜ THANH TOÁN", color: "#b45309", background: "#fffbeb" };
     if (value === "REJECTED")
       return { label: "KHÔNG HỢP LỆ", color: "#b91c1c", background: "#fef2f2" };
     if (value === "CANCELLED")
