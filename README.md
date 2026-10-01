@@ -31,6 +31,17 @@ Luồng Phase 1 cho Ju-Jitsu:
 - Hệ thống kiểm tra tuổi, giới tính và cân nặng theo hạng đấu trước khi đăng ký.
 - Chế độ `FREE` xác nhận lượt thi đấu, tạo `CompetitionEntry` và cấp vé ngay trong `/account`.
 - Ban tổ chức đối chiếu giấy tờ và quản lý trạng thái tại `/cms/registrations`.
+- Sau khi đăng ký, hệ thống cấp một vé QR riêng cho từng VĐV và cho phép tải PDF ngay. Hồ sơ đội/CLB nhận một PDF nhiều trang gồm trang danh sách đoàn và các vé cá nhân.
+
+### OCR CCCD và hộ chiếu
+
+Đặt `FPT_AI_API_KEY` trong `.env` để bật đọc tự động. Sau khi người dùng chọn ảnh CCCD mặt trước hoặc hộ chiếu, hệ thống hiển thị các trường OCR để sửa và xác nhận trước khi lưu. OCR không tự đánh dấu giấy tờ là hợp lệ; trạng thái xác thực cuối cùng vẫn do CMS hoặc dịch vụ eKYC/NFC quyết định. Nếu chưa cấu hình khóa API hoặc OCR lỗi, người dùng vẫn có thể nhập tay và gửi ảnh để kiểm duyệt.
+
+### Các loại tài khoản
+
+- **Cá nhân/VĐV:** tự đăng ký, quản lý hồ sơ định danh, đăng ký cho chính mình và nhận vé cá nhân.
+- **Liên đoàn/CLB:** đăng ký người đại diện cho một đơn vị đã tồn tại, chờ SportData duyệt tại `/cms/accounts`, sau đó gửi danh sách VĐV và quản lý bộ vé tại `/federation-account`.
+- **Event Manager:** tài khoản nội bộ do SportData cấp và phân quyền trong CMS; không cho phép tự đăng ký công khai.
 
 ## Chạy bằng Docker
 

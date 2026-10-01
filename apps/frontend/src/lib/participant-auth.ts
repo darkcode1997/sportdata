@@ -15,7 +15,16 @@ export function getParticipantToken() {
   return typeof window === 'undefined' ? null : localStorage.getItem(TOKEN_KEY);
 }
 
-export function getParticipantAccount(): { id: string; email: string; displayName: string } | null {
+export type SportDataAccount = {
+  id: string;
+  email: string;
+  displayName: string;
+  accountType?: 'ATHLETE' | 'FEDERATION';
+  verificationStatus?: 'PENDING' | 'VERIFIED' | 'REJECTED';
+  federationId?: string | null;
+};
+
+export function getParticipantAccount(): SportDataAccount | null {
   if (typeof window === 'undefined') return null;
   const value = localStorage.getItem(ACCOUNT_KEY);
   if (!value) return null;

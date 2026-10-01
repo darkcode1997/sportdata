@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import useSWR from 'swr';
 import { Alert, Button, Card, Select, Space, Table, Tag, Typography } from 'antd';
-import { Eye, FileCheck2, RefreshCw, TicketCheck } from 'lucide-react';
+import { CheckCircle2, Eye, RefreshCw, TicketCheck, XCircle } from 'lucide-react';
 import { api, fetcher } from '@/lib/api';
 import { CmsPageHeader } from '@/components/cms/CmsPageHeader';
 
@@ -22,7 +22,20 @@ type Registration = {
     weight?: number;
     country: { code: string; name: string };
     federation?: { name: string };
+    media: {
+      type: 'AVATAR' | 'CCCD_FRONT' | 'CCCD_BACK' | 'PASSPORT';
+      verificationStatus?: 'PENDING' | 'VERIFIED' | 'REJECTED' | null;
+      verificationNote?: string | null;
+    }[];
   };
+  submission?: {
+    type: 'INDIVIDUAL' | 'GROUP';
+    contactName: string;
+    contactEmail: string;
+    contactPhone?: string;
+    organizationName?: string;
+    referenceCode: string;
+  } | null;
 };
 type EventItem = { id: string; name: string };
 
@@ -58,6 +71,19 @@ export default function CmsRegistrationsPage() {
     }
   };
 
+  const verifyDocument = async (athleteId: string, type: string, status: 'VERIFIED' | 'REJECTED') => {
+    setError('');
+    try {
+      await api.patch(`/participant-auth/admin/athletes/${athleteId}/media/${type}/verification`, {
+        status,
+        note: status === 'REJECTED' ? 'Giấy tờ không hợp lệ hoặc không đọc được. Vui lòng tải lại đúng giấy tờ.' : undefined,
+      });
+      await mutate();
+    } catch (requestError: any) {
+      setError(requestError.response?.data?.message || 'Không thể cập nhật trạng thái xác thực');
+    }
+  };
+
   return (
     <div>
       <CmsPageHeader
@@ -88,7 +114,7 @@ export default function CmsRegistrationsPage() {
           rowKey="id"
           loading={isLoading}
           dataSource={registrations}
-          scroll={{ x: 1100 }}
+          scroll={{ x: 1500 }}
           pagination={{ pageSize: 20, showSizeChanger: true }}
           columns={[
             {
@@ -109,14 +135,51 @@ export default function CmsRegistrationsPage() {
             {
               title: 'Giấy tờ',
               key: 'documents',
+              width: 360,
+              render: (_, item) => {
+                const mediaMap = new Map(item.athlete.media.map((media) => [media.type, media]));
+                const documents = [
+                  { type: 'CCCD_FRONT', label: 'CCCD trước' },
+                  { type: 'CCCD_BACK', label: 'CCCD sau' },
+                  { type: 'PASSPORT', label: 'Hộ chiếu' },
+                ] as const;
+                return (
+                  <div className="space-y-2">
+                    {documents.map(({ type, label }) => {
+                      const media = mediaMap.get(type);
+                      if (!media) return null;
+                      return (
+                        <div className="flex flex-wrap items-center gap-1" key={type}>
+                          <Button size="small" icon={<Eye className="h-3 w-3" />} onClick={() => viewDocument(item.athlete.id, type)}>{label}</Button>
+                          {media.verificationStatus === 'VERIFIED'
+                            ? <Tag color="success">Đã xác thực</Tag>
+                            : media.verificationStatus === 'REJECTED'
+                              ? <Tag color="error">Từ chối</Tag>
+                              : <Tag color="processing">Chờ xác thực</Tag>}
+                          {media.verificationStatus !== 'VERIFIED' && (
+                            <Button size="small" type="text" title="Xác thực" icon={<CheckCircle2 className="h-4 w-4 text-emerald-500" />} onClick={() => verifyDocument(item.athlete.id, type, 'VERIFIED')} />
+                          )}
+                          {media.verificationStatus !== 'REJECTED' && (
+                            <Button size="small" type="text" title="Từ chối" icon={<XCircle className="h-4 w-4 text-red-500" />} onClick={() => verifyDocument(item.athlete.id, type, 'REJECTED')} />
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              },
+            },
+            {
+              title: 'Nguồn đăng ký',
+              key: 'source',
               width: 230,
-              render: (_, item) => (
-                <Space wrap>
-                  <Button size="small" icon={<Eye className="h-3 w-3" />} onClick={() => viewDocument(item.athlete.id, 'CCCD_FRONT')}>CCCD trước</Button>
-                  <Button size="small" icon={<Eye className="h-3 w-3" />} onClick={() => viewDocument(item.athlete.id, 'CCCD_BACK')}>CCCD sau</Button>
-                  <Button size="small" icon={<FileCheck2 className="h-3 w-3" />} onClick={() => viewDocument(item.athlete.id, 'PASSPORT')}>Hộ chiếu</Button>
-                </Space>
-              ),
+              render: (_, item) => item.submission ? (
+                <div>
+                  <Tag color={item.submission.type === 'GROUP' ? 'purple' : 'blue'}>{item.submission.type === 'GROUP' ? 'Danh sách' : 'Không tài khoản'}</Tag>
+                  <div className="mt-1 text-xs">{item.submission.organizationName || item.submission.contactName}</div>
+                  <div className="text-xs text-slate-500">{item.submission.referenceCode}</div>
+                </div>
+              ) : <Tag>Tài khoản SportData</Tag>,
             },
             {
               title: 'Vé',
@@ -129,19 +192,26 @@ export default function CmsRegistrationsPage() {
               key: 'status',
               fixed: 'right',
               width: 180,
-              render: (_, item) => (
-                <Select
-                  value={item.status}
-                  className="w-full"
-                  onChange={(status) => changeStatus(item.id, status)}
-                  options={[
-                    { value: 'SUBMITTED', label: 'Chờ duyệt' },
-                    { value: 'CONFIRMED', label: 'Đã xác nhận' },
-                    { value: 'REJECTED', label: 'Từ chối' },
-                    { value: 'CANCELLED', label: 'Đã hủy' },
-                  ]}
-                />
-              ),
+              render: (_, item) => {
+                const mediaMap = new Map(item.athlete.media.map((media) => [media.type, media.verificationStatus]));
+                const identityVerified = (
+                  mediaMap.get('CCCD_FRONT') === 'VERIFIED'
+                  && mediaMap.get('CCCD_BACK') === 'VERIFIED'
+                ) || mediaMap.get('PASSPORT') === 'VERIFIED';
+                return (
+                  <Select
+                    value={item.status}
+                    className="w-full"
+                    onChange={(status) => changeStatus(item.id, status)}
+                    options={[
+                      { value: 'SUBMITTED', label: 'Chờ duyệt' },
+                      { value: 'CONFIRMED', label: identityVerified ? 'Đã xác nhận' : 'Cần xác thực giấy tờ', disabled: !identityVerified },
+                      { value: 'REJECTED', label: 'Từ chối' },
+                      { value: 'CANCELLED', label: 'Đã hủy' },
+                    ]}
+                  />
+                );
+              },
             },
           ]}
         />

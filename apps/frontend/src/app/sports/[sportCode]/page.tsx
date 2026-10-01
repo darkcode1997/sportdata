@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useMemo } from 'react';
 import useSWR from 'swr';
-import { Alert, Button, Card, Empty, Skeleton, Tag } from 'antd';
+import { Button, Card, Empty, Skeleton, Tag } from 'antd';
 import { ArrowRight, CalendarDays, Clock3, MapPin, ShieldCheck, Trophy, Users } from 'lucide-react';
 import { fetcher } from '@/lib/api';
 import { formatDateRange } from '@/lib/utils';
@@ -76,9 +76,9 @@ export default function SportPlatformPage() {
   }
 
   return (
-    <main className="min-h-screen pb-20">
+    <main className="sport-platform-page min-h-screen pb-20">
       <section
-        className="relative overflow-hidden border-b border-white/10 bg-cover bg-center"
+        className="sport-platform-hero relative overflow-hidden border-b border-white/10 bg-cover bg-center"
         style={{
           backgroundImage: sport.backgroundUrl
             ? `linear-gradient(110deg, rgba(8,15,30,.97), rgba(8,15,30,.74)), url("${sport.backgroundUrl.replace(/"/g, '%22')}")`
@@ -97,10 +97,10 @@ export default function SportPlatformPage() {
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <Button type="primary" size="large" href="#events" icon={<CalendarDays className="h-4 w-4" />}>Xem sự kiện</Button>
-              <Link href="/account/register"><Button size="large" icon={<Users className="h-4 w-4" />}>Tạo tài khoản VĐV</Button></Link>
+              <Link href="/account/register"><Button size="large" icon={<Users className="h-4 w-4" />}>Tạo tài khoản SportData</Button></Link>
             </div>
           </div>
-          <Card className="border-sky-400/20 bg-slate-950/50 backdrop-blur">
+          <Card className="sport-platform-metrics border-sky-400/20 bg-slate-950/50 backdrop-blur">
             <div className="grid grid-cols-2 gap-4 text-center">
               <div className="rounded-xl bg-white/5 p-5"><strong className="block text-3xl text-white">{events.length}</strong><span className="text-sm text-slate-400">Sự kiện</span></div>
               <div className="rounded-xl bg-white/5 p-5"><strong className="block text-3xl text-white">{sport.categories?.length || 0}</strong><span className="text-sm text-slate-400">Hạng đấu</span></div>
@@ -110,13 +110,7 @@ export default function SportPlatformPage() {
         </div>
       </section>
 
-      <div id="events" className="mx-auto max-w-7xl space-y-12 px-4 py-12 sm:px-6 lg:px-8">
-        <Alert
-          showIcon
-          type="info"
-          message="Phase 1 · Đăng ký vận động viên Ju‑Jitsu"
-          description="Vận động viên tự do hoặc thuộc liên đoàn/CLB đều có thể tạo hồ sơ. Đăng ký miễn phí được xác nhận ngay sau khi đủ điều kiện và đủ ảnh CCCD."
-        />
+      <div id="events" className="sport-platform-events mx-auto max-w-7xl space-y-12 px-4 py-12 sm:px-6 lg:px-8">
         {([
           ['open', 'Đang mở đăng ký'],
           ['upcoming', 'Sắp mở đăng ký'],

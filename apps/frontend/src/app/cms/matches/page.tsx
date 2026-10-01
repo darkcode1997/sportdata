@@ -7,6 +7,7 @@ import {
   Button,
   Card,
   Divider,
+  Empty,
   Flex,
   Input,
   Form,
@@ -14,6 +15,7 @@ import {
   Pagination,
   Popconfirm,
   Select,
+  Segmented,
   Space,
   Table,
   Tag,
@@ -21,10 +23,11 @@ import {
   Typography,
   type TableProps,
 } from 'antd';
-import { Network, Pencil, Plus, Search, Trash2 } from 'lucide-react';
+import { List, Network, Pencil, Plus, Search, Trash2 } from 'lucide-react';
 import { CmsPageHeader } from '@/components/cms/CmsPageHeader';
 import { api, fetcher } from '@/lib/api';
 import { RemoteAthleteSelect } from '@/components/cms/RemoteAthleteSelect';
+import { SportdataBracket, type BracketDraw } from '@/components/brackets/SportdataBracket';
 
 const dateTime = new Intl.DateTimeFormat('vi-VN', {
   day: '2-digit',
@@ -58,6 +61,8 @@ export default function MatchesListPage() {
   const canDelete = ['ADMIN', 'GAMES_ADMIN'].includes(currentUser?.role);
   const [search, setSearch] = useState('');
   const deferredSearch = useDeferredValue(search);
+  const [viewMode, setViewMode] = useState<'tree' | 'list'>('tree');
+  const [eventId, setEventId] = useState('');
   const [status, setStatus] = useState('');
   const [sportId, setSportId] = useState('');
   const [categoryId, setCategoryId] = useState('');
@@ -79,11 +84,29 @@ export default function MatchesListPage() {
     selectedEventId ? `/events/${selectedEventId}` : null,
     fetcher,
   );
+  const { data: filterEventDetails } = useSWR<any>(
+    eventId ? `/events/${eventId}` : null,
+    fetcher,
+  );
   const events = eventsResponse?.items || [];
   const sports = Array.isArray(sportsResponse) ? sportsResponse : sportsResponse?.items || [];
   const allCategories = categoriesResponse?.items || [];
+  const filterEvent = filterEventDetails || events.find((event: any) => event.id === eventId);
+  const filterEventSportIds = new Set<string>([
+    ...(filterEvent?.sports || []).map((sport: any) => sport.id),
+    ...(filterEvent?.sportId ? [filterEvent.sportId] : []),
+  ]);
+  const filterEventCategoryIds = new Set<string>(
+    (filterEvent?.categories || []).map((category: any) => category.id),
+  );
+  const filterSports = eventId && filterEventSportIds.size
+    ? sports.filter((sport: any) => filterEventSportIds.has(sport.id))
+    : sports;
   const filterCategories = sportId
-    ? allCategories.filter((category: any) => category.sportId === sportId)
+    ? allCategories.filter((category: any) => (
+      category.sportId === sportId
+      && (!eventId || !filterEventCategoryIds.size || filterEventCategoryIds.has(category.id))
+    ))
     : [];
   const selectedEvent = selectedEventDetails
     || events.find((event: any) => event.id === selectedEventId);
@@ -112,21 +135,32 @@ export default function MatchesListPage() {
     .filter(Boolean);
   const query = useMemo(() => {
     const params = new URLSearchParams({ page: String(page), limit: '20' });
+    if (eventId) params.set('eventId', eventId);
     if (status) params.set('status', status);
     if (sportId) params.set('sportId', sportId);
     if (categoryId) params.set('categoryId', categoryId);
     if (deferredSearch.trim()) params.set('search', deferredSearch.trim());
     return `/matches?${params}`;
-  }, [categoryId, deferredSearch, page, sportId, status]);
+  }, [categoryId, deferredSearch, eventId, page, sportId, status]);
 
   const { data, error, isLoading, mutate } = useSWR<any>(query, fetcher);
   const matches = data?.items || [];
+  const drawQuery = viewMode === 'tree' && eventId && categoryId
+    ? `/matches/event/${encodeURIComponent(eventId)}/category/${encodeURIComponent(categoryId)}/draws`
+    : null;
+  const {
+    data: drawsResponse,
+    error: drawsError,
+    isLoading: drawsLoading,
+    mutate: mutateDraws,
+  } = useSWR<{ draws: BracketDraw[] }>(drawQuery, fetcher);
+  const draws = [...(drawsResponse?.draws || [])].sort((left, right) => left.sortOrder - right.sortOrder);
 
   const remove = async (id: string) => {
     setDeleteError(null);
     try {
       await api.delete(`/matches/${id}`);
-      await mutate();
+      await Promise.all([mutate(), mutateDraws()]);
     } catch (requestError: any) {
       setDeleteError(requestError.response?.data?.message || 'Không thể xóa trận đấu.');
     }
@@ -164,9 +198,14 @@ export default function MatchesListPage() {
         }
       }
 
-      await mutate();
+      await Promise.all([mutate(), mutateDraws()]);
 
       if (!failures.length) {
+        const firstCategory = eventCategories.find((category: any) => category.id === values.categoryIds[0]);
+        setEventId(values.eventId);
+        setSportId(firstCategory?.sportId || '');
+        setCategoryId(values.categoryIds[0] || '');
+        setViewMode('tree');
         setDrawOpen(false);
         drawForm.resetFields();
         return;
@@ -506,25 +545,60 @@ export default function MatchesListPage() {
       )}
 
       <Card className="cms-toolbar" styles={{ body: { padding: 16 } }}>
+        <Flex align="center" justify="space-between" gap={12} wrap>
+          <Segmented
+            value={viewMode}
+            onChange={(value) => setViewMode(value as 'tree' | 'list')}
+            options={[
+              { value: 'tree', label: 'Sơ đồ cây', icon: <Network className="h-4 w-4" /> },
+              { value: 'list', label: 'Danh sách', icon: <List className="h-4 w-4" /> },
+            ]}
+          />
+          <Typography.Text type="secondary">
+            {viewMode === 'tree' ? 'Bấm vào một ô vận động viên để cập nhật trận đấu.' : 'Xem và lọc toàn bộ trận đấu.'}
+          </Typography.Text>
+        </Flex>
+        <Divider className="my-4" />
         <Flex gap={12} wrap>
-          <Input
-            allowClear
+          <Select
+            showSearch
+            optionFilterProp="label"
             size="large"
-            prefix={<Search className="h-4 w-4 text-slate-500" />}
-            placeholder="Tìm vận động viên hoặc sự kiện..."
-            value={search}
-            onChange={(event) => {
-              setSearch(event.target.value);
+            className="w-full sm:w-72"
+            value={eventId}
+            placeholder="Chọn sự kiện"
+            options={[
+              { value: '', label: 'Tất cả sự kiện' },
+              ...events.map((event: any) => ({ value: event.id, label: event.name })),
+            ]}
+            onChange={(value) => {
+              setEventId(value);
+              setSportId('');
+              setCategoryId('');
               setPage(1);
             }}
-            className="min-w-64 flex-1"
           />
+          {viewMode === 'list' && (
+            <Input
+              allowClear
+              size="large"
+              prefix={<Search className="h-4 w-4 text-slate-500" />}
+              placeholder="Tìm vận động viên hoặc sự kiện..."
+              value={search}
+              onChange={(event) => {
+                setSearch(event.target.value);
+                setPage(1);
+              }}
+              className="min-w-64 flex-1"
+            />
+          )}
           <Select
             showSearch
             optionFilterProp="label"
             size="large"
             className="w-full sm:w-56"
             value={sportId}
+            disabled={viewMode === 'tree' && !eventId}
             onChange={(value) => {
               setSportId(value);
               setCategoryId('');
@@ -532,7 +606,7 @@ export default function MatchesListPage() {
             }}
             options={[
               { value: '', label: 'Tất cả bộ môn' },
-              ...sports.map((sport: any) => ({
+              ...filterSports.map((sport: any) => ({
                 value: sport.id,
                 label: sport.name,
               })),
@@ -557,45 +631,72 @@ export default function MatchesListPage() {
               })),
             ]}
           />
-          <Select
-            size="large"
-            className="w-full sm:w-52"
-            value={status}
-            onChange={(value) => {
-              setStatus(value);
-              setPage(1);
-            }}
-            options={[
-              { value: '', label: 'Mọi trạng thái' },
-              { value: 'SCHEDULED', label: 'Sắp diễn ra' },
-              { value: 'RUNNING', label: 'Đang thi đấu' },
-              { value: 'FINISHED', label: 'Hoàn thành' },
-              { value: 'CANCELLED', label: 'Đã hủy' },
-            ]}
-          />
+          {viewMode === 'list' && (
+            <Select
+              size="large"
+              className="w-full sm:w-52"
+              value={status}
+              onChange={(value) => {
+                setStatus(value);
+                setPage(1);
+              }}
+              options={[
+                { value: '', label: 'Mọi trạng thái' },
+                { value: 'SCHEDULED', label: 'Sắp diễn ra' },
+                { value: 'RUNNING', label: 'Đang thi đấu' },
+                { value: 'FINISHED', label: 'Hoàn thành' },
+                { value: 'CANCELLED', label: 'Đã hủy' },
+              ]}
+            />
+          )}
         </Flex>
       </Card>
 
-      <Card className="cms-table" styles={{ body: { padding: 0 } }}>
-        <Table
-          rowKey="id"
-          columns={columns}
-          dataSource={matches}
-          loading={isLoading}
-          pagination={false}
-          scroll={{ x: 1100 }}
-          locale={{ emptyText: 'Không có trận đấu phù hợp.' }}
-        />
-        <Flex justify="flex-end" className="border-t border-sdark-800 p-4">
-          <Pagination
-            current={page}
-            total={data?.meta?.total || (data?.meta?.totalPages || 1) * 20}
-            pageSize={20}
-            showSizeChanger={false}
-            onChange={setPage}
+      {viewMode === 'tree' ? (
+        <div className="space-y-5">
+          {drawsError && <Alert type="error" showIcon message="Không thể tải sơ đồ cây thi đấu." />}
+          {!eventId || !sportId || !categoryId ? (
+            <Card className="cms-surface">
+              <Empty description="Chọn sự kiện, bộ môn và hạng thi đấu để xem sơ đồ cây." />
+            </Card>
+          ) : drawsLoading ? (
+            <Card loading className="cms-surface" />
+          ) : draws.length ? (
+            draws.map((draw) => (
+              <SportdataBracket
+                key={draw.id}
+                draw={draw}
+                matchHref={(match) => canManage ? `/cms/matches/${match.id}/edit` : undefined}
+              />
+            ))
+          ) : (
+            <Card className="cms-surface">
+              <Empty description="Hạng thi đấu này chưa có cây. Chọn “Sinh cây tự động” để tạo." />
+            </Card>
+          )}
+        </div>
+      ) : (
+        <Card className="cms-table" styles={{ body: { padding: 0 } }}>
+          <Table
+            rowKey="id"
+            columns={columns}
+            dataSource={matches}
+            loading={isLoading}
+            pagination={false}
+            scroll={{ x: 1100 }}
+            locale={{ emptyText: 'Không có trận đấu phù hợp.' }}
           />
-        </Flex>
-      </Card>
+          <Flex justify="flex-end" className="border-t border-sdark-800 p-4">
+            <Pagination
+              current={page}
+              total={data?.meta?.total || (data?.meta?.totalPages || 1) * 20}
+              pageSize={20}
+              showSizeChanger={false}
+              onChange={setPage}
+            />
+          </Flex>
+        </Card>
+      )}
     </div>
   );
 }

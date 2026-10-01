@@ -16,7 +16,6 @@ import {
   Typography,
 } from 'antd';
 import {
-  BarChart3,
   Building2,
   CalendarDays,
   ClipboardCheck,
@@ -35,7 +34,6 @@ import {
   Trophy,
   User,
   Users,
-  Workflow,
 } from 'lucide-react';
 import {
   applyDocumentColorMode,
@@ -47,21 +45,42 @@ import {
   CMS_PAGE_ACCESS,
   CMS_ROLE_INFO,
   isCmsRole,
+  type CmsRole,
 } from '@/lib/cms-access';
 
-const navItems = [
+type CmsNavLeaf = {
+  label: string;
+  key: string;
+  icon: React.ReactNode;
+  roles: readonly CmsRole[];
+};
+
+type CmsNavGroup = {
+  label: string;
+  key: string;
+  icon: React.ReactNode;
+  children: CmsNavLeaf[];
+};
+
+const navItems: Array<CmsNavLeaf | CmsNavGroup> = [
   { label: 'Dashboard', key: '/cms', icon: <LayoutDashboard className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms'] },
-  { label: 'Điều hành giải đấu', key: '/cms/operations', icon: <Workflow className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/operations'] },
   { label: 'Sự kiện', key: '/cms/events', icon: <CalendarDays className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/events'] },
   { label: 'Đăng ký thi đấu', key: '/cms/registrations', icon: <ClipboardCheck className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/registrations'] },
-  { label: 'Vận động viên', key: '/cms/athletes', icon: <Users className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/athletes'] },
+  { label: 'Danh sách vận động viên', key: '/cms/athletes', icon: <Users className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/athletes'] },
   { label: 'Bộ môn & hạng đấu', key: '/cms/sports', icon: <Trophy className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/sports'] },
-  { label: 'Quốc gia & đơn vị', key: '/cms/organizations', icon: <Building2 className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/organizations'] },
+  { label: 'Danh sách đơn vị thể thao', key: '/cms/organizations', icon: <Building2 className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/organizations'] },
+  { label: 'Tài khoản đơn vị', key: '/cms/accounts', icon: <User className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/accounts'] },
   { label: 'Trận đấu', key: '/cms/matches', icon: <Swords className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/matches'] },
-  { label: 'Thống kê', key: '/cms/statistics', icon: <BarChart3 className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/statistics'] },
-  { label: 'Banner trang chủ', key: '/cms/banners', icon: <Images className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/banners'] },
-  { label: 'Tin tức', key: '/cms/news', icon: <Newspaper className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/news'] },
-  { label: 'Liên hệ', key: '/cms/contacts', icon: <Mail className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/contacts'] },
+  {
+    label: 'Cấu hình',
+    key: 'cms-configuration',
+    icon: <Settings className="h-5 w-5" />,
+    children: [
+      { label: 'Banner trang chủ', key: '/cms/banners', icon: <Images className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/banners'] },
+      { label: 'Tin tức', key: '/cms/news', icon: <Newspaper className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/news'] },
+      { label: 'Liên hệ', key: '/cms/contacts', icon: <Mail className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/contacts'] },
+    ],
+  },
   { label: 'Cài đặt', key: '/cms/settings', icon: <Settings className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/settings'] },
 ];
 
@@ -76,6 +95,7 @@ export default function CmsLayout({ children }: { children: React.ReactNode }) {
   const [userLabel, setUserLabel] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
   const [colorMode, setColorMode] = useState<SportdataColorMode>('dark');
+  const [openMenuKeys, setOpenMenuKeys] = useState<string[]>([]);
   const isPublicAuthPath = publicAuthPaths.includes(pathname);
   const isLight = colorMode === 'light';
   const cmsTheme = useMemo(() => createSportdataTheme(colorMode), [colorMode]);
@@ -144,17 +164,37 @@ export default function CmsLayout({ children }: { children: React.ReactNode }) {
     }
   }, [authenticated, isPublicAuthPath, pathname, router, userRole]);
 
-  const visibleNavItems = useMemo(
-    () => navItems.filter((item) => isCmsRole(userRole) && item.roles.includes(userRole)),
-    [userRole],
+  const visibleNavItems = useMemo<Array<CmsNavLeaf | CmsNavGroup>>(() => {
+    if (!isCmsRole(userRole)) return [];
+    const items: Array<CmsNavLeaf | CmsNavGroup> = [];
+    navItems.forEach((item) => {
+      if ('children' in item) {
+        const children = item.children.filter((child) => child.roles.includes(userRole));
+        if (children.length) items.push({ ...item, children });
+        return;
+      }
+      if (item.roles.includes(userRole)) items.push(item);
+    });
+    return items;
+  }, [userRole]);
+
+  const visibleNavLeaves = useMemo<CmsNavLeaf[]>(
+    () => visibleNavItems.flatMap((item) => 'children' in item ? item.children : [item]),
+    [visibleNavItems],
   );
 
   const selectedKey = useMemo(() => {
-    return [...visibleNavItems]
+    return [...visibleNavLeaves]
       .sort((left, right) => right.key.length - left.key.length)
       .find((item) => item.key === '/cms' ? pathname === '/cms' : pathname.startsWith(item.key))
       ?.key || '/cms';
-  }, [pathname, visibleNavItems]);
+  }, [pathname, visibleNavLeaves]);
+
+  useEffect(() => {
+    if (['/cms/banners', '/cms/news', '/cms/contacts'].some((path) => pathname.startsWith(path))) {
+      setOpenMenuKeys((current) => current.includes('cms-configuration') ? current : [...current, 'cms-configuration']);
+    }
+  }, [pathname]);
 
   const handleLogout = () => {
     localStorage.removeItem('cms_token');
@@ -214,7 +254,20 @@ export default function CmsLayout({ children }: { children: React.ReactNode }) {
         mode="inline"
         inlineCollapsed={compact}
         selectedKeys={[selectedKey]}
-        items={visibleNavItems.map(({ roles: _roles, ...item }) => item)}
+        openKeys={openMenuKeys}
+        onOpenChange={(keys) => setOpenMenuKeys(keys as string[])}
+        items={visibleNavItems.map((item) => {
+          if ('children' in item) {
+            return {
+              label: item.label,
+              key: item.key,
+              icon: item.icon,
+              children: item.children.map(({ roles: _roles, ...child }) => child),
+            };
+          }
+          const { roles: _roles, ...menuItem } = item;
+          return menuItem;
+        })}
         className={`flex-1 overflow-y-auto border-0 py-5 ${compact ? 'px-2' : 'px-3'}`}
         onClick={({ key }) => {
           router.push(key);

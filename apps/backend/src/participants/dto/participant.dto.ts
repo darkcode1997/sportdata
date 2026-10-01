@@ -6,10 +6,17 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  IsBoolean,
   Min,
   MinLength,
 } from 'class-validator';
-import { Gender, RegistrationStatus } from '@prisma/client';
+import {
+  AccountVerificationStatus,
+  DocumentVerificationStatus,
+  Gender,
+  RegistrationStatus,
+  SportDataAccountType,
+} from '@prisma/client';
 
 export class ParticipantRegisterDto {
   @IsEmail()
@@ -53,6 +60,34 @@ export class ParticipantLoginDto {
 
   @IsString()
   password: string;
+
+  @IsOptional()
+  @IsEnum(SportDataAccountType)
+  accountType?: SportDataAccountType;
+}
+
+export class FederationAccountRegisterDto {
+  @IsEmail()
+  email: string;
+
+  @IsString()
+  @MinLength(8)
+  password: string;
+
+  @IsString()
+  @MinLength(2)
+  displayName: string;
+
+  @IsString()
+  @MinLength(8)
+  phone: string;
+
+  @IsString()
+  federationId: string;
+
+  @IsString()
+  @MinLength(2)
+  representativePosition: string;
 }
 
 export class UpdateParticipantProfileDto {
@@ -99,4 +134,69 @@ export class CreatePublicRegistrationDto {
 export class UpdateRegistrationStatusDto {
   @IsEnum(RegistrationStatus)
   status: RegistrationStatus;
+}
+
+export class UpdateDocumentVerificationDto {
+  @IsEnum(DocumentVerificationStatus)
+  status: DocumentVerificationStatus;
+
+  @IsOptional()
+  @IsString()
+  note?: string;
+}
+
+export class ConfirmIdentityOcrDto {
+  @IsOptional()
+  @IsString()
+  documentNumber?: string;
+
+  @IsOptional()
+  @IsString()
+  fullName?: string;
+
+  @IsOptional()
+  @IsDateString()
+  dateOfBirth?: string;
+
+  @IsOptional()
+  @IsString()
+  sex?: string;
+
+  @IsOptional()
+  @IsString()
+  nationality?: string;
+
+  @IsOptional()
+  @IsString()
+  placeOfOrigin?: string;
+
+  @IsOptional()
+  @IsString()
+  address?: string;
+
+  @IsOptional()
+  @IsDateString()
+  issuedAt?: string;
+
+  @IsOptional()
+  @IsDateString()
+  expiresAt?: string;
+
+  @IsOptional()
+  @IsString()
+  placeOfBirth?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  applyToProfile?: boolean;
+}
+
+export class DownloadSubmissionTicketsDto {
+  @IsEmail()
+  contactEmail: string;
+}
+
+export class UpdateAccountVerificationDto {
+  @IsEnum(AccountVerificationStatus)
+  status: AccountVerificationStatus;
 }

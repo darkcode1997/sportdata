@@ -8,11 +8,12 @@ import {
   Req,
   Res,
   UploadedFile,
+  UploadedFiles,
   UseGuards,
   UseInterceptors,
   Query,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { AnyFilesInterceptor, FileInterceptor } from '@nestjs/platform-express';
 import { AthleteMediaType } from '@prisma/client';
 import type { Request, Response } from 'express';
 import { ParticipantsService } from './participants.service';
@@ -22,26 +23,75 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { UserRole } from '../common/enums/user-role.enum';
 import {
   CreatePublicRegistrationDto,
+  ConfirmIdentityOcrDto,
+  DownloadSubmissionTicketsDto,
+  FederationAccountRegisterDto,
   ParticipantLoginDto,
   ParticipantRegisterDto,
   UpdateParticipantProfileDto,
+  UpdateDocumentVerificationDto,
   UpdateRegistrationStatusDto,
+  UpdateAccountVerificationDto,
 } from './dto/participant.dto';
+import { TicketPdfService } from './ticket-pdf.service';
 
 type ParticipantRequest = Request & { participant: { id: string } };
 
 @Controller('participant-auth')
 export class ParticipantsController {
-  constructor(private readonly service: ParticipantsService) {}
+  constructor(
+    private readonly service: ParticipantsService,
+    private readonly ticketPdf: TicketPdfService,
+  ) {}
 
   @Post('register')
   register(@Body() dto: ParticipantRegisterDto) {
     return this.service.register(dto);
   }
 
+  @Post('register/federation')
+  registerFederation(@Body() dto: FederationAccountRegisterDto) {
+    return this.service.registerFederation(dto);
+  }
+
   @Post('login')
   login(@Body() dto: ParticipantLoginDto) {
     return this.service.login(dto);
+  }
+
+  @Post('guest-registrations')
+  @UseInterceptors(AnyFilesInterceptor({ limits: { fileSize: 8 * 1024 * 1024, files: 120 } }))
+  createGuestRegistrations(
+    @Body('payload') payload: string,
+    @UploadedFiles() files: Express.Multer.File[] = [],
+  ) {
+    return this.service.createGuestRegistrations(payload, files);
+  }
+
+  @Post('federation/registrations')
+  @UseGuards(ParticipantAuthGuard)
+  @UseInterceptors(AnyFilesInterceptor({ limits: { fileSize: 8 * 1024 * 1024, files: 120 } }))
+  createFederationRegistrations(
+    @Req() request: ParticipantRequest,
+    @Body('payload') payload: string,
+    @UploadedFiles() files: Express.Multer.File[] = [],
+  ) {
+    return this.service.createGuestRegistrations(payload, files, request.participant.id);
+  }
+
+  @Get('federation/me')
+  @UseGuards(ParticipantAuthGuard)
+  federationMe(@Req() request: ParticipantRequest) {
+    return this.service.getFederationProfile(request.participant.id);
+  }
+
+  @Post('ocr/preview')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 8 * 1024 * 1024 } }))
+  previewIdentityOcr(
+    @Body('type') type: AthleteMediaType,
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
+    return this.service.previewIdentityOcr(type, file);
   }
 
   @Get('me')
@@ -67,6 +117,16 @@ export class ParticipantsController {
     return this.service.upsertMedia(request.participant.id, type, file);
   }
 
+  @Patch('me/media/:type/ocr-confirm')
+  @UseGuards(ParticipantAuthGuard)
+  confirmMediaOcr(
+    @Req() request: ParticipantRequest,
+    @Param('type') type: AthleteMediaType,
+    @Body() dto: ConfirmIdentityOcrDto,
+  ) {
+    return this.service.confirmIdentityOcr(request.participant.id, type, dto);
+  }
+
   @Get('me/media/:type')
   @UseGuards(ParticipantAuthGuard)
   async ownMedia(
@@ -76,7 +136,8 @@ export class ParticipantsController {
   ) {
     const media = await this.service.getOwnMedia(request.participant.id, type);
     response.setHeader('Content-Type', media.mimeType);
-    response.setHeader('Cache-Control', 'private, max-age=60');
+    response.setHeader('Cache-Control', 'private, no-store');
+    response.setHeader('Content-Disposition', 'inline');
     response.send(media.data);
   }
 
@@ -88,11 +149,54 @@ export class ParticipantsController {
     response.send(media.data);
   }
 
+  @Get('tickets/:ticketCode')
+  ticket(@Param('ticketCode') ticketCode: string) {
+    return this.service.getTicket(ticketCode);
+  }
+
+  @Get('tickets/:ticketCode/pdf')
+  async ticketPdfFile(@Param('ticketCode') ticketCode: string, @Res() response: Response) {
+    const ticket = await this.service.getTicket(ticketCode);
+    const pdf = await this.ticketPdf.generate([ticket]);
+    response.setHeader('Content-Type', 'application/pdf');
+    response.setHeader('Cache-Control', 'private, no-store');
+    response.setHeader('Content-Disposition', `attachment; filename="sportdata-${ticket.ticketCode}.pdf"`);
+    response.send(pdf);
+  }
+
+  @Post('submissions/:referenceCode/tickets.pdf')
+  async submissionTicketsPdf(
+    @Param('referenceCode') referenceCode: string,
+    @Body() dto: DownloadSubmissionTicketsDto,
+    @Res() response: Response,
+  ) {
+    const batch = await this.service.getSubmissionTickets(referenceCode, dto.contactEmail);
+    const pdf = await this.ticketPdf.generate(batch.tickets, batch.meta);
+    response.setHeader('Content-Type', 'application/pdf');
+    response.setHeader('Cache-Control', 'private, no-store');
+    response.setHeader('Content-Disposition', `attachment; filename="sportdata-${batch.meta.referenceCode}.pdf"`);
+    response.send(pdf);
+  }
+
   @Get('admin/registrations')
   @UseGuards(JwtAuthGuard)
   @Roles(UserRole.ADMIN, UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER, UserRole.READ_ONLY)
   adminRegistrations(@Query('eventId') eventId?: string) {
     return this.service.listAllRegistrations(eventId);
+  }
+
+  @Get('admin/federation-accounts')
+  @UseGuards(JwtAuthGuard)
+  @Roles(UserRole.ADMIN, UserRole.GAMES_ADMIN, UserRole.READ_ONLY)
+  federationAccounts() {
+    return this.service.listFederationAccounts();
+  }
+
+  @Patch('admin/federation-accounts/:id/status')
+  @UseGuards(JwtAuthGuard)
+  @Roles(UserRole.ADMIN, UserRole.GAMES_ADMIN)
+  updateFederationAccountStatus(@Param('id') id: string, @Body() dto: UpdateAccountVerificationDto) {
+    return this.service.updateFederationAccountStatus(id, dto.status);
   }
 
   @Patch('admin/registrations/:id/status')
@@ -114,6 +218,24 @@ export class ParticipantsController {
     response.setHeader('Content-Type', media.mimeType);
     response.setHeader('Cache-Control', 'private, no-store');
     response.send(media.data);
+  }
+
+  @Patch('admin/athletes/:athleteId/media/:type/verification')
+  @UseGuards(JwtAuthGuard)
+  @Roles(UserRole.ADMIN, UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER)
+  updateDocumentVerification(
+    @Req() request: Request & { user?: { email?: string; sub?: string } },
+    @Param('athleteId') athleteId: string,
+    @Param('type') type: AthleteMediaType,
+    @Body() dto: UpdateDocumentVerificationDto,
+  ) {
+    return this.service.updateDocumentVerification(
+      athleteId,
+      type,
+      dto.status,
+      dto.note,
+      request.user?.email || request.user?.sub || 'CMS',
+    );
   }
 
   @Post('registrations')

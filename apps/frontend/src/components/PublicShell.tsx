@@ -28,6 +28,7 @@ export function PublicShell({ children }: { children: React.ReactNode }) {
   const [participant, setParticipant] = useState<ReturnType<typeof getParticipantAccount>>(null);
   const isLight = colorMode === 'light';
   const publicTheme = useMemo(() => createSportdataTheme(colorMode), [colorMode]);
+  const accountHref = participant?.accountType === 'FEDERATION' ? '/federation-account' : '/account';
   const selectedKey = navigation.find((item) =>
     item.href === '/' ? pathname === '/' : pathname.startsWith(item.href),
   )?.href || '/';
@@ -92,7 +93,7 @@ export function PublicShell({ children }: { children: React.ReactNode }) {
   return (
     <ConfigProvider theme={publicTheme}>
     <div className={`min-h-screen ${isLight ? 'public-theme-light bg-[#f4f7fb]' : 'bg-sdark-950'}`}>
-      <header className={`sticky top-0 z-50 border-b backdrop-blur-xl ${isLight ? 'border-slate-200 bg-white/90' : 'border-white/10 bg-sdark-950/90'}`}>
+      <header className={`public-site-header sticky top-0 z-50 border-b backdrop-blur-xl ${isLight ? 'border-slate-200 bg-white/90' : 'border-white/10 bg-sdark-950/90'}`}>
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
           <Link href="/" className="flex items-center gap-3" aria-label="SportData - Trang chủ">
             <span className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-sblue-400 to-sblue-700 shadow-lg shadow-sblue-500/20">
@@ -124,7 +125,7 @@ export function PublicShell({ children }: { children: React.ReactNode }) {
           </nav>
 
           <div className="flex items-center gap-2">
-            <Link href={participant ? '/account' : '/account/login'} className="hidden sm:block">
+            <Link href={participant ? accountHref : '/account/login'} className="hidden sm:block">
               <Button
                 type={participant ? 'default' : 'primary'}
                 icon={participant ? <UserRound className="h-4 w-4" /> : <LogIn className="h-4 w-4" />}
@@ -132,22 +133,6 @@ export function PublicShell({ children }: { children: React.ReactNode }) {
                 {participant ? participant.displayName : 'Đăng nhập'}
               </Button>
             </Link>
-            {participant && (
-              <Tooltip title="Đăng xuất">
-                <Button
-                  className="hidden sm:inline-flex"
-                  type="text"
-                  shape="circle"
-                  aria-label="Đăng xuất"
-                  icon={<LogOut className="h-4 w-4" />}
-                  onClick={() => {
-                    clearParticipantSession();
-                    setParticipant(null);
-                    router.push('/');
-                  }}
-                />
-              </Tooltip>
-            )}
             {themeToggle}
             <Button
               type="text"
@@ -212,11 +197,11 @@ export function PublicShell({ children }: { children: React.ReactNode }) {
               type="primary"
               icon={participant ? <UserRound className="h-4 w-4" /> : <LogIn className="h-4 w-4" />}
               onClick={() => {
-                router.push(participant ? '/account' : '/account/login');
+                router.push(participant ? accountHref : '/account/login');
                 setMenuOpen(false);
               }}
             >
-              {participant ? 'Tài khoản & vé' : 'Đăng nhập / Đăng ký'}
+              {participant ? 'Tài khoản SportData' : 'Đăng nhập / Đăng ký'}
             </Button>
             {participant && (
               <Button

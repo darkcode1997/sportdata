@@ -4443,6 +4443,81 @@ html[data-app-theme="light"] .ant-checkbox-label {
   color: #0f172a !important;
 }
 
+.public-theme-light .event-platform-page,
+.public-theme-light .sport-platform-page {
+  background: linear-gradient(180deg, #f8fafc 0%, #f3f7fb 100%) !important;
+  color: #0f172a;
+}
+
+.public-theme-light .event-platform-hero {
+  background-color: #081426;
+  color: #ffffff;
+}
+
+.public-theme-light .event-platform-hero .text-slate-300,
+.public-theme-light .event-platform-hero .text-slate-400,
+.public-theme-light .event-platform-hero .text-slate-500,
+.public-theme-light .sport-platform-hero .text-slate-300,
+.public-theme-light .sport-platform-hero .text-slate-400 {
+  color: #cbd5e1 !important;
+}
+
+.public-theme-light .event-platform-filter {
+  border-color: rgba(148, 163, 184, 0.28) !important;
+  background: rgba(8, 18, 36, 0.9) !important;
+}
+
+.public-theme-light .event-platform-list h2,
+.public-theme-light .sport-platform-events h2 {
+  color: #0f172a !important;
+}
+
+.public-theme-light .event-platform-list > div:first-child > span,
+.public-theme-light .event-platform-list > div:first-child p:last-child {
+  color: #64748b !important;
+}
+
+.public-theme-light .sport-platform-metrics.ant-card {
+  border-color: rgba(56, 189, 248, 0.24) !important;
+  background: rgba(2, 6, 23, 0.74) !important;
+}
+
+.public-theme-light .sport-platform-metrics .text-white {
+  color: #ffffff !important;
+}
+
+.public-theme-light .sport-platform-metrics .text-slate-400 {
+  color: #cbd5e1 !important;
+}
+
+.public-theme-light .sport-platform-metrics .text-emerald-200 {
+  color: #a7f3d0 !important;
+}
+
+.public-theme-light .participant-account-page h1,
+.public-theme-light .guest-registration-page h1,
+.public-theme-light .account-gateway-page h1,
+.public-theme-light .federation-account-page h1,
+.public-theme-light .federation-account-page h2 {
+  color: #0f172a !important;
+}
+
+.public-theme-light .participant-account-page .text-slate-100,
+.public-theme-light .guest-registration-page .text-slate-100,
+.public-theme-light .guest-registration-page .text-slate-300 {
+  color: #1e293b !important;
+}
+
+.public-theme-light .account-gateway-page button.border-white\/10 {
+  border-color: #dbe3ee !important;
+  background: #ffffff !important;
+}
+
+.public-theme-light .account-gateway-page button .text-slate-100,
+.public-theme-light .federation-account-page .text-slate-100 {
+  color: #0f172a !important;
+}
+
 .public-theme-light .home-hero {
   background:
     radial-gradient(circle at 15% 12%, rgba(14, 165, 233, 0.13), transparent 34rem),
@@ -5614,5 +5689,35 @@ html[data-app-theme="light"] .ant-checkbox-label {
 
   .news-article-cover-placeholder {
     height: 220px;
+  }
+}
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 12mm;
+  }
+
+  .public-site-header,
+  .ticket-page-controls,
+  .ticket-details {
+    display: none !important;
+  }
+
+  html,
+  body,
+  .ticket-verification-page {
+    min-height: 0 !important;
+    background: #ffffff !important;
+  }
+
+  .ticket-verification-page {
+    padding: 0 !important;
+  }
+
+  .event-pass-card {
+    break-inside: avoid;
+    border: 1px solid #cbd5e1 !important;
+    box-shadow: none !important;
   }
 }

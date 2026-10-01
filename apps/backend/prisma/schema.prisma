@@ -171,6 +171,35 @@ enum AthleteMediaType {
   PASSPORT
 }
 
+enum DocumentVerificationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum DocumentOcrStatus {
+  NOT_REQUESTED
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+enum RegistrationSubmissionType {
+  INDIVIDUAL
+  GROUP
+}
+
+enum SportDataAccountType {
+  ATHLETE
+  FEDERATION
+}
+
+enum AccountVerificationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
 enum PaymentMode {
   FREE
   MANUAL
@@ -215,6 +244,7 @@ model Federation {
   organizedEvents     Event[]             @relation("EventOrganizer")
   participatingEvents Event[]             @relation("EventParticipatingFederations")
   publicRegistrations EventRegistration[]
+  accounts            ParticipantAccount[]
   createdAt           DateTime            @default(now())
   updatedAt           DateTime            @updatedAt
 
@@ -243,18 +273,26 @@ model User {
 }
 
 model ParticipantAccount {
-  id            String              @id @default(cuid())
-  email         String              @unique
-  password      String
-  displayName   String
-  phone         String?
-  isActive      Boolean             @default(true)
-  athlete       Athlete?
-  registrations EventRegistration[]
-  createdAt     DateTime            @default(now())
-  updatedAt     DateTime            @updatedAt
+  id                     String                    @id @default(cuid())
+  email                  String                    @unique
+  password               String
+  displayName            String
+  phone                  String?
+  accountType            SportDataAccountType      @default(ATHLETE)
+  verificationStatus     AccountVerificationStatus @default(VERIFIED)
+  representativePosition String?
+  federationId           String?
+  federation             Federation?               @relation(fields: [federationId], references: [id], onDelete: SetNull)
+  isActive               Boolean                   @default(true)
+  athlete                Athlete?
+  registrations          EventRegistration[]
+  submissions            RegistrationSubmission[]
+  createdAt              DateTime                  @default(now())
+  updatedAt              DateTime                  @updatedAt
 
   @@index([isActive])
+  @@index([accountType, verificationStatus])
+  @@index([federationId])
 }
 
 model Article {
@@ -384,11 +422,11 @@ model Division {
 }
 
 model Event {
-  id                       String                @id @default(cuid())
+  id                       String                   @id @default(cuid())
   name                     String
   sportId                  String
-  sport                    Sport                 @relation("PrimarySportEvents", fields: [sportId], references: [id])
-  sports                   Sport[]               @relation("EventSports")
+  sport                    Sport                    @relation("PrimarySportEvents", fields: [sportId], references: [id])
+  sports                   Sport[]                  @relation("EventSports")
   description              String?
   startDate                DateTime
   endDate                  DateTime
@@ -400,29 +438,30 @@ model Event {
   fops                     Fop[]
   athletes                 Athlete[]
   categories               Category[]
-  level                    EventLevel            @default(INTERNATIONAL)
+  level                    EventLevel               @default(INTERNATIONAL)
   organizerId              String?
-  organizer                Federation?           @relation("EventOrganizer", fields: [organizerId], references: [id], onDelete: SetNull)
-  participatingFederations Federation[]          @relation("EventParticipatingFederations")
-  allowIndependentAthletes Boolean               @default(true)
-  registrationEnabled      Boolean               @default(false)
+  organizer                Federation?              @relation("EventOrganizer", fields: [organizerId], references: [id], onDelete: SetNull)
+  participatingFederations Federation[]             @relation("EventParticipatingFederations")
+  allowIndependentAthletes Boolean                  @default(true)
+  registrationEnabled      Boolean                  @default(false)
   registrationOpenAt       DateTime?
   registrationCloseAt      DateTime?
-  registrationFee          Int                   @default(0)
-  registrationCurrency     String                @default("VND")
-  paymentMode              PaymentMode           @default(FREE)
+  registrationFee          Int                      @default(0)
+  registrationCurrency     String                   @default("VND")
+  paymentMode              PaymentMode              @default(FREE)
   registrations            EventRegistration[]
+  registrationSubmissions  RegistrationSubmission[]
   statistics               Statistic[]
-  venues                   Venue[]               @relation("EventVenues")
+  venues                   Venue[]                  @relation("EventVenues")
   sessions                 CompetitionSession[]
   entries                  CompetitionEntry[]
   teams                    Team[]
   scheduleRules            SportSchedulingRule[]
   heats                    Heat[]
   roundRobinGroups         RoundRobinGroup[]
-  isPublished              Boolean               @default(false)
-  createdAt                DateTime              @default(now())
-  updatedAt                DateTime              @updatedAt
+  isPublished              Boolean                  @default(false)
+  createdAt                DateTime                 @default(now())
+  updatedAt                DateTime                 @updatedAt
 
   @@index([sportId])
   @@index([startDate])
@@ -467,42 +506,74 @@ model Athlete {
 }
 
 model AthleteMedia {
-  id        String           @id @default(cuid())
-  athleteId String
-  athlete   Athlete          @relation(fields: [athleteId], references: [id], onDelete: Cascade)
-  type      AthleteMediaType
-  data      Bytes
-  mimeType  String
-  size      Int
-  createdAt DateTime         @default(now())
-  updatedAt DateTime         @updatedAt
+  id                 String                      @id @default(cuid())
+  athleteId          String
+  athlete            Athlete                     @relation(fields: [athleteId], references: [id], onDelete: Cascade)
+  type               AthleteMediaType
+  data               Bytes
+  mimeType           String
+  size               Int
+  verificationStatus DocumentVerificationStatus?
+  verificationNote   String?
+  verifiedAt         DateTime?
+  verifiedBy         String?
+  ocrStatus          DocumentOcrStatus           @default(NOT_REQUESTED)
+  ocrProvider        String?
+  ocrConfidence      Float?
+  ocrData            Json?
+  createdAt          DateTime                    @default(now())
+  updatedAt          DateTime                    @updatedAt
 
   @@unique([athleteId, type])
   @@index([athleteId])
 }
 
+model RegistrationSubmission {
+  id               String                     @id @default(cuid())
+  eventId          String
+  event            Event                      @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  accountId        String?
+  account          ParticipantAccount?        @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  type             RegistrationSubmissionType @default(INDIVIDUAL)
+  contactName      String
+  contactEmail     String
+  contactPhone     String?
+  organizationName String?
+  referenceCode    String                     @unique
+  registrations    EventRegistration[]
+  createdAt        DateTime                   @default(now())
+  updatedAt        DateTime                   @updatedAt
+
+  @@index([eventId, createdAt])
+  @@index([contactEmail, createdAt])
+  @@index([accountId])
+}
+
 model EventRegistration {
-  id            String             @id @default(cuid())
+  id            String                  @id @default(cuid())
   eventId       String
-  event         Event              @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  event         Event                   @relation(fields: [eventId], references: [id], onDelete: Cascade)
   athleteId     String
-  athlete       Athlete            @relation(fields: [athleteId], references: [id], onDelete: Cascade)
-  accountId     String
-  account       ParticipantAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  athlete       Athlete                 @relation(fields: [athleteId], references: [id], onDelete: Cascade)
+  accountId     String?
+  account       ParticipantAccount?     @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  submissionId  String?
+  submission    RegistrationSubmission? @relation(fields: [submissionId], references: [id], onDelete: SetNull)
   categoryId    String
-  category      Category           @relation(fields: [categoryId], references: [id])
+  category      Category                @relation(fields: [categoryId], references: [id])
   federationId  String?
-  federation    Federation?        @relation(fields: [federationId], references: [id], onDelete: SetNull)
-  status        RegistrationStatus @default(SUBMITTED)
-  paymentStatus PaymentStatus      @default(NOT_REQUIRED)
-  feeAmount     Int                @default(0)
-  currency      String             @default("VND")
-  ticketCode    String             @unique
-  createdAt     DateTime           @default(now())
-  updatedAt     DateTime           @updatedAt
+  federation    Federation?             @relation(fields: [federationId], references: [id], onDelete: SetNull)
+  status        RegistrationStatus      @default(SUBMITTED)
+  paymentStatus PaymentStatus           @default(NOT_REQUIRED)
+  feeAmount     Int                     @default(0)
+  currency      String                  @default("VND")
+  ticketCode    String                  @unique
+  createdAt     DateTime                @default(now())
+  updatedAt     DateTime                @updatedAt
 
   @@unique([eventId, athleteId, categoryId])
   @@index([accountId, createdAt])
+  @@index([submissionId])
   @@index([eventId, status])
   @@index([categoryId])
 }

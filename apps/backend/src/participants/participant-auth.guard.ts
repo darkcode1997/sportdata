@@ -13,7 +13,7 @@ export class ParticipantAuthGuard implements CanActivate {
     const request = context.switchToHttp().getRequest();
     const authorization = request.headers.authorization as string | undefined;
     const token = authorization?.startsWith('Bearer ') ? authorization.slice(7) : undefined;
-    if (!token) throw new UnauthorizedException('Vui lòng đăng nhập tài khoản vận động viên');
+    if (!token) throw new UnauthorizedException('Vui lòng đăng nhập tài khoản SportData');
 
     try {
       const payload = await this.jwtService.verifyAsync(token, {
@@ -22,7 +22,7 @@ export class ParticipantAuthGuard implements CanActivate {
       if (payload.type !== 'participant') throw new Error('wrong token type');
       const account = await this.prisma.participantAccount.findUnique({
         where: { id: payload.sub },
-        select: { id: true, email: true, isActive: true },
+        select: { id: true, email: true, isActive: true, accountType: true, verificationStatus: true, federationId: true },
       });
       if (!account?.isActive) throw new Error('inactive');
       request.participant = account;

@@ -16,6 +16,9 @@ x-backend-environment: &backend-environment
   SMTP_USER: ${SMTP_USER:-}
   SMTP_PASSWORD: ${SMTP_PASSWORD:-}
   SMTP_FROM: ${SMTP_FROM:-SportData <no-reply@localhost>}
+  FPT_AI_API_KEY: ${FPT_AI_API_KEY:-}
+  FPT_AI_ID_ENDPOINT: ${FPT_AI_ID_ENDPOINT:-https://api.fpt.ai/vision/idr/vnm/}
+  FPT_AI_PASSPORT_ENDPOINT: ${FPT_AI_PASSPORT_ENDPOINT:-https://api.fpt.ai/vision/passport/vnm}
 
 x-backend: &backend
   image: sportdata-backend:${IMAGE_TAG:-latest}

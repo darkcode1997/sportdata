@@ -2,14 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import useSWR from 'swr';
 import useSWRInfinite from 'swr/infinite';
 import { Alert, Button, Card, Empty, Select, Skeleton, Spin, Tag } from 'antd';
 import { Radio, TicketCheck, Trophy } from 'lucide-react';
 import { MatchCard } from '@/components/MatchCard';
 import { fetcher } from '@/lib/api';
-import { getParticipantToken, participantApi, participantError } from '@/lib/participant-auth';
+import { getParticipantAccount, getParticipantToken, participantApi, participantError } from '@/lib/participant-auth';
 
 interface Sport {
   id: string;
@@ -158,7 +158,6 @@ function getRegistrationState(event: EventData) {
 
 export default function EventDetailPage() {
   const params = useParams<{ eventId: string }>();
-  const router = useRouter();
   const eventId = params.eventId;
   const { data: eventResponse, isLoading: eventLoading } = useSWR<EventData>(
     eventId ? `/events/${eventId}` : null,
@@ -178,6 +177,14 @@ export default function EventDetailPage() {
   const [registrationCategoryId, setRegistrationCategoryId] = useState<string>();
   const [registrationMessage, setRegistrationMessage] = useState<{ type: 'success' | 'error'; text: string }>();
   const [registrationSubmitting, setRegistrationSubmitting] = useState(false);
+  const [hasParticipantSession, setHasParticipantSession] = useState(false);
+  const [participantAccountType, setParticipantAccountType] = useState<'ATHLETE' | 'FEDERATION'>('ATHLETE');
+
+  useEffect(() => {
+    const account = getParticipantAccount();
+    setHasParticipantSession(Boolean(getParticipantToken()));
+    if (account?.accountType === 'FEDERATION') setParticipantAccountType('FEDERATION');
+  }, []);
 
   useEffect(() => {
     if (!dateGroups.length) return;
@@ -307,7 +314,7 @@ export default function EventDetailPage() {
       return;
     }
     if (!getParticipantToken()) {
-      router.push(`/account/login?next=${encodeURIComponent(`/events/${eventId}`)}`);
+      setRegistrationMessage({ type: 'error', text: 'Vui lòng đăng nhập để dùng hồ sơ đã lưu, hoặc chọn đăng ký không cần tài khoản.' });
       return;
     }
     setRegistrationSubmitting(true);
@@ -317,7 +324,12 @@ export default function EventDetailPage() {
         eventId,
         categoryId: registrationCategoryId,
       });
-      setRegistrationMessage({ type: 'success', text: `Đăng ký thành công. Mã vé: ${data.ticketCode}` });
+      setRegistrationMessage({
+        type: 'success',
+        text: data.status === 'CONFIRMED'
+          ? `Đăng ký đã được xác nhận. Mã vé: ${data.ticketCode}`
+          : `Đã tiếp nhận hồ sơ ${data.ticketCode}. Giấy tờ đang chờ xác thực trước khi vé có hiệu lực.`,
+      });
     } catch (requestError) {
       setRegistrationMessage({ type: 'error', text: participantError(requestError, 'Không thể đăng ký') });
     } finally {
@@ -359,25 +371,42 @@ export default function EventDetailPage() {
         </header>
 
         <Card className="mt-7 border-sky-400/20" title={<span className="flex items-center gap-2"><TicketCheck className="h-5 w-5 text-sky-400" />Đăng ký tham dự</span>} extra={<Tag color={registrationState.open ? 'success' : 'default'}>{registrationState.label}</Tag>}>
-          <div className="grid items-end gap-4 md:grid-cols-[1fr_auto]">
-            <div>
-              <label className="mb-2 block text-sm font-semibold text-slate-300">Hạng đấu / nội dung đăng ký</label>
-              <Select
-                showSearch
-                optionFilterProp="label"
-                size="large"
-                className="w-full"
-                value={registrationCategoryId}
-                onChange={setRegistrationCategoryId}
-                placeholder="Chọn hạng đấu phù hợp"
-                options={eventCategories.map((category) => ({ value: category.id, label: categoryLabel(category) }))}
-              />
+          {hasParticipantSession && participantAccountType === 'FEDERATION' ? (
+            <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-sky-400/20 bg-sky-500/5 p-4">
+              <div><strong className="block">Đăng ký với tài khoản liên đoàn / CLB</strong><span className="mt-1 block text-sm text-slate-400">Gửi danh sách VĐV; thông tin đơn vị được khóa theo tài khoản đã duyệt.</span></div>
+              <Link href={`/events/${eventId}/register?mode=group`}><Button type="primary" size="large">Đăng ký danh sách VĐV</Button></Link>
             </div>
-            <Button type="primary" size="large" disabled={!registrationState.open} loading={registrationSubmitting} onClick={register}>
-              {event?.paymentMode === 'FREE' || !event?.paymentMode ? 'Đăng ký miễn phí' : 'Gửi đăng ký'}
-            </Button>
-          </div>
-          <p className="mt-3 text-xs text-slate-500">Hệ thống kiểm tra ngày sinh, giới tính, cân nặng, đơn vị tham gia và ảnh CCCD trước khi cấp vé.</p>
+          ) : hasParticipantSession ? (
+            <div className="grid items-end gap-4 md:grid-cols-[1fr_auto]">
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-slate-300">Dùng hồ sơ tài khoản · Hạng đấu / nội dung</label>
+                <Select
+                  showSearch
+                  optionFilterProp="label"
+                  size="large"
+                  className="w-full"
+                  value={registrationCategoryId}
+                  onChange={setRegistrationCategoryId}
+                  placeholder="Chọn hạng đấu phù hợp"
+                  options={eventCategories.map((category) => ({ value: category.id, label: categoryLabel(category) }))}
+                />
+              </div>
+              <Button type="primary" size="large" disabled={!registrationState.open} loading={registrationSubmitting} onClick={register}>
+                Gửi hồ sơ từ tài khoản
+              </Button>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 px-4 py-3 text-sm text-slate-400">
+              <span>Bạn có thể đăng ký sự kiện mà không cần tài khoản SportData.</span>
+              <Link href={`/account/login?next=${encodeURIComponent(`/events/${eventId}`)}`}><Button size="small">Đăng nhập để dùng hồ sơ đã lưu</Button></Link>
+            </div>
+          )}
+          {participantAccountType !== 'FEDERATION' && (
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <Link href={`/events/${eventId}/register?mode=individual`}><Button block size="large" disabled={!registrationState.open}>Đăng ký không cần tài khoản</Button></Link>
+              <Link href={`/events/${eventId}/register?mode=group`}><Button block size="large" disabled={!registrationState.open}>Đăng ký danh sách đội / CLB</Button></Link>
+            </div>
+          )}
           {registrationMessage && (
             <Alert
               className="mt-4"
