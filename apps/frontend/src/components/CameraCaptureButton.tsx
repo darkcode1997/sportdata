@@ -1,8 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Button, Modal, Select, Spin } from 'antd';
+import { Button, Modal, Select, Spin } from 'antd';
 import { Camera, Check, RefreshCw, RotateCcw } from 'lucide-react';
+import { useSportDataToast } from '@/hooks/useSportDataToast';
 
 type FacingMode = 'user' | 'environment';
 
@@ -53,6 +54,7 @@ export function CameraCaptureButton({
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const [deviceId, setDeviceId] = useState<string>();
   const [photo, setPhoto] = useState<CapturedPhoto>();
+  const toast = useSportDataToast();
 
   const stopCamera = useCallback(() => {
     streamRef.current?.getTracks().forEach((track) => track.stop());
@@ -99,11 +101,13 @@ export function CameraCaptureButton({
       setReady(true);
     } catch (cameraError) {
       stopCamera();
-      setError(cameraErrorMessage(cameraError));
+      const message = cameraErrorMessage(cameraError);
+      setError(message);
+      toast.error(message);
     } finally {
       setStarting(false);
     }
-  }, [facingMode, stopCamera]);
+  }, [facingMode, stopCamera, toast]);
 
   useEffect(() => {
     if (open && !photo) void startCamera();
@@ -124,7 +128,9 @@ export function CameraCaptureButton({
   const takePhoto = () => {
     const video = videoRef.current;
     if (!video?.videoWidth || !video.videoHeight) {
-      setError('Camera chưa sẵn sàng. Hãy đợi một chút rồi chụp lại.');
+      const message = 'Camera chưa sẵn sàng. Hãy đợi một chút rồi chụp lại.';
+      setError(message);
+      toast.error(message);
       return;
     }
 
@@ -134,7 +140,9 @@ export function CameraCaptureButton({
     canvas.getContext('2d')?.drawImage(video, 0, 0, canvas.width, canvas.height);
     canvas.toBlob((blob) => {
       if (!blob) {
-        setError('Không thể tạo ảnh từ camera. Hãy thử lại.');
+        const message = 'Không thể tạo ảnh từ camera. Hãy thử lại.';
+        setError(message);
+        toast.error(message);
         return;
       }
 
@@ -178,8 +186,6 @@ export function CameraCaptureButton({
         onCancel={close}
       >
         <div className="space-y-4">
-          {error && <Alert showIcon type="error" message={error} />}
-
           {devices.length > 1 && !photo && (
             <Select
               className="w-full"

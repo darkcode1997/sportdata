@@ -7,6 +7,7 @@ import useSWR from 'swr';
 import { Alert, Button, Card, Form, Input, Select } from 'antd';
 import { Building2, UserPlus } from 'lucide-react';
 import { fetcher } from '@/lib/api';
+import { useSportDataToast } from '@/hooks/useSportDataToast';
 import { participantApi, participantError, setParticipantSession } from '@/lib/participant-auth';
 
 type Federation = {
@@ -19,19 +20,19 @@ type Federation = {
 
 export default function FederationAccountRegisterPage() {
   const router = useRouter();
-  const [error, setError] = useState('');
+  const toast = useSportDataToast();
   const [loading, setLoading] = useState(false);
   const { data: federations = [] } = useSWR<Federation[]>('/federations', fetcher);
 
   const submit = async (values: Record<string, string>) => {
     setLoading(true);
-    setError('');
     try {
       const { data } = await participantApi.post('/participant-auth/register/federation', values);
       setParticipantSession(data.accessToken, data.account);
+      toast.success('Đã gửi yêu cầu tài khoản đơn vị tới SportData.');
       router.replace('/federation-account');
     } catch (requestError) {
-      setError(participantError(requestError, 'Không thể đăng ký tài khoản đơn vị'));
+      toast.error(participantError(requestError, 'Không thể đăng ký tài khoản đơn vị'));
     } finally {
       setLoading(false);
     }
@@ -48,7 +49,6 @@ export default function FederationAccountRegisterPage() {
             message="SportData sẽ xác minh người đại diện"
             description="Sau khi được duyệt, tài khoản có thể gửi danh sách VĐV cho các sự kiện mà đơn vị được mời tham gia. Không tạo mới liên đoàn tại đây để tránh mạo danh."
           />
-          {error && <Alert className="mb-5" type="error" showIcon message={error} />}
           <Form layout="vertical" requiredMark={false} onFinish={submit}>
             <Form.Item name="federationId" label="Liên đoàn / CLB / đơn vị" rules={[{ required: true, message: 'Vui lòng chọn đơn vị' }]}>
               <Select

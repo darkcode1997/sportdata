@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
-import { Button, ConfigProvider, Drawer, Dropdown, Flex, Menu as AntMenu, Tooltip } from 'antd';
+import { App as AntApp, Button, ConfigProvider, Drawer, Dropdown, Flex, Menu as AntMenu, Tooltip } from 'antd';
 import { BarChart3, CalendarDays, ChevronDown, LogIn, LogOut, Mail, Menu, Moon, Newspaper, Sun, Trophy, UserRound, X } from 'lucide-react';
 import {
   applyDocumentColorMode,
@@ -98,6 +98,7 @@ export function PublicShell({ children }: { children: React.ReactNode }) {
 
   return (
     <ConfigProvider theme={publicTheme}>
+    <AntApp message={{ top: 76, duration: 4, maxCount: 3 }}>
     <div className={`min-h-screen ${isLight ? 'public-theme-light bg-[#f4f7fb]' : 'bg-sdark-950'}`}>
       <header className={`public-site-header sticky top-0 z-50 border-b backdrop-blur-xl ${isLight ? 'border-slate-200 bg-white/90' : 'border-white/10 bg-sdark-950/90'}`}>
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
@@ -268,6 +269,7 @@ export function PublicShell({ children }: { children: React.ReactNode }) {
         </div>
       </footer>
     </div>
+    </AntApp>
     </ConfigProvider>
   );
 }

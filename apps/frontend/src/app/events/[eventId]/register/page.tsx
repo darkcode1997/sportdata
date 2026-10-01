@@ -23,6 +23,7 @@ import { Download, FileImage, ImageIcon, Loader2, Plus, RefreshCw, Send, Trash2,
 import { CameraCaptureButton } from '@/components/CameraCaptureButton';
 import { EventParticipationCard } from '@/components/EventParticipationCard';
 import { IdentityOcrReviewModal, type IdentityOcrFields, type IdentityOcrResult } from '@/components/IdentityOcrReviewModal';
+import { useSportDataToast } from '@/hooks/useSportDataToast';
 import { fetcher } from '@/lib/api';
 import { getParticipantAccount, getParticipantToken, participantApi, participantError } from '@/lib/participant-auth';
 import type { ParticipationTicket } from '@/lib/ticket-types';
@@ -165,6 +166,7 @@ function DocumentPicker({
 }
 
 export default function GuestEventRegistrationPage() {
+  const toast = useSportDataToast();
   const params = useParams<{ eventId: string }>();
   const eventId = params.eventId;
   const nextKey = useRef(2);
@@ -175,7 +177,6 @@ export default function GuestEventRegistrationPage() {
   const [organizationName, setOrganizationName] = useState('');
   const [athletes, setAthletes] = useState<AthleteDraft[]>([emptyAthlete('athlete-1')]);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState('');
   const [result, setResult] = useState<SubmissionResult>();
   const [ocrReview, setOcrReview] = useState<{ athleteKey: string; result: IdentityOcrResult }>();
   const [ocrReadingKey, setOcrReadingKey] = useState<string>();
@@ -227,16 +228,16 @@ export default function GuestEventRegistrationPage() {
     updateAthlete(athleteKey, { [fileField]: file, ...(fileField !== 'cccdBack' ? { identityOcr: undefined } : {}) });
     if (!file || mediaType === 'CCCD_BACK') return;
     if (!file.type.startsWith('image/')) {
-      setError('OCR cần ảnh JPG, PNG hoặc WebP. Tệp PDF vẫn có thể gửi để CMS kiểm duyệt thủ công.');
+      toast.warning('OCR cần ảnh JPG, PNG hoặc WebP. Tệp PDF vẫn có thể gửi để CMS kiểm duyệt thủ công.');
       return;
     }
     const form = new FormData();
     form.append('type', mediaType);
     form.append('file', file);
     setOcrReadingKey(athleteKey);
-    setError('');
     if (isFederationAccount && federationProfile?.verificationStatus !== 'VERIFIED') {
-      setError('Tài khoản đơn vị phải được SportData duyệt trước khi gửi danh sách vận động viên.');
+      toast.warning('Tài khoản đơn vị phải được SportData duyệt trước khi gửi danh sách vận động viên.');
+      setOcrReadingKey(undefined);
       return;
     }
     try {
@@ -244,10 +245,10 @@ export default function GuestEventRegistrationPage() {
       if (response.data.status === 'COMPLETED') {
         setOcrReview({ athleteKey, result: response.data });
       } else {
-        setError(response.data.message || 'Không đọc được giấy tờ. Bạn vẫn có thể nhập tay và gửi CMS kiểm duyệt.');
+        toast.warning(response.data.message || 'Không đọc được giấy tờ. Bạn vẫn có thể nhập tay và gửi CMS kiểm duyệt.');
       }
     } catch (requestError) {
-      setError(participantError(requestError, 'Không thể đọc dữ liệu giấy tờ'));
+      toast.error(participantError(requestError, 'Không thể đọc dữ liệu giấy tờ'));
     } finally {
       setOcrReadingKey(undefined);
     }
@@ -286,20 +287,19 @@ export default function GuestEventRegistrationPage() {
       link.remove();
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (requestError) {
-      setError(participantError(requestError, 'Đăng ký thành công nhưng chưa thể tải PDF. Hãy bấm Tải bộ vé PDF để thử lại.'));
+      toast.error(participantError(requestError, 'Đăng ký thành công nhưng chưa thể tải PDF. Hãy bấm Tải bộ vé PDF để thử lại.'));
     } finally {
       setDownloadingPdf(false);
     }
   };
 
   const submit = async () => {
-    setError('');
     if (!contactName.trim() || !contactEmail.trim() || !contactPhone.trim()) {
-      setError('Vui lòng nhập đủ người liên hệ, email và số điện thoại.');
+      toast.error('Vui lòng nhập đủ người liên hệ, email và số điện thoại.');
       return;
     }
     if (mode === 'GROUP' && !organizationName.trim()) {
-      setError('Vui lòng nhập tên đội, CLB hoặc đơn vị đăng ký.');
+      toast.error('Vui lòng nhập tên đội, CLB hoặc đơn vị đăng ký.');
       return;
     }
     const missingIndex = activeAthletes.findIndex((athlete) => (
@@ -312,7 +312,7 @@ export default function GuestEventRegistrationPage() {
       || (athlete.identityType === 'CCCD' ? !athlete.cccdFront || !athlete.cccdBack : !athlete.passport)
     ));
     if (missingIndex >= 0) {
-      setError(`Vận động viên ${missingIndex + 1} chưa đủ thông tin, ảnh đại diện hoặc giấy tờ định danh.`);
+      toast.error(`Vận động viên ${missingIndex + 1} chưa đủ thông tin, ảnh đại diện hoặc giấy tờ định danh.`);
       return;
     }
 
@@ -350,10 +350,11 @@ export default function GuestEventRegistrationPage() {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       setResult(response.data);
+      toast.success('Đã tiếp nhận hồ sơ đăng ký và tạo vé tham dự.');
       window.scrollTo({ top: 0, behavior: 'smooth' });
       await downloadSubmissionPdf(response.data);
     } catch (requestError) {
-      setError(participantError(requestError, 'Không thể gửi hồ sơ đăng ký'));
+      toast.error(participantError(requestError, 'Không thể gửi hồ sơ đăng ký'));
     } finally {
       setSubmitting(false);
     }
@@ -433,7 +434,6 @@ export default function GuestEventRegistrationPage() {
         <p className="mt-2 text-slate-400">Đăng ký cá nhân hoặc gửi danh sách cho đội/CLB. Mọi giấy tờ đều chuyển sang trạng thái chờ xác thực.</p>
       </div>
 
-      {error && <Alert className="mb-6" showIcon closable type="error" message={error} onClose={() => setError('')} />}
       {isFederationAccount && (
         <Alert
           className="mb-6"

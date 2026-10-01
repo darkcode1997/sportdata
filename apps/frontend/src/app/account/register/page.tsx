@@ -4,22 +4,22 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import useSWR from 'swr';
-import { Alert, Button, Card, Col, DatePicker, Form, Input, Row, Select } from 'antd';
+import { Button, Card, Col, DatePicker, Form, Input, Row, Select } from 'antd';
 import { UserPlus } from 'lucide-react';
 import { fetcher } from '@/lib/api';
+import { useSportDataToast } from '@/hooks/useSportDataToast';
 import { participantApi, participantError, setParticipantSession } from '@/lib/participant-auth';
 
 type Country = { id: string; code: string; name: string };
 export default function ParticipantRegisterPage() {
   const router = useRouter();
+  const toast = useSportDataToast();
   const [form] = Form.useForm();
-  const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const { data: countries = [] } = useSWR<Country[]>('/countries', fetcher);
 
   const submit = async (values: any) => {
     setLoading(true);
-    setError('');
     try {
       const payload = {
         ...values,
@@ -27,9 +27,10 @@ export default function ParticipantRegisterPage() {
       };
       const { data } = await participantApi.post('/participant-auth/register', payload);
       setParticipantSession(data.accessToken, data.account);
+      toast.success('Tạo tài khoản SportData thành công.');
       router.replace('/account');
     } catch (requestError) {
-      setError(participantError(requestError, 'Không thể tạo tài khoản'));
+      toast.error(participantError(requestError, 'Không thể tạo tài khoản'));
     } finally {
       setLoading(false);
     }
@@ -40,7 +41,6 @@ export default function ParticipantRegisterPage() {
       <div className="w-full max-w-5xl">
       <Card className="w-full" title="Đăng ký tài khoản SportData">
         <p className="mb-6 text-sm text-slate-400">Tài khoản cá nhân dùng chung cho mọi sự kiện và bộ môn trên nền tảng.</p>
-        {error && <Alert className="mb-5" type="error" showIcon message={error} />}
         <Form form={form} layout="vertical" requiredMark={false} onFinish={submit}>
           <Row gutter={16}>
             <Col xs={24} md={12}>

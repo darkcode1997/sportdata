@@ -131,6 +131,17 @@ textarea {
   font: inherit;
 }
 
+.ant-message {
+  z-index: 2100;
+}
+
+.ant-message .ant-message-notice-content {
+  min-width: min(22rem, calc(100vw - 2rem));
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  box-shadow: 0 18px 46px -18px rgba(2, 6, 23, 0.52);
+  font-weight: 650;
+}
+
 h1,
 h2,
 h3,

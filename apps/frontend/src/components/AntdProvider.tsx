@@ -110,7 +110,7 @@ export function AntdProvider({ children }: { children: React.ReactNode }) {
       locale={viVN}
       theme={createSportdataTheme('dark')}
     >
-      <App>{children}</App>
+      <App message={{ top: 76, duration: 4, maxCount: 3 }}>{children}</App>
     </ConfigProvider>
   );
 }

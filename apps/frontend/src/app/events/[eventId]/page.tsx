@@ -5,9 +5,10 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import useSWR from 'swr';
 import useSWRInfinite from 'swr/infinite';
-import { Alert, Button, Card, Empty, Select, Skeleton, Spin, Tag } from 'antd';
+import { Button, Card, Empty, Select, Skeleton, Spin, Tag } from 'antd';
 import { ArrowRight, Building2, LogIn, Radio, ShieldCheck, TicketCheck, Trophy, UserRound, Users } from 'lucide-react';
 import { MatchCard } from '@/components/MatchCard';
+import { useSportDataToast } from '@/hooks/useSportDataToast';
 import { fetcher } from '@/lib/api';
 import { getParticipantAccount, getParticipantToken, participantApi, participantError, type SportDataAccount } from '@/lib/participant-auth';
 
@@ -157,6 +158,7 @@ function getRegistrationState(event: EventData) {
 }
 
 export default function EventDetailPage() {
+  const toast = useSportDataToast();
   const params = useParams<{ eventId: string }>();
   const eventId = params.eventId;
   const { data: eventResponse, isLoading: eventLoading } = useSWR<EventData>(
@@ -175,7 +177,6 @@ export default function EventDetailPage() {
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>();
   const [selectedFopId, setSelectedFopId] = useState<string>();
   const [registrationCategoryId, setRegistrationCategoryId] = useState<string>();
-  const [registrationMessage, setRegistrationMessage] = useState<{ type: 'success' | 'error'; text: string }>();
   const [registrationSubmitting, setRegistrationSubmitting] = useState(false);
   const [participantAccount, setParticipantAccount] = useState<SportDataAccount | null>(null);
   const [hasParticipantSession, setHasParticipantSession] = useState(false);
@@ -322,28 +323,27 @@ export default function EventDetailPage() {
 
   const register = async () => {
     if (!registrationCategoryId) {
-      setRegistrationMessage({ type: 'error', text: 'Vui lòng chọn hạng đấu.' });
+      toast.error('Vui lòng chọn hạng đấu.');
       return;
     }
     if (!getParticipantToken()) {
-      setRegistrationMessage({ type: 'error', text: 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại để tiếp tục.' });
+      toast.error('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại để tiếp tục.');
       return;
     }
     setRegistrationSubmitting(true);
-    setRegistrationMessage(undefined);
     try {
       const { data } = await participantApi.post('/participant-auth/registrations', {
         eventId,
         categoryId: registrationCategoryId,
       });
-      setRegistrationMessage({
-        type: 'success',
-        text: data.status === 'CONFIRMED'
+      toast.success({
+        content: data.status === 'CONFIRMED'
           ? `Đăng ký đã được xác nhận. Mã vé: ${data.ticketCode}`
           : `Đã tiếp nhận hồ sơ ${data.ticketCode}. Giấy tờ đang chờ xác thực trước khi vé có hiệu lực.`,
+        duration: 6,
       });
     } catch (requestError) {
-      setRegistrationMessage({ type: 'error', text: participantError(requestError, 'Không thể đăng ký') });
+      toast.error(participantError(requestError, 'Không thể đăng ký'));
     } finally {
       setRegistrationSubmitting(false);
     }
@@ -454,15 +454,6 @@ export default function EventDetailPage() {
                 </div>
               </section>
             </div>
-          )}
-          {registrationMessage && (
-            <Alert
-              className="mt-4"
-              showIcon
-              type={registrationMessage.type}
-              message={registrationMessage.text}
-              action={registrationMessage.type === 'success' ? <Link href="/account"><Button size="small">Xem vé</Button></Link> : undefined}
-            />
           )}
         </Card>
 

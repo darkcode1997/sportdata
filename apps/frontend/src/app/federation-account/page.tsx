@@ -7,6 +7,7 @@ import useSWR from 'swr';
 import { Alert, Button, Card, Empty, Spin, Statistic, Tag } from 'antd';
 import { Building2, CalendarDays, Download, MapPin, TicketCheck, Users } from 'lucide-react';
 import { getParticipantAccount, getParticipantToken, participantApi, participantError } from '@/lib/participant-auth';
+import { useSportDataToast } from '@/hooks/useSportDataToast';
 
 type FederationProfile = {
   id: string;
@@ -36,10 +37,10 @@ const authFetcher = (url: string) => participantApi.get(url).then((response) => 
 
 export default function FederationAccountPage() {
   const router = useRouter();
+  const toast = useSportDataToast();
   const session = getParticipantAccount();
   const { data: profile, error, isLoading } = useSWR<FederationProfile>(getParticipantToken() ? '/participant-auth/federation/me' : null, authFetcher);
   const [downloading, setDownloading] = useState<string>();
-  const [message, setMessage] = useState('');
 
   useEffect(() => {
     if (!getParticipantToken()) router.replace('/account/login');
@@ -53,7 +54,6 @@ export default function FederationAccountPage() {
   const downloadBatch = async (referenceCode: string) => {
     if (!profile) return;
     setDownloading(referenceCode);
-    setMessage('');
     try {
       const response = await participantApi.post(
         `/participant-auth/submissions/${encodeURIComponent(referenceCode)}/tickets.pdf`,
@@ -69,7 +69,7 @@ export default function FederationAccountPage() {
       link.remove();
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (requestError) {
-      setMessage(participantError(requestError, 'Không thể tải bộ vé'));
+      toast.error(participantError(requestError, 'Không thể tải bộ vé'));
     } finally {
       setDownloading(undefined);
     }
@@ -104,8 +104,6 @@ export default function FederationAccountPage() {
             description="Bạn có thể xem thông tin tài khoản, nhưng chỉ được gửi danh sách VĐV sau khi SportData xác nhận quyền đại diện đơn vị."
           />
         )}
-        {message && <Alert className="mb-6" showIcon type="error" message={message} closable onClose={() => setMessage('')} />}
-
         <div className="mb-8 grid gap-4 sm:grid-cols-3">
           <Card><Statistic title="Vận động viên thuộc đơn vị" value={profile.federation._count.athletes} prefix={<Users className="h-5 w-5" />} /></Card>
           <Card><Statistic title="Sự kiện được mời" value={profile.federation._count.participatingEvents} prefix={<CalendarDays className="h-5 w-5" />} /></Card>

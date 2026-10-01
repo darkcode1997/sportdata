@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { Alert, Button, Card, Form, Input, Tag } from 'antd';
 import { Building2, ChevronRight, LockKeyhole, LogIn, Mail, ShieldCheck, UserRound } from 'lucide-react';
+import { useSportDataToast } from '@/hooks/useSportDataToast';
 import { participantApi, participantError, setParticipantSession } from '@/lib/participant-auth';
 
 type LoginMode = 'ATHLETE' | 'FEDERATION' | 'EVENT_MANAGER';
@@ -32,21 +33,21 @@ const modes: Array<{ key: LoginMode; title: string; description: string; icon: R
 
 export default function SportDataLoginPage() {
   const router = useRouter();
+  const toast = useSportDataToast();
   const [mode, setMode] = useState<LoginMode>('ATHLETE');
-  const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   const submit = async (values: { email: string; password: string }) => {
     if (mode === 'EVENT_MANAGER') return;
     setLoading(true);
-    setError('');
     try {
       const { data } = await participantApi.post('/participant-auth/login', { ...values, accountType: mode });
       setParticipantSession(data.accessToken, data.account);
+      toast.success(`Đăng nhập thành công. Xin chào ${data.account.displayName}.`);
       const next = new URLSearchParams(window.location.search).get('next');
       router.replace(next || (data.account.accountType === 'FEDERATION' ? '/federation-account' : '/account'));
     } catch (requestError) {
-      setError(participantError(requestError, 'Không thể đăng nhập'));
+      toast.error(participantError(requestError, 'Không thể đăng nhập'));
     } finally {
       setLoading(false);
     }
@@ -66,7 +67,7 @@ export default function SportDataLoginPage() {
               <button
                 key={item.key}
                 type="button"
-                onClick={() => { setMode(item.key); setError(''); }}
+                onClick={() => setMode(item.key)}
                 className={`flex w-full items-center gap-4 rounded-2xl border p-4 text-left transition ${mode === item.key ? 'border-sky-400 bg-sky-500/10 shadow-lg shadow-sky-950/20' : 'border-white/10 bg-white/[0.03] hover:border-sky-400/50'}`}
               >
                 <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl ${mode === item.key ? 'bg-sky-500 text-white' : 'bg-slate-800 text-slate-300'}`}>{item.icon}</span>
@@ -95,7 +96,6 @@ export default function SportDataLoginPage() {
           ) : (
             <>
               <p className="mb-6 text-sm text-slate-400">{selected.description}</p>
-              {error && <Alert className="mb-5" type="error" showIcon message={error} />}
               <Form layout="vertical" onFinish={submit} requiredMark={false}>
                 <Form.Item name="email" label="Email" rules={[{ required: true }, { type: 'email' }]}>
                   <Input size="large" prefix={<Mail className="h-4 w-4" />} autoComplete="email" />

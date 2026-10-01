@@ -4,11 +4,12 @@ import { useEffect, useMemo, useState, type ComponentProps } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import useSWR from 'swr';
-import { Alert, Avatar, Button, Card, Empty, Image as AntImage, Segmented, Spin, Tag, Upload } from 'antd';
+import { Avatar, Button, Card, Empty, Image as AntImage, Segmented, Spin, Tag, Upload } from 'antd';
 import { CreditCard, Download, Eye, FileCheck2, FileText, ImagePlus, ScanText, TicketCheck, UploadCloud, UserRound } from 'lucide-react';
 import { CameraCaptureButton } from '@/components/CameraCaptureButton';
 import { EventParticipationCard } from '@/components/EventParticipationCard';
 import { IdentityOcrReviewModal, type IdentityOcrFields, type IdentityOcrResult } from '@/components/IdentityOcrReviewModal';
+import { useSportDataToast } from '@/hooks/useSportDataToast';
 import { clearParticipantSession, getParticipantAccount, getParticipantToken, participantApi, participantError } from '@/lib/participant-auth';
 import type { ParticipationTicket, TicketStatistics } from '@/lib/ticket-types';
 
@@ -121,8 +122,8 @@ function registrationTicket(registration: Registration): ParticipationTicket {
 
 export default function ParticipantAccountPage() {
   const router = useRouter();
+  const toast = useSportDataToast();
   const [tab, setTab] = useState<'profile' | 'tickets'>('profile');
-  const [message, setMessage] = useState<{ type: 'success' | 'warning' | 'error'; text: string }>();
   const [mediaAssets, setMediaAssets] = useState<Partial<Record<MediaType, MediaAsset>>>({});
   const [ocrReview, setOcrReview] = useState<{ type: MediaType; result: IdentityOcrResult }>();
   const [confirmingOcr, setConfirmingOcr] = useState(false);
@@ -181,22 +182,21 @@ export default function ParticipantAccountPage() {
   }, [mediaItems]);
 
   const upload = async (type: MediaType, file: File) => {
-    setMessage(undefined);
     const form = new FormData();
     form.append('file', file);
     try {
       const response = await participantApi.post<{ ocr?: IdentityOcrResult }>(`/participant-auth/me/media/${type}`, form);
       if (type !== 'AVATAR' && response.data.ocr?.status === 'COMPLETED') {
         setOcrReview({ type, result: response.data.ocr });
-        setMessage({ type: 'success', text: 'Đã đọc dữ liệu. Vui lòng kiểm tra và xác nhận thông tin trên giấy tờ.' });
+        toast.success('Đã đọc dữ liệu. Vui lòng kiểm tra và xác nhận thông tin trên giấy tờ.');
       } else if (type !== 'AVATAR' && response.data.ocr?.message) {
-        setMessage({ type: 'warning', text: response.data.ocr.message });
+        toast.warning(response.data.ocr.message);
       } else {
-        setMessage({ type: 'success', text: `Đã cập nhật ${mediaLabels[type].toLowerCase()}.` });
+        toast.success(`Đã cập nhật ${mediaLabels[type].toLowerCase()}.`);
       }
       await Promise.all([mutate(), mutateRegistrations()]);
     } catch (requestError) {
-      setMessage({ type: 'error', text: participantError(requestError, 'Tải tệp thất bại') });
+      toast.error(participantError(requestError, 'Tải tệp thất bại'));
     }
   };
 
@@ -206,10 +206,10 @@ export default function ParticipantAccountPage() {
     try {
       await participantApi.patch(`/participant-auth/me/media/${ocrReview.type}/ocr-confirm`, { ...fields, applyToProfile });
       setOcrReview(undefined);
-      setMessage({ type: 'success', text: 'Đã lưu thông tin bạn xác nhận. Giấy tờ vẫn chờ CMS/eKYC xác thực.' });
+      toast.success('Đã lưu thông tin bạn xác nhận. Giấy tờ vẫn chờ CMS/eKYC xác thực.');
       await mutate();
     } catch (requestError) {
-      setMessage({ type: 'error', text: participantError(requestError, 'Không thể xác nhận dữ liệu OCR') });
+      toast.error(participantError(requestError, 'Không thể xác nhận dữ liệu OCR'));
     } finally {
       setConfirmingOcr(false);
     }
@@ -242,7 +242,6 @@ export default function ParticipantAccountPage() {
           </div>
         </header>
 
-        {message && <Alert className="mb-5" showIcon type={message.type} message={message.text} closable />}
         <Segmented
           className="mb-6"
           value={tab}
