@@ -30,6 +30,7 @@ import {
 import { Check, ImagePlus, Pencil, Plus, Save, Trash2, UserRound, X } from 'lucide-react';
 import { api, fetcher } from '@/lib/api';
 import { useSportDataToast } from '@/hooks/useSportDataToast';
+import { vietnamCountryId } from '@/lib/countries';
 
 type CountryOption = {
   id: string;
@@ -137,6 +138,14 @@ export function AthleteForm({ athleteId, initialData }: { athleteId?: string; in
   const countryFederations = federations.filter(
     (federation) => !selectedCountryId || federation.countryId === selectedCountryId,
   );
+
+  useEffect(() => {
+    if (athleteId || selectedCountryId || !countries.length) return;
+    const defaultCountryId = vietnamCountryId(countries);
+    if (defaultCountryId) {
+      setValue('countryId', defaultCountryId, { shouldValidate: true });
+    }
+  }, [athleteId, countries, selectedCountryId, setValue]);
 
   useEffect(() => {
     if (!selectedFederationId || !selectedCountryId) return;
@@ -479,7 +488,7 @@ function FederationManager({
       (federation) => federation.id === selectedFederationId,
     );
     setCountryId(
-      selectedFederation?.countryId || preferredCountryId || countries[0]?.id || '',
+      selectedFederation?.countryId || preferredCountryId || vietnamCountryId(countries) || countries[0]?.id || '',
     );
     setName('');
     setCode('');

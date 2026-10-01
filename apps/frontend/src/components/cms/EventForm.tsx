@@ -1,17 +1,24 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import useSWR from 'swr';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import dayjs from 'dayjs';
-import { Card, Checkbox, Col, DatePicker, Form, Input, InputNumber, Row, Select } from 'antd';
+import { Button, Card, Checkbox, Col, DatePicker, Form, Image, Input, InputNumber, Row, Select, Upload } from 'antd';
+import { ImagePlus, Trash2 } from 'lucide-react';
 import { api, fetcher } from '@/lib/api';
 import { FormActions } from './AthleteForm';
 import { RemoteAthleteSelect } from './RemoteAthleteSelect';
 import { useSportDataToast } from '@/hooks/useSportDataToast';
+import { findVietnamCountry } from '@/lib/countries';
+
+const eventImageUrlSchema = z.string().refine(
+  (value) => !value || value.startsWith('/api/') || z.string().url().safeParse(value).success,
+  'Đường dẫn ảnh không hợp lệ',
+).optional();
 
 const eventSchema = z.object({
   name: z.string().min(3, 'Tên sự kiện phải có ít nhất 3 ký tự'),
@@ -32,8 +39,8 @@ const eventSchema = z.object({
   startDate: z.string().min(1, 'Vui lòng chọn thời gian bắt đầu'),
   endDate: z.string().min(1, 'Vui lòng chọn thời gian kết thúc'),
   location: z.string().optional(),
-  bannerUrl: z.string().url('URL banner không hợp lệ').or(z.literal('')).optional(),
-  logoUrl: z.string().url('URL logo không hợp lệ').or(z.literal('')).optional(),
+  bannerUrl: eventImageUrlSchema,
+  logoUrl: eventImageUrlSchema,
   isPublished: z.boolean(),
 }).refine((values) => new Date(values.endDate) >= new Date(values.startDate), {
   message: 'Thời gian kết thúc phải sau thời gian bắt đầu',
@@ -54,19 +61,38 @@ const eventSchema = z.object({
 
 type EventFormValues = z.infer<typeof eventSchema>;
 const toLocalInput = (value?: string) => value ? dayjs(value).format('YYYY-MM-DDTHH:mm') : '';
+const formatVnd = (value?: string | number) => value == null || value === ''
+  ? ''
+  : new Intl.NumberFormat('vi-VN').format(Number(value));
+const parseVnd = (value?: string) => Number(String(value || '').replace(/[^0-9]/g, ''));
+const registrationWindowFrom = (startValue?: string) => {
+  if (!startValue || !dayjs(startValue).isValid()) return { open: '', close: '' };
+  const start = dayjs(startValue);
+  return {
+    open: start.subtract(30, 'day').startOf('day').format('YYYY-MM-DDTHH:mm'),
+    close: start.subtract(1, 'day').endOf('day').second(0).format('YYYY-MM-DDTHH:mm'),
+  };
+};
 
 export function EventForm({ eventId, initialData }: { eventId?: string; initialData?: any }) {
   const router = useRouter();
   const toast = useSportDataToast();
   const [athleteCountryId, setAthleteCountryId] = useState<string>();
   const [athleteFederationId, setAthleteFederationId] = useState<string>();
+  const [bannerFile, setBannerFile] = useState<File>();
+  const [logoFile, setLogoFile] = useState<File>();
+  const [bannerRemoved, setBannerRemoved] = useState(false);
+  const [logoRemoved, setLogoRemoved] = useState(false);
+  const athleteCountryInitialized = useRef(false);
   const { data: sports = [] } = useSWR<any[]>('/sports', fetcher);
   const { data: federations = [] } = useSWR<any[]>('/federations', fetcher);
   const { data: categoriesResponse } = useSWR<any>('/categories?limit=500', fetcher);
   const categories = categoriesResponse?.items || [];
+  const initialRegistrationWindow = registrationWindowFrom(initialData?.startDate);
   const {
     control,
     handleSubmit,
+    getValues,
     setValue,
     watch,
     formState: { errors, isSubmitting },
@@ -82,8 +108,8 @@ export function EventForm({ eventId, initialData }: { eventId?: string; initialD
       participatingFederationIds: initialData?.participatingFederations?.map((item: any) => item.id) || [],
       allowIndependentAthletes: initialData?.allowIndependentAthletes ?? true,
       registrationEnabled: initialData?.registrationEnabled ?? false,
-      registrationOpenAt: toLocalInput(initialData?.registrationOpenAt),
-      registrationCloseAt: toLocalInput(initialData?.registrationCloseAt),
+      registrationOpenAt: toLocalInput(initialData?.registrationOpenAt) || initialRegistrationWindow.open,
+      registrationCloseAt: toLocalInput(initialData?.registrationCloseAt) || initialRegistrationWindow.close,
       registrationFee: initialData?.registrationFee ?? 0,
       registrationCurrency: initialData?.registrationCurrency || 'VND',
       paymentMode: initialData?.paymentMode || 'FREE',
@@ -122,6 +148,13 @@ export function EventForm({ eventId, initialData }: { eventId?: string; initialD
     .filter(Boolean);
 
   useEffect(() => {
+    if (!countries.length) return;
+    if (!athleteCountryInitialized.current && !athleteCountryId) {
+      athleteCountryInitialized.current = true;
+      const vietnam = findVietnamCountry(countries);
+      if (vietnam) setAthleteCountryId(vietnam.id);
+      return;
+    }
     if (athleteCountryId && !countries.some((country: any) => country.id === athleteCountryId)) {
       setAthleteCountryId(undefined);
     }
@@ -152,12 +185,33 @@ export function EventForm({ eventId, initialData }: { eventId?: string; initialD
       registrationFee: values.paymentMode === 'FREE' ? 0 : values.registrationFee,
       description: values.description || undefined,
       location: values.location || undefined,
-      bannerUrl: values.bannerUrl || undefined,
-      logoUrl: values.logoUrl || undefined,
+      bannerUrl: eventId && bannerRemoved ? null : values.bannerUrl || undefined,
+      logoUrl: eventId && logoRemoved ? null : values.logoUrl || undefined,
     };
     try {
-      if (eventId) await api.patch(`/events/${eventId}`, payload);
-      else await api.post('/events', payload);
+      const response = eventId
+        ? await api.patch(`/events/${eventId}`, payload)
+        : await api.post('/events', payload);
+      const savedEventId = eventId || response.data.id;
+      const syncImage = async (
+        kind: 'banner' | 'logo',
+        file: File | undefined,
+        removed: boolean,
+      ) => {
+        if (file) {
+          const formData = new FormData();
+          formData.append('file', file);
+          await api.patch(`/events/${savedEventId}/${kind}-image`, formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+          });
+        } else if (removed && eventId) {
+          await api.delete(`/events/${savedEventId}/${kind}-image`);
+        }
+      };
+      await Promise.all([
+        syncImage('banner', bannerFile, bannerRemoved),
+        syncImage('logo', logoFile, logoRemoved),
+      ]);
       toast.success(eventId ? 'Đã cập nhật sự kiện.' : 'Đã tạo sự kiện.');
       router.push('/cms/events');
       router.refresh();
@@ -302,42 +356,57 @@ export function EventForm({ eventId, initialData }: { eventId?: string; initialD
           </ControlledField>
           <ControlledField name="athleteIds" control={control} label="Vận động viên tham gia" error={errors.athleteIds?.message} wide>
             {(field) => (
-              <div className="rounded-xl border border-sdark-700 bg-sdark-950/35 p-3">
-                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                  <span className="text-xs font-semibold text-slate-400">
-                    Lọc danh sách theo quốc gia
-                  </span>
-                  <span className="rounded-full bg-sblue-500/10 px-2.5 py-1 text-xs font-bold text-sblue-300">
+              <div className="event-athlete-picker">
+                <div className="event-picker-heading">
+                  <div>
+                    <strong>Chọn VĐV đủ điều kiện</strong>
+                    <p>Lọc theo quốc gia và đơn vị, sau đó tìm theo tên vận động viên.</p>
+                  </div>
+                  <span className="event-selection-count">
                     Đã chọn {(field.value || []).length.toLocaleString()} VĐV
                   </span>
                 </div>
-                <div className="grid gap-3 xl:grid-cols-[260px_300px_minmax(0,1fr)]">
-                  <Select
-                    allowClear
-                    showSearch
-                    optionFilterProp="label"
-                    size="large"
-                    placeholder="Tất cả quốc gia"
-                    value={athleteCountryId}
-                    onChange={setAthleteCountryId}
-                    options={countries.map((country: any) => ({
-                      value: country.id,
-                      label: `${country.name} · ${country.code} (${country.athleteCount})`,
-                    }))}
-                  />
-                  <Select
-                    allowClear
-                    showSearch
-                    optionFilterProp="label"
-                    size="large"
-                    placeholder="Tất cả đơn vị"
-                    value={athleteFederationId}
-                    onChange={setAthleteFederationId}
-                    options={eligibleFederations.map((federation: any) => ({
-                      value: federation.id,
-                      label: `${federation.name} (${federation.athleteCount})`,
-                    }))}
-                  />
+                <div className="grid gap-4 md:grid-cols-2">
+                  <label className="event-filter-field">
+                    <span>Quốc gia</span>
+                    <Select
+                      allowClear
+                      showSearch
+                      optionFilterProp="label"
+                      size="large"
+                      placeholder="Tất cả quốc gia"
+                      value={athleteCountryId}
+                      onChange={(value) => {
+                        setAthleteCountryId(value);
+                        setAthleteFederationId(undefined);
+                      }}
+                      options={countries.map((country: any) => ({
+                        value: country.id,
+                        label: `${country.name} · ${country.code} (${country.athleteCount})`,
+                      }))}
+                    />
+                  </label>
+                  <label className="event-filter-field">
+                    <span>Đơn vị / CLB</span>
+                    <Select
+                      allowClear
+                      showSearch
+                      optionFilterProp="label"
+                      size="large"
+                      placeholder="Tất cả đơn vị"
+                      value={athleteFederationId}
+                      onChange={setAthleteFederationId}
+                      options={eligibleFederations
+                        .filter((federation: any) => !athleteCountryId || federation.countryId === athleteCountryId)
+                        .map((federation: any) => ({
+                          value: federation.id,
+                          label: `${federation.name} (${federation.athleteCount})`,
+                        }))}
+                    />
+                  </label>
+                </div>
+                <div className="event-athlete-search">
+                  <span>Tìm và chọn vận động viên</span>
                   <RemoteAthleteSelect
                     mode="multiple"
                     categoryIds={selectedCategoryIds}
@@ -374,7 +443,15 @@ export function EventForm({ eventId, initialData }: { eventId?: string; initialD
                 placeholder="Chọn thời gian bắt đầu"
                 value={field.value ? dayjs(field.value) : null}
                 onBlur={field.onBlur}
-                onChange={(value) => field.onChange(value ? value.format('YYYY-MM-DDTHH:mm') : '')}
+                onChange={(value) => {
+                  const nextStart = value ? value.format('YYYY-MM-DDTHH:mm') : '';
+                  field.onChange(nextStart);
+                  if (!eventId || (!getValues('registrationOpenAt') && !getValues('registrationCloseAt'))) {
+                    const window = registrationWindowFrom(nextStart);
+                    setValue('registrationOpenAt', window.open, { shouldValidate: true });
+                    setValue('registrationCloseAt', window.close, { shouldValidate: true });
+                  }
+                }}
               />
             )}
           </ControlledField>
@@ -401,7 +478,17 @@ export function EventForm({ eventId, initialData }: { eventId?: string; initialD
                       name="registrationEnabled"
                       control={control}
                       render={({ field }) => (
-                        <Checkbox checked={field.value} onChange={(event) => field.onChange(event.target.checked)}>
+                        <Checkbox
+                          checked={field.value}
+                          onChange={(event) => {
+                            field.onChange(event.target.checked);
+                            if (event.target.checked && (!getValues('registrationOpenAt') || !getValues('registrationCloseAt'))) {
+                              const window = registrationWindowFrom(getValues('startDate'));
+                              setValue('registrationOpenAt', window.open, { shouldValidate: true });
+                              setValue('registrationCloseAt', window.close, { shouldValidate: true });
+                            }
+                          }}
+                        >
                           Mở đăng ký trực tuyến cho vận động viên
                         </Checkbox>
                       )}
@@ -451,11 +538,14 @@ export function EventForm({ eventId, initialData }: { eventId?: string; initialD
                 </ControlledField>
                 <ControlledField name="registrationFee" control={control} label="Lệ phí mỗi hạng đấu" error={errors.registrationFee?.message}>
                   {(field) => (
-                    <InputNumber
+                    <InputNumber<number>
                       size="large"
                       className="w-full"
                       min={0}
                       step={10000}
+                      precision={0}
+                      formatter={formatVnd}
+                      parser={parseVnd}
                       disabled={paymentMode === 'FREE'}
                       value={field.value}
                       onChange={(value) => field.onChange(value || 0)}
@@ -467,11 +557,45 @@ export function EventForm({ eventId, initialData }: { eventId?: string; initialD
               <p className="mb-0 text-xs text-slate-500">Phase 1 dùng chế độ miễn phí. Hai lựa chọn trả phí là cấu hình sẵn để tích hợp cổng thanh toán sau.</p>
             </Card>
           </Col>
-          <ControlledField name="bannerUrl" control={control} label="URL banner" error={errors.bannerUrl?.message}>
-            {(field) => <Input {...field} size="large" type="url" placeholder="https://..." />}
+          <ControlledField name="bannerUrl" control={control} label="Banner sự kiện" error={errors.bannerUrl?.message}>
+            {(field) => (
+              <EventImageUpload
+                kind="banner"
+                value={field.value}
+                file={bannerFile}
+                onFileChange={(file) => {
+                  setBannerFile(file);
+                  setBannerRemoved(false);
+                  if (file) field.onChange('');
+                }}
+                onRemove={() => {
+                  setBannerFile(undefined);
+                  setBannerRemoved(true);
+                  field.onChange('');
+                }}
+                onError={toast.error}
+              />
+            )}
           </ControlledField>
-          <ControlledField name="logoUrl" control={control} label="URL logo" error={errors.logoUrl?.message}>
-            {(field) => <Input {...field} size="large" type="url" placeholder="https://..." />}
+          <ControlledField name="logoUrl" control={control} label="Logo sự kiện" error={errors.logoUrl?.message}>
+            {(field) => (
+              <EventImageUpload
+                kind="logo"
+                value={field.value}
+                file={logoFile}
+                onFileChange={(file) => {
+                  setLogoFile(file);
+                  setLogoRemoved(false);
+                  if (file) field.onChange('');
+                }}
+                onRemove={() => {
+                  setLogoFile(undefined);
+                  setLogoRemoved(true);
+                  field.onChange('');
+                }}
+                onError={toast.error}
+              />
+            )}
           </ControlledField>
           <ControlledField name="description" control={control} label="Mô tả" error={errors.description?.message} wide>
             {(field) => <Input.TextArea {...field} rows={5} placeholder="Thông tin giới thiệu sự kiện" />}
@@ -519,7 +643,7 @@ function CategoryGroupedSelect({
   }
 
   return (
-    <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+    <div className={`grid grid-cols-1 gap-3 ${sports.length > 1 ? 'xl:grid-cols-2' : ''}`}>
       {sports.map((sport) => {
         const sportCategories = categories.filter((category) => category.sportId === sport.id);
         const sportCategoryIds = new Set(sportCategories.map((category) => category.id));
@@ -534,18 +658,18 @@ function CategoryGroupedSelect({
         return (
           <div
             key={sport.id}
-            className="rounded-xl border border-sdark-700 bg-sdark-950/35 p-3"
+            className="event-category-card"
           >
-            <div className="mb-2 flex min-w-0 items-center gap-2">
-              <strong className="min-w-0 flex-1 truncate text-sm text-slate-200">
+            <div className="event-category-heading">
+              <strong className="min-w-0 flex-1 truncate text-sm">
                 {sport.name}
               </strong>
-              <span className="text-xs tabular-nums text-slate-500">
-                {selectedIds.length}/{sportCategories.length}
+              <span className="event-category-count">
+                {selectedIds.length}/{sportCategories.length} đã chọn
               </span>
               <button
                 type="button"
-                className="text-xs font-semibold text-sky-400 disabled:text-slate-600"
+                className="event-select-all"
                 disabled={!sportCategories.length}
                 onClick={() => replaceSportSelection(
                   selectedIds.length === sportCategories.length
@@ -577,6 +701,89 @@ function CategoryGroupedSelect({
           </div>
         );
       })}
+    </div>
+  );
+}
+
+function useObjectUrl(file?: File) {
+  const [url, setUrl] = useState('');
+  useEffect(() => {
+    if (!file) {
+      setUrl('');
+      return undefined;
+    }
+    const nextUrl = URL.createObjectURL(file);
+    setUrl(nextUrl);
+    return () => URL.revokeObjectURL(nextUrl);
+  }, [file]);
+  return url;
+}
+
+function EventImageUpload({
+  kind,
+  value,
+  file,
+  onFileChange,
+  onRemove,
+  onError,
+}: {
+  kind: 'banner' | 'logo';
+  value?: string;
+  file?: File;
+  onFileChange: (file?: File) => void;
+  onRemove: () => void;
+  onError: (message: string) => void;
+}) {
+  const objectUrl = useObjectUrl(file);
+  const previewUrl = objectUrl || value;
+  const label = kind === 'banner' ? 'banner' : 'logo';
+
+  return (
+    <div className={`event-image-upload event-image-upload--${kind}`}>
+      <div className="event-image-preview">
+        {previewUrl ? (
+          <Image src={previewUrl} alt={`Ảnh ${label} sự kiện`} preview={false} />
+        ) : (
+          <div className="event-image-empty">
+            <ImagePlus className="h-6 w-6" />
+            <span>Chưa có {label}</span>
+          </div>
+        )}
+      </div>
+      <div className="event-image-actions">
+        <Upload
+          accept="image/jpeg,image/png,image/webp"
+          showUploadList={false}
+          beforeUpload={(selectedFile) => {
+            if (!['image/jpeg', 'image/png', 'image/webp'].includes(selectedFile.type)) {
+              onError('Ảnh chỉ hỗ trợ định dạng JPG, PNG hoặc WebP.');
+              return Upload.LIST_IGNORE;
+            }
+            if (selectedFile.size > 6 * 1024 * 1024) {
+              onError('Ảnh không được vượt quá 6 MB.');
+              return Upload.LIST_IGNORE;
+            }
+            onFileChange(selectedFile);
+            return false;
+          }}
+        >
+          <Button htmlType="button" icon={<ImagePlus className="h-4 w-4" />}>
+            {previewUrl ? 'Thay ảnh' : 'Tải ảnh lên'}
+          </Button>
+        </Upload>
+        {previewUrl && (
+          <Button
+            htmlType="button"
+            danger
+            type="text"
+            icon={<Trash2 className="h-4 w-4" />}
+            onClick={onRemove}
+          >
+            Xóa
+          </Button>
+        )}
+        <span>JPG, PNG hoặc WebP · tối đa 6 MB</span>
+      </div>
     </div>
   );
 }

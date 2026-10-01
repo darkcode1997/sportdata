@@ -423,6 +423,146 @@ h3,
     padding: 0;
   }
 
+  .event-category-card,
+  .event-athlete-picker,
+  .event-image-upload {
+    border: 1px solid #26344d;
+    border-radius: 14px;
+    background: #0b1425;
+  }
+
+  .event-category-card {
+    padding: 14px;
+  }
+
+  .event-category-heading,
+  .event-picker-heading {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .event-category-heading {
+    margin-bottom: 10px;
+  }
+
+  .event-category-count,
+  .event-selection-count {
+    flex: none;
+    border-radius: 999px;
+    background: rgba(14, 165, 233, 0.12);
+    padding: 4px 9px;
+    color: #7dd3fc;
+    font-size: 12px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .event-select-all {
+    flex: none;
+    color: #38bdf8;
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .event-select-all:disabled {
+    color: #475569;
+  }
+
+  .event-athlete-picker {
+    padding: 16px;
+  }
+
+  .event-picker-heading {
+    justify-content: space-between;
+    margin-bottom: 16px;
+  }
+
+  .event-picker-heading strong {
+    color: #e2e8f0;
+    font-size: 14px;
+  }
+
+  .event-picker-heading p {
+    margin: 3px 0 0;
+    color: #64748b;
+    font-size: 12px;
+  }
+
+  .event-filter-field,
+  .event-athlete-search {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 7px;
+  }
+
+  .event-filter-field > span,
+  .event-athlete-search > span {
+    color: #94a3b8;
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .event-athlete-search {
+    margin-top: 16px;
+    border-top: 1px solid #26344d;
+    padding-top: 16px;
+  }
+
+  .event-image-upload {
+    overflow: hidden;
+  }
+
+  .event-image-preview {
+    display: flex;
+    height: 170px;
+    align-items: center;
+    justify-content: center;
+    background: #070e1b;
+  }
+
+  .event-image-upload--logo .event-image-preview {
+    padding: 20px;
+  }
+
+  .event-image-preview .ant-image,
+  .event-image-preview .ant-image-img {
+    width: 100%;
+    height: 100%;
+  }
+
+  .event-image-preview .ant-image-img {
+    object-fit: cover;
+  }
+
+  .event-image-upload--logo .event-image-preview .ant-image-img {
+    object-fit: contain;
+  }
+
+  .event-image-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    color: #64748b;
+    font-size: 12px;
+  }
+
+  .event-image-actions {
+    display: flex;
+    min-height: 58px;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+  }
+
+  .event-image-actions > span:last-child {
+    color: #64748b;
+    font-size: 11px;
+  }
+
   .public-surface.ant-card,
   .public-table.ant-card {
     @apply border-sdark-700/80 bg-sdark-900 shadow-[0_24px_68px_-42px_rgba(0,0,0,0.95)];
@@ -504,6 +644,47 @@ h3,
   .cms-theme-light .text-sblue-300,
   .cms-theme-light .text-sblue-400 {
     color: #0369a1 !important;
+  }
+
+  .cms-theme-light .event-category-card,
+  .cms-theme-light .event-athlete-picker,
+  .cms-theme-light .event-image-upload {
+    border-color: #d7e1ee;
+    background: #f8fafc;
+  }
+
+  .cms-theme-light .event-category-card:hover,
+  .cms-theme-light .event-athlete-picker:hover {
+    border-color: #bae6fd;
+  }
+
+  .cms-theme-light .event-picker-heading strong {
+    color: #0f172a;
+  }
+
+  .cms-theme-light .event-picker-heading p,
+  .cms-theme-light .event-filter-field > span,
+  .cms-theme-light .event-athlete-search > span,
+  .cms-theme-light .event-image-actions > span:last-child {
+    color: #64748b;
+  }
+
+  .cms-theme-light .event-category-count,
+  .cms-theme-light .event-selection-count {
+    background: #e0f2fe;
+    color: #0369a1;
+  }
+
+  .cms-theme-light .event-select-all {
+    color: #0284c7;
+  }
+
+  .cms-theme-light .event-athlete-search {
+    border-color: #d7e1ee;
+  }
+
+  .cms-theme-light .event-image-preview {
+    background: #eef3f8;
   }
 }
 

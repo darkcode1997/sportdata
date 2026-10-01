@@ -43,12 +43,12 @@ export class UpdateEventDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
-  bannerUrl?: string;
+  bannerUrl?: string | null;
 
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
-  logoUrl?: string;
+  logoUrl?: string | null;
 
   @ApiPropertyOptional()
   @IsOptional()

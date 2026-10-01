@@ -24,6 +24,7 @@ import { Network, Plus, Users } from 'lucide-react';
 import { api, fetcher } from '@/lib/api';
 import { ENTRY_STATUS_META, ENTRY_TYPE_LABELS, labelOf, statusMeta } from '@/lib/vi-labels';
 import { RemoteAthleteSelect } from './RemoteAthleteSelect';
+import { vietnamCountryId } from '@/lib/countries';
 
 function requestMessage(error: any, fallback: string) {
   const value = error?.response?.data?.message;
@@ -141,7 +142,7 @@ export function CompetitionEntriesPanel({
 
   return (
     <Space direction="vertical" size="large" className="w-full">
-      <Card title="Đăng ký thi đấu" extra={<Space wrap><Button icon={<Users className="h-4 w-4" />} disabled={readOnly} onClick={() => setTeamOpen(true)}>Tạo đội/đội tiếp sức</Button><Button type="primary" icon={<Plus className="h-4 w-4" />} disabled={readOnly || !categoryId} onClick={() => setEntryOpen(true)}>Thêm lượt đăng ký</Button></Space>}>
+      <Card title="Đăng ký thi đấu" extra={<Space wrap><Button icon={<Users className="h-4 w-4" />} disabled={readOnly} onClick={() => { teamForm.setFieldsValue({ countryId: vietnamCountryId(countries), relay: false }); setTeamOpen(true); }}>Tạo đội/đội tiếp sức</Button><Button type="primary" icon={<Plus className="h-4 w-4" />} disabled={readOnly || !categoryId} onClick={() => setEntryOpen(true)}>Thêm lượt đăng ký</Button></Space>}>
         <Alert className="mb-4" type="info" showIcon message="Chọn bộ môn → hạng mục → quốc gia → VĐV/đội" description="Danh sách VĐV được lọc phía server theo giới tính, tuổi và cân nặng của hạng mục." />
         <Typography.Text strong className="mb-2 block">Hạng mục thi đấu</Typography.Text>
         <Select

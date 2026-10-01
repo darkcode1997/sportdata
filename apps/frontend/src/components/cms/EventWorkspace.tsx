@@ -447,7 +447,7 @@ function PaymentTab({ event, canEdit, onRefresh }: EventWorkspaceProps & { canEd
           <Form.Item name="registrationOpenAt" label="Thời gian mở đăng ký"><Input type="datetime-local" /></Form.Item>
           <Form.Item name="registrationCloseAt" label="Thời gian đóng đăng ký"><Input type="datetime-local" /></Form.Item>
           <Form.Item name="paymentMode" label="Phương thức thanh toán"><Select options={paymentModeOptions} /></Form.Item>
-          <Form.Item name="registrationFee" label="Lệ phí"><InputNumber className="w-full" min={0} disabled={!canEdit || paymentMode === 'FREE'} addonAfter={Form.useWatch('registrationCurrency', form) || 'VND'} /></Form.Item>
+          <Form.Item name="registrationFee" label="Lệ phí"><InputNumber<number> className="w-full" min={0} step={10000} precision={0} formatter={(value) => value == null ? '' : new Intl.NumberFormat('vi-VN').format(value)} parser={(value) => Number(String(value || '').replace(/[^0-9]/g, ''))} disabled={!canEdit || paymentMode === 'FREE'} addonAfter={Form.useWatch('registrationCurrency', form) || 'VND'} /></Form.Item>
           <Form.Item name="registrationCurrency" label="Đơn vị tiền tệ"><Select options={[{ value: 'VND', label: 'VND' }]} /></Form.Item>
         </div>
 

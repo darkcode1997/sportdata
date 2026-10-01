@@ -92,6 +92,46 @@ export class EventsController {
     return this.eventsService.removeTicketBackground(id);
   }
 
+  @Get(':id/banner-image')
+  async bannerImage(@Param('id') id: string, @Res() response: Response) {
+    return this.sendEventImage(response, await this.eventsService.getEventImage(id, 'banner'));
+  }
+
+  @Patch(':id/banner-image')
+  @UseGuards(JwtAuthGuard)
+  @Roles(UserRole.ADMIN, UserRole.CONTENT, UserRole.GAMES_ADMIN)
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 6 * 1024 * 1024 } }))
+  uploadBannerImage(@Param('id') id: string, @UploadedFile() file?: Express.Multer.File) {
+    return this.eventsService.uploadEventImage(id, 'banner', file);
+  }
+
+  @Delete(':id/banner-image')
+  @UseGuards(JwtAuthGuard)
+  @Roles(UserRole.ADMIN, UserRole.CONTENT, UserRole.GAMES_ADMIN)
+  removeBannerImage(@Param('id') id: string) {
+    return this.eventsService.removeEventImage(id, 'banner');
+  }
+
+  @Get(':id/logo-image')
+  async logoImage(@Param('id') id: string, @Res() response: Response) {
+    return this.sendEventImage(response, await this.eventsService.getEventImage(id, 'logo'));
+  }
+
+  @Patch(':id/logo-image')
+  @UseGuards(JwtAuthGuard)
+  @Roles(UserRole.ADMIN, UserRole.CONTENT, UserRole.GAMES_ADMIN)
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 6 * 1024 * 1024 } }))
+  uploadLogoImage(@Param('id') id: string, @UploadedFile() file?: Express.Multer.File) {
+    return this.eventsService.uploadEventImage(id, 'logo', file);
+  }
+
+  @Delete(':id/logo-image')
+  @UseGuards(JwtAuthGuard)
+  @Roles(UserRole.ADMIN, UserRole.CONTENT, UserRole.GAMES_ADMIN)
+  removeLogoImage(@Param('id') id: string) {
+    return this.eventsService.removeEventImage(id, 'logo');
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get event by ID' })
   @ApiResponse({ status: 200, description: 'Event found' })
@@ -119,5 +159,15 @@ export class EventsController {
   @ApiResponse({ status: 404, description: 'Event not found' })
   remove(@Param('id') id: string) {
     return this.eventsService.remove(id);
+  }
+
+  private sendEventImage(
+    response: Response,
+    image: { data: Buffer; mimeType: string; etag: string },
+  ) {
+    response.setHeader('Content-Type', image.mimeType);
+    response.setHeader('Cache-Control', 'public, max-age=300');
+    response.setHeader('ETag', `"${image.etag}"`);
+    response.send(image.data);
   }
 }

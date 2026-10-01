@@ -27,6 +27,7 @@ import { useSportDataToast } from '@/hooks/useSportDataToast';
 import { fetcher } from '@/lib/api';
 import { getParticipantAccount, getParticipantToken, participantApi, participantError, type SportDataAccount } from '@/lib/participant-auth';
 import type { ParticipationTicket } from '@/lib/ticket-types';
+import { vietnamCountryId } from '@/lib/countries';
 
 type RegistrationMode = 'INDIVIDUAL' | 'GROUP';
 type IdentityType = 'CCCD' | 'PASSPORT';
@@ -206,6 +207,7 @@ export default function GuestEventRegistrationPage() {
   const { data: event, isLoading } = useSWR<EventData>(eventId ? `/events/${eventId}` : null, fetcher);
   const { data: countries = [] } = useSWR<Country[]>('/countries', fetcher);
   const { data: federations = [] } = useSWR<Federation[]>('/federations', fetcher);
+  const defaultCountryId = useMemo(() => vietnamCountryId(countries), [countries]);
   const { data: federationProfile } = useSWR<FederationSessionProfile>(
     isFederationAccount ? '/participant-auth/federation/me' : null,
     (url: string) => participantApi.get(url).then((response) => response.data),
@@ -214,6 +216,13 @@ export default function GuestEventRegistrationPage() {
     isAthleteAccount ? '/participant-auth/me' : null,
     (url: string) => participantApi.get(url).then((response) => response.data),
   );
+
+  useEffect(() => {
+    if (!defaultCountryId || federationProfile) return;
+    setAthletes((current) => current.map((athlete) => (
+      athlete.countryId ? athlete : { ...athlete, countryId: defaultCountryId }
+    )));
+  }, [defaultCountryId, federationProfile]);
 
   useEffect(() => {
     const syncSession = () => {
@@ -583,7 +592,9 @@ export default function GuestEventRegistrationPage() {
       {mode === 'GROUP' && athletes.length < 30 && (
         <Button className="mt-5" size="large" icon={<Plus className="h-4 w-4" />} onClick={() => setAthletes((current) => [...current, {
           ...emptyAthlete(`athlete-${nextKey.current++}`),
-          ...(federationProfile ? { countryId: federationProfile.federation.countryId, federationId: federationProfile.federation.id } : {}),
+          ...(federationProfile
+            ? { countryId: federationProfile.federation.countryId, federationId: federationProfile.federation.id }
+            : { countryId: defaultCountryId }),
         }])}>Thêm vận động viên</Button>
       )}
       <p className="mt-6 text-sm text-slate-500">Ảnh tải lên được chuyển sang trạng thái chờ xác thực. Vé chỉ có hiệu lực sau khi giấy tờ được đối chiếu.</p>

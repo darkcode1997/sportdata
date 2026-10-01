@@ -22,6 +22,7 @@ import { Building2, Flag, Pencil, Plus, Trash2 } from 'lucide-react';
 import { CmsPageHeader } from '@/components/cms/CmsPageHeader';
 import { api, fetcher } from '@/lib/api';
 import { useSportDataToast } from '@/hooks/useSportDataToast';
+import { vietnamCountryId } from '@/lib/countries';
 
 type Country = {
   id: string;
@@ -86,7 +87,7 @@ export default function OrganizationsManagementPage() {
     setEditingOrganization(organization || null);
     organizationForm.setFieldsValue(organization
       ? { code: organization.code || '', name: organization.name, type: organization.type, countryId: organization.countryId }
-      : { code: '', name: '', type: 'NATIONAL_FEDERATION', countryId: countries[0]?.id || '' });
+      : { code: '', name: '', type: 'NATIONAL_FEDERATION', countryId: vietnamCountryId(countries) || countries[0]?.id || '' });
     setOrganizationModalOpen(true);
   };
 

@@ -2,13 +2,14 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import useSWR from 'swr';
 import { Button, Card, Col, DatePicker, Form, Input, Row, Select } from 'antd';
 import { UserPlus } from 'lucide-react';
 import { fetcher } from '@/lib/api';
 import { useSportDataToast } from '@/hooks/useSportDataToast';
 import { participantApi, participantError, setParticipantSession } from '@/lib/participant-auth';
+import { vietnamCountryId } from '@/lib/countries';
 
 type Country = { id: string; code: string; name: string };
 export default function ParticipantRegisterPage() {
@@ -17,6 +18,13 @@ export default function ParticipantRegisterPage() {
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const { data: countries = [] } = useSWR<Country[]>('/countries', fetcher);
+
+  useEffect(() => {
+    const defaultCountryId = vietnamCountryId(countries);
+    if (defaultCountryId && !form.getFieldValue('countryId')) {
+      form.setFieldValue('countryId', defaultCountryId);
+    }
+  }, [countries, form]);
 
   const submit = async (values: any) => {
     setLoading(true);

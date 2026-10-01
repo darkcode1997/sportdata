@@ -414,6 +414,83 @@ export class EventsService {
     };
   }
 
+  async uploadEventImage(
+    id: string,
+    kind: 'banner' | 'logo',
+    file?: Express.Multer.File,
+  ) {
+    if (!file) throw new BadRequestException(`Vui lòng chọn ảnh ${kind === 'banner' ? 'banner' : 'logo'}`);
+    const supportedMimeTypes = ['image/jpeg', 'image/png', 'image/webp'];
+    if (!supportedMimeTypes.includes(file.mimetype)) {
+      throw new BadRequestException('Ảnh chỉ hỗ trợ định dạng JPG, PNG hoặc WebP');
+    }
+    if (file.size > 6 * 1024 * 1024) {
+      throw new BadRequestException('Ảnh không được vượt quá 6 MB');
+    }
+    const isJpeg = file.buffer.length >= 3
+      && file.buffer[0] === 0xff
+      && file.buffer[1] === 0xd8
+      && file.buffer[2] === 0xff;
+    const isPng = file.buffer.length >= 8
+      && file.buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+    const isWebp = file.buffer.length >= 12
+      && file.buffer.subarray(0, 4).toString('ascii') === 'RIFF'
+      && file.buffer.subarray(8, 12).toString('ascii') === 'WEBP';
+    const validSignature = file.mimetype === 'image/jpeg'
+      ? isJpeg
+      : file.mimetype === 'image/png'
+        ? isPng
+        : isWebp;
+    if (!validSignature) {
+      throw new BadRequestException('Nội dung tệp không đúng định dạng ảnh đã khai báo');
+    }
+
+    await this.ensureEvent(id);
+    const event = await this.prisma.event.update({
+      where: { id },
+      data: kind === 'banner'
+        ? { bannerData: file.buffer, bannerMimeType: file.mimetype, bannerSize: file.size }
+        : { logoData: file.buffer, logoMimeType: file.mimetype, logoSize: file.size },
+      include: this.getEventInclude(true),
+    });
+    return this.serializeEvent(event);
+  }
+
+  async removeEventImage(id: string, kind: 'banner' | 'logo') {
+    await this.ensureEvent(id);
+    const event = await this.prisma.event.update({
+      where: { id },
+      data: kind === 'banner'
+        ? { bannerData: null, bannerMimeType: null, bannerSize: null }
+        : { logoData: null, logoMimeType: null, logoSize: null },
+      include: this.getEventInclude(true),
+    });
+    return this.serializeEvent(event);
+  }
+
+  async getEventImage(id: string, kind: 'banner' | 'logo') {
+    const event = await this.prisma.event.findUnique({
+      where: { id },
+      select: {
+        bannerData: true,
+        bannerMimeType: true,
+        logoData: true,
+        logoMimeType: true,
+      },
+    });
+    if (!event) throw new NotFoundException(`Không tìm thấy sự kiện có mã ${id}`);
+    const data = kind === 'banner' ? event.bannerData : event.logoData;
+    const mimeType = kind === 'banner' ? event.bannerMimeType : event.logoMimeType;
+    if (!data || !mimeType) {
+      throw new NotFoundException(`Sự kiện chưa có ảnh ${kind === 'banner' ? 'banner' : 'logo'}`);
+    }
+    return {
+      data,
+      mimeType,
+      etag: createHash('sha256').update(data).digest('hex'),
+    };
+  }
+
   async remove(id: string) {
     await this.findOne(id);
 
@@ -469,6 +546,10 @@ export class EventsService {
       location: true,
       bannerUrl: true,
       logoUrl: true,
+      bannerMimeType: true,
+      bannerSize: true,
+      logoMimeType: true,
+      logoSize: true,
       ticketBackgroundMimeType: true,
       ticketBackgroundSize: true,
       ticketThemePreset: true,
@@ -525,9 +606,21 @@ export class EventsService {
   }
 
   private serializeEvent(event: any) {
-    const { ticketBackgroundData: _ticketBackgroundData, ...safeEvent } = event;
+    const {
+      ticketBackgroundData: _ticketBackgroundData,
+      bannerData: _bannerData,
+      logoData: _logoData,
+      ...safeEvent
+    } = event;
+    const imageVersion = event.updatedAt ? new Date(event.updatedAt).getTime() : undefined;
     return {
       ...safeEvent,
+      bannerUrl: event.bannerSize
+        ? `/api/events/${event.id}/banner-image${imageVersion ? `?v=${imageVersion}` : ''}`
+        : event.bannerUrl,
+      logoUrl: event.logoSize
+        ? `/api/events/${event.id}/logo-image${imageVersion ? `?v=${imageVersion}` : ''}`
+        : event.logoUrl,
       ticketBackgroundUrl: event.ticketBackgroundSize
         ? `/api/events/${event.id}/ticket-background`
         : null,

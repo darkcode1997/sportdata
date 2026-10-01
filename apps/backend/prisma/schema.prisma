@@ -448,6 +448,12 @@ model Event {
   location                 String?
   bannerUrl                String?
   logoUrl                  String?
+  bannerData               Bytes?
+  bannerMimeType           String?
+  bannerSize               Int?
+  logoData                 Bytes?
+  logoMimeType             String?
+  logoSize                 Int?
   ticketBackgroundData     Bytes?
   ticketBackgroundMimeType String?
   ticketBackgroundSize     Int?
