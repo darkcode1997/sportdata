@@ -96,12 +96,14 @@ export const CMS_PAGE_ACCESS: Record<string, readonly CmsRole[]> = {
   '/cms/sports': ['ADMIN', 'CONTENT', 'GAMES_ADMIN', 'SPORT_MANAGER', 'READ_ONLY'],
   '/cms/organizations': ['ADMIN', 'CONTENT', 'GAMES_ADMIN', 'SPORT_MANAGER', 'READ_ONLY'],
   '/cms/accounts': ['ADMIN', 'GAMES_ADMIN', 'READ_ONLY'],
+  '/cms/users': ['ADMIN'],
+  '/cms/account': ALL_CMS_ROLES,
   '/cms/matches': ['ADMIN', 'CONTENT', 'GAMES_ADMIN', 'SPORT_MANAGER', 'VENUE_OPERATOR', 'READ_ONLY'],
   '/cms/statistics': ALL_CMS_ROLES,
   '/cms/banners': ['ADMIN', 'CONTENT'],
   '/cms/news': ['ADMIN', 'CONTENT'],
   '/cms/contacts': ['ADMIN', 'CONTENT'],
-  '/cms/settings': ALL_CMS_ROLES,
+  '/cms/settings': ['ADMIN'],
 };
 
 export const DEMO_ROLE_USERNAMES: Record<CmsRole, string> = {

@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { AthleteMediaType } from '@prisma/client';
+import { SystemSettingsService } from '../system-settings/system-settings.service';
 
 export type IdentityOcrFields = {
   documentType?: 'CCCD' | 'PASSPORT';
@@ -31,6 +32,8 @@ type ProviderField = string | number | null | undefined | {
 
 @Injectable()
 export class IdentityOcrService {
+  constructor(private readonly settings: SystemSettingsService) {}
+
   async read(file: Express.Multer.File, type: AthleteMediaType): Promise<IdentityOcrResult> {
     if (type !== AthleteMediaType.CCCD_FRONT && type !== AthleteMediaType.CCCD_BACK && type !== AthleteMediaType.PASSPORT) {
       throw new BadRequestException('Loại tệp không hỗ trợ đọc giấy tờ');
@@ -42,7 +45,8 @@ export class IdentityOcrService {
       return this.failure('Ảnh vượt quá giới hạn 5 MB của dịch vụ OCR.');
     }
 
-    if (!this.isEnabled(process.env.IDENTITY_OCR_ENABLED)) {
+    const systemSettings = await this.settings.get();
+    if (!systemSettings.values.identityOcrEnabled) {
       return {
         status: 'NOT_CONFIGURED',
         provider: null,
@@ -54,7 +58,7 @@ export class IdentityOcrService {
     }
 
     const apiKey = process.env.FPT_AI_API_KEY?.trim();
-    if (!apiKey) {
+    if (!systemSettings.configured.identityOcrEnabled || !apiKey) {
       return {
         status: 'NOT_CONFIGURED',
         provider: null,
@@ -138,10 +142,6 @@ export class IdentityOcrService {
 
   private failure(message: string, provider: IdentityOcrResult['provider'] = null): IdentityOcrResult {
     return { status: 'FAILED', provider, confidence: null, fields: {}, fieldConfidence: {}, message };
-  }
-
-  private isEnabled(value?: string) {
-    return ['1', 'true', 'yes', 'on'].includes((value || '').trim().toLowerCase());
   }
 
   private text(value: ProviderField): string | undefined {

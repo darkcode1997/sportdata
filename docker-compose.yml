@@ -48,10 +48,13 @@ services:
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_FROM: ${SMTP_FROM:-SportData CMS <no-reply@sportdata.local>}
+      TICKET_EMAIL_ENABLED: ${TICKET_EMAIL_ENABLED:-true}
       IDENTITY_OCR_ENABLED: ${IDENTITY_OCR_ENABLED:-false}
       FPT_AI_API_KEY: ${FPT_AI_API_KEY:-}
       FPT_AI_ID_ENDPOINT: ${FPT_AI_ID_ENDPOINT:-https://api.fpt.ai/vision/idr/vnm/}
       FPT_AI_PASSPORT_ENDPOINT: ${FPT_AI_PASSPORT_ENDPOINT:-https://api.fpt.ai/vision/passport/vnm}
+      PAYMENTS_ENABLED: ${PAYMENTS_ENABLED:-true}
+      BANK_QR_ENABLED: ${BANK_QR_ENABLED:-true}
       MOMO_ENABLED: ${MOMO_ENABLED:-false}
       MOMO_PARTNER_CODE: ${MOMO_PARTNER_CODE:-}
       MOMO_ACCESS_KEY: ${MOMO_ACCESS_KEY:-}

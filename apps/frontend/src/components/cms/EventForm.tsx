@@ -529,9 +529,9 @@ export function EventForm({ eventId, initialData }: { eventId?: string; initialD
                       value={field.value}
                       onChange={field.onChange}
                       options={[
-                        { value: 'FREE', label: 'Miễn phí (Phase 1)' },
-                        { value: 'MANUAL', label: 'Chuyển khoản / xác nhận thủ công' },
-                        { value: 'ONLINE', label: 'Cổng thanh toán (đầu chờ)' },
+                        { value: 'FREE', label: 'Miễn phí' },
+                        { value: 'MANUAL', label: 'Chuyển khoản VietQR / xác nhận thủ công' },
+                        { value: 'ONLINE', label: 'Cổng thanh toán trực tuyến' },
                       ]}
                     />
                   )}
@@ -554,7 +554,7 @@ export function EventForm({ eventId, initialData }: { eventId?: string; initialD
                   )}
                 </ControlledField>
               </Row>
-              <p className="mb-0 text-xs text-slate-500">Phase 1 dùng chế độ miễn phí. Hai lựa chọn trả phí là cấu hình sẵn để tích hợp cổng thanh toán sau.</p>
+              <p className="mb-0 text-xs text-slate-500">Khung mặc định mở trước sự kiện 30 ngày và đóng lúc 23:59 ngày liền trước sự kiện; bạn vẫn có thể điều chỉnh thủ công.</p>
             </Card>
           </Col>
           <ControlledField name="bannerUrl" control={control} label="Banner sự kiện" error={errors.bannerUrl?.message}>

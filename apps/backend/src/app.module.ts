@@ -22,6 +22,7 @@ import { OperationsModule } from './operations/operations.module';
 import { BannersModule } from './banners/banners.module';
 import { ParticipantsModule } from './participants/participants.module';
 import { PaymentsModule } from './payments/payments.module';
+import { SystemSettingsModule } from './system-settings/system-settings.module';
 
 @Module({
   imports: [
@@ -48,6 +49,7 @@ import { PaymentsModule } from './payments/payments.module';
     BannersModule,
     ParticipantsModule,
     PaymentsModule,
+    SystemSettingsModule,
   ],
 })
 export class AppModule {}

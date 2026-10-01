@@ -1,14 +1,22 @@
 import { Injectable, Logger } from '@nestjs/common';
 import nodemailer from 'nodemailer';
 import { TicketPdfService, type TicketBatchMeta, type TicketPayload } from './ticket-pdf.service';
+import { SystemSettingsService } from '../system-settings/system-settings.service';
 
 @Injectable()
 export class TicketEmailService {
   private readonly logger = new Logger(TicketEmailService.name);
 
-  constructor(private readonly ticketPdf: TicketPdfService) {}
+  constructor(
+    private readonly ticketPdf: TicketPdfService,
+    private readonly settings: SystemSettingsService,
+  ) {}
 
   async send(to: string, tickets: TicketPayload[], batch?: TicketBatchMeta) {
+    if (!await this.settings.enabled('ticketEmailEnabled')) {
+      this.logger.warn('Bỏ qua gửi vé email vì tính năng email đang tắt hoặc SMTP chưa được cấu hình');
+      return false;
+    }
     if (!process.env.SMTP_HOST) {
       this.logger.warn('Bỏ qua gửi vé email vì chưa cấu hình SMTP_HOST');
       return false;

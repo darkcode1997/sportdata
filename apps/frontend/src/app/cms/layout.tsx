@@ -1,13 +1,13 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   Avatar,
   Button,
   ConfigProvider,
   Drawer,
+  Dropdown,
   Flex,
   Layout,
   Menu as AntMenu,
@@ -18,8 +18,10 @@ import {
 import {
   Building2,
   CalendarDays,
+  ChevronDown,
   ChevronsLeft,
   ChevronsRight,
+  KeyRound,
   LayoutDashboard,
   LogOut,
   Mail,
@@ -32,6 +34,7 @@ import {
   Swords,
   Trophy,
   User,
+  UserCog,
   Users,
 } from 'lucide-react';
 import {
@@ -64,22 +67,37 @@ type CmsNavGroup = {
 const navItems: Array<CmsNavLeaf | CmsNavGroup> = [
   { label: 'Dashboard', key: '/cms', icon: <LayoutDashboard className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms'] },
   { label: 'Sự kiện', key: '/cms/events', icon: <CalendarDays className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/events'] },
-  { label: 'Danh sách vận động viên', key: '/cms/athletes', icon: <Users className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/athletes'] },
-  { label: 'Bộ môn & hạng đấu', key: '/cms/sports', icon: <Trophy className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/sports'] },
-  { label: 'Danh sách đơn vị thể thao', key: '/cms/organizations', icon: <Building2 className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/organizations'] },
-  { label: 'Tài khoản đơn vị', key: '/cms/accounts', icon: <User className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/accounts'] },
   { label: 'Trận đấu', key: '/cms/matches', icon: <Swords className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/matches'] },
+  { label: 'Bộ môn & hạng đấu', key: '/cms/sports', icon: <Trophy className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/sports'] },
   {
-    label: 'Cấu hình',
-    key: 'cms-configuration',
-    icon: <Settings className="h-5 w-5" />,
+    label: 'Đơn vị & vận động viên',
+    key: 'cms-participants',
+    icon: <Building2 className="h-5 w-5" />,
+    children: [
+      { label: 'Danh sách đơn vị', key: '/cms/organizations', icon: <Building2 className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/organizations'] },
+      { label: 'Danh sách VĐV', key: '/cms/athletes', icon: <Users className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/athletes'] },
+    ],
+  },
+  {
+    label: 'Nội dung website',
+    key: 'cms-content',
+    icon: <Newspaper className="h-5 w-5" />,
     children: [
       { label: 'Banner trang chủ', key: '/cms/banners', icon: <Images className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/banners'] },
       { label: 'Tin tức', key: '/cms/news', icon: <Newspaper className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/news'] },
       { label: 'Liên hệ', key: '/cms/contacts', icon: <Mail className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/contacts'] },
     ],
   },
-  { label: 'Cài đặt', key: '/cms/settings', icon: <Settings className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/settings'] },
+  {
+    label: 'Hệ thống & tài khoản',
+    key: 'cms-system',
+    icon: <Settings className="h-5 w-5" />,
+    children: [
+      { label: 'Tài khoản đơn vị', key: '/cms/accounts', icon: <User className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/accounts'] },
+      { label: 'Tài khoản CMS', key: '/cms/users', icon: <UserCog className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/users'] },
+      { label: 'Cài đặt hệ thống', key: '/cms/settings', icon: <Settings className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/settings'] },
+    ],
+  },
 ];
 
 const publicAuthPaths = ['/cms/login', '/cms/forgot-password', '/cms/reset-password'];
@@ -185,14 +203,19 @@ export default function CmsLayout({ children }: { children: React.ReactNode }) {
     return [...visibleNavLeaves]
       .sort((left, right) => right.key.length - left.key.length)
       .find((item) => item.key === '/cms' ? pathname === '/cms' : pathname.startsWith(item.key))
-      ?.key || '/cms';
+      ?.key || (pathname === '/cms' ? '/cms' : '');
   }, [pathname, visibleNavLeaves]);
 
   useEffect(() => {
-    if (['/cms/banners', '/cms/news', '/cms/contacts'].some((path) => pathname.startsWith(path))) {
-      setOpenMenuKeys((current) => current.includes('cms-configuration') ? current : [...current, 'cms-configuration']);
-    }
-  }, [pathname]);
+    const activeGroup = visibleNavItems.find((item) => (
+      'children' in item
+      && item.children.some((child) => pathname === child.key || pathname.startsWith(`${child.key}/`))
+    ));
+    if (!activeGroup) return;
+    setOpenMenuKeys((current) => current.includes(activeGroup.key)
+      ? current
+      : [...current, activeGroup.key]);
+  }, [pathname, visibleNavItems]);
 
   const handleLogout = () => {
     localStorage.removeItem('cms_token');
@@ -273,18 +296,6 @@ export default function CmsLayout({ children }: { children: React.ReactNode }) {
         }}
       />
 
-      <div className={`border-t p-4 ${isLight ? 'border-slate-200' : 'border-white/10'}`}>
-        <Button
-          type="text"
-          danger
-          block
-          aria-label="Đăng xuất"
-          icon={<LogOut className="h-4 w-4" />}
-          onClick={handleLogout}
-        >
-          {!compact && 'Đăng xuất'}
-        </Button>
-      </div>
     </Flex>
   );
 
@@ -372,21 +383,42 @@ export default function CmsLayout({ children }: { children: React.ReactNode }) {
 
             <Flex align="center" gap={8} className="h-full">
               {renderThemeToggle()}
-              <Link
-                href="/cms/settings"
-                className={`group h-full rounded-l-xl transition-colors ${isLight ? 'hover:bg-slate-100' : 'hover:bg-white/[0.03]'}`}
-                aria-label="Mở cài đặt tài khoản"
+              <Dropdown
+                trigger={['click']}
+                placement="bottomRight"
+                menu={{
+                  items: [
+                    { key: 'account', icon: <User className="h-4 w-4" />, label: 'Tài khoản của tôi' },
+                    { key: 'password', icon: <KeyRound className="h-4 w-4" />, label: 'Đổi mật khẩu' },
+                    { type: 'divider' },
+                    { key: 'logout', danger: true, icon: <LogOut className="h-4 w-4" />, label: 'Đăng xuất' },
+                  ],
+                  onClick: ({ key }) => {
+                    if (key === 'logout') {
+                      handleLogout();
+                      return;
+                    }
+                    router.push(key === 'password' ? '/cms/account/password' : '/cms/account');
+                  },
+                }}
               >
-                <Flex align="center" gap={12} className={`h-full pl-4 pr-2 ${isLight ? '' : ''}`}>
-                  <Avatar size={38} icon={<User className="h-4 w-4" />} className="bg-sblue-500/20 text-sblue-300" />
-                  <div className="hidden sm:block">
-                    <Typography.Text strong className="block text-sm group-hover:text-sblue-500">{userLabel || 'Admin'}</Typography.Text>
-                    <Typography.Text type="secondary" className="block text-xs">
-                      {isCmsRole(userRole) ? CMS_ROLE_INFO[userRole].shortLabel : 'Người dùng'}
-                    </Typography.Text>
-                  </div>
-                </Flex>
-              </Link>
+                <Button
+                  type="text"
+                  className={`group !h-[58px] !rounded-xl !px-2 sm:!pl-3 ${isLight ? 'hover:!bg-slate-100' : 'hover:!bg-white/[0.05]'}`}
+                  aria-label="Mở menu tài khoản"
+                >
+                  <Flex align="center" gap={10}>
+                    <Avatar size={38} icon={<User className="h-4 w-4" />} className="bg-sblue-500/20 text-sblue-400" />
+                    <div className="hidden text-left sm:block">
+                      <Typography.Text strong className="block text-sm group-hover:text-sblue-500">{userLabel || 'Admin'}</Typography.Text>
+                      <Typography.Text type="secondary" className="block text-xs">
+                        {isCmsRole(userRole) ? CMS_ROLE_INFO[userRole].shortLabel : 'Người dùng'}
+                      </Typography.Text>
+                    </div>
+                    <ChevronDown className="hidden h-4 w-4 text-slate-500 sm:block" />
+                  </Flex>
+                </Button>
+              </Dropdown>
             </Flex>
           </header>
 

@@ -14,6 +14,7 @@ import {
 import { createHmac, randomBytes, timingSafeEqual } from 'crypto';
 import type { Request } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
+import { SystemSettingsService } from '../system-settings/system-settings.service';
 import { CreateCheckoutDto } from './dto/create-checkout.dto';
 
 type RegistrationForPayment = Prisma.EventRegistrationGetPayload<{
@@ -24,9 +25,15 @@ type RegistrationForPayment = Prisma.EventRegistrationGetPayload<{
 export class PaymentsService {
   private readonly logger = new Logger(PaymentsService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly settings: SystemSettingsService,
+  ) {}
 
   async createCheckout(dto: CreateCheckoutDto, request: Request) {
+    if (!await this.settings.enabled('paymentsEnabled')) {
+      throw new ServiceUnavailableException('Thanh toán trực tuyến đang tạm tắt');
+    }
     const registration = await this.prisma.eventRegistration.findUnique({
       where: { ticketCode: dto.ticketCode.trim().toUpperCase() },
       include: { event: true, athlete: { select: { fullName: true } } },
@@ -76,30 +83,34 @@ export class PaymentsService {
     }
 
     if (dto.provider === PaymentProvider.BANK_QR) {
+      await this.requireFeature('bankQrEnabled', 'Chuyển khoản VietQR');
       return this.createBankQr(registration);
     }
     if (dto.provider === PaymentProvider.MOMO) {
+      await this.requireFeature('momoEnabled', 'MoMo');
       return this.createMomo(registration);
     }
+    await this.requireFeature('vnpayEnabled', dto.provider === PaymentProvider.VISA ? 'Visa/Mastercard' : 'VNPAY');
     return this.createVnpay(registration, dto.provider, request);
   }
 
-  configuration() {
-    const momo = this.envEnabled('MOMO_ENABLED')
-      && Boolean(process.env.MOMO_PARTNER_CODE?.trim())
-      && Boolean(process.env.MOMO_ACCESS_KEY?.trim())
-      && Boolean(process.env.MOMO_SECRET_KEY?.trim());
-    const vnpay = this.envEnabled('VNPAY_ENABLED')
-      && Boolean(process.env.VNPAY_TMN_CODE?.trim())
-      && Boolean(process.env.VNPAY_HASH_SECRET?.trim());
+  async configuration() {
+    const settings = await this.settings.get();
     return {
       enabled: {
-        MOMO: momo,
-        VNPAY: vnpay,
-        VISA: vnpay,
-        BANK_QR: true,
+        MOMO: settings.effective.momoEnabled,
+        VNPAY: settings.effective.vnpayEnabled,
+        VISA: settings.effective.vnpayEnabled,
+        BANK_QR: settings.effective.bankQrEnabled,
       },
-      environment: process.env.NODE_ENV === 'production' ? 'production' : 'sandbox',
+      configured: {
+        MOMO: settings.configured.momoEnabled,
+        VNPAY: settings.configured.vnpayEnabled,
+        VISA: settings.configured.vnpayEnabled,
+        BANK_QR: settings.configured.bankQrEnabled,
+      },
+      paymentsEnabled: settings.effective.paymentsEnabled,
+      environment: settings.environment,
     };
   }
 
@@ -224,7 +235,6 @@ export class PaymentsService {
     provider: Extract<PaymentProvider, 'VNPAY' | 'VISA'>,
     request: Request,
   ) {
-    this.requireEnabled('VNPAY_ENABLED', 'VNPAY');
     const tmnCode = this.requireEnv('VNPAY_TMN_CODE');
     const secret = this.requireEnv('VNPAY_HASH_SECRET');
     const orderId = this.orderId();
@@ -265,7 +275,6 @@ export class PaymentsService {
   }
 
   private async createMomo(registration: RegistrationForPayment) {
-    this.requireEnabled('MOMO_ENABLED', 'MoMo');
     const partnerCode = this.requireEnv('MOMO_PARTNER_CODE');
     const accessKey = this.requireEnv('MOMO_ACCESS_KEY');
     const secretKey = this.requireEnv('MOMO_SECRET_KEY');
@@ -475,14 +484,13 @@ export class PaymentsService {
     return (process.env.BACKEND_PUBLIC_URL || 'http://localhost:4000').replace(/\/$/, '');
   }
 
-  private requireEnabled(name: string, provider: string) {
-    if (!this.envEnabled(name)) {
+  private async requireFeature(
+    key: 'momoEnabled' | 'vnpayEnabled' | 'bankQrEnabled',
+    provider: string,
+  ) {
+    if (!await this.settings.enabled(key)) {
       throw new ServiceUnavailableException(`${provider} đang tạm tắt hoặc chưa được cấu hình`);
     }
-  }
-
-  private envEnabled(name: string) {
-    return ['true', '1', 'yes', 'on'].includes((process.env[name] || '').trim().toLowerCase());
   }
 
   private requireEnv(name: string) {

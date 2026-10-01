@@ -6,9 +6,10 @@ import { ParticipantsService } from './participants.service';
 import { IdentityOcrService } from './identity-ocr.service';
 import { TicketPdfService } from './ticket-pdf.service';
 import { TicketEmailService } from './ticket-email.service';
+import { SystemSettingsModule } from '../system-settings/system-settings.module';
 
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, SystemSettingsModule],
   controllers: [ParticipantsController],
   providers: [ParticipantsService, ParticipantAuthGuard, IdentityOcrService, TicketPdfService, TicketEmailService],
 })
