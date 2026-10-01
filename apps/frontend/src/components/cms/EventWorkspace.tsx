@@ -468,20 +468,25 @@ function RegistrationsTab({ eventId, canOperate, canConfirmPayment }: { eventId:
 function MatchesTab({ event }: { event: any }) {
   const [categoryId, setCategoryId] = useState<string>(event.categories?.[0]?.id || '');
   const [view, setView] = useState<'tree' | 'list'>('tree');
+  const [page, setPage] = useState(1);
   const [selectedAthleteId, setSelectedAthleteId] = useState<string>();
-  const query = new URLSearchParams({ eventId: event.id, limit: '200' });
+  const pageSize = 50;
+  const query = new URLSearchParams({ eventId: event.id, limit: String(pageSize), page: String(page) });
   if (categoryId) query.set('categoryId', categoryId);
-  const { data, isLoading, mutate } = useSWR<any>(`/matches?${query}`, fetcher);
-  const { data: drawData, isLoading: drawsLoading } = useSWR<{ draws: BracketDraw[] }>(categoryId ? `/matches/event/${event.id}/category/${categoryId}/draws` : null, fetcher);
+  const { data, error, isLoading, mutate } = useSWR<any>(`/matches?${query}`, fetcher);
+  const { data: drawData, isLoading: drawsLoading, mutate: mutateDraws } = useSWR<{ draws: BracketDraw[] }>(categoryId ? `/matches/event/${event.id}/category/${categoryId}/draws` : null, fetcher);
   const draws = [...(drawData?.draws || [])].sort((a, b) => a.sortOrder - b.sortOrder);
+  const loadError = Array.isArray(error?.response?.data?.message)
+    ? error.response.data.message.join(', ')
+    : error?.response?.data?.message || error?.message;
 
   return (
     <div className="space-y-5">
       <Card styles={{ body: { padding: 16 } }}>
         <div className="flex flex-wrap items-center gap-3">
-          <Select className="min-w-72 flex-1" value={categoryId || undefined} placeholder="Chọn hạng đấu" onChange={setCategoryId} options={(event.categories || []).map((category: any) => ({ value: category.id, label: `${category.sport?.name || ''} · ${category.name}` }))} />
+          <Select className="min-w-72 flex-1" value={categoryId || undefined} placeholder="Chọn hạng đấu" onChange={(value) => { setCategoryId(value); setPage(1); }} options={(event.categories || []).map((category: any) => ({ value: category.id, label: `${category.sport?.name || ''} · ${category.name}` }))} />
           <Segmented value={view} onChange={(value) => setView(value as 'tree' | 'list')} options={[{ value: 'tree', label: 'Sơ đồ cây', icon: <Network className="h-4 w-4" /> }, { value: 'list', label: 'Danh sách', icon: <List className="h-4 w-4" /> }]} />
-          <Button icon={<RefreshCw className="h-4 w-4" />} onClick={() => mutate()}>Làm mới</Button>
+          <Button icon={<RefreshCw className="h-4 w-4" />} onClick={() => Promise.all([mutate(), mutateDraws()])}>Làm mới</Button>
         </div>
       </Card>
       {view === 'tree' ? (
@@ -490,11 +495,29 @@ function MatchesTab({ event }: { event: any }) {
         </div>
       ) : (
         <Card styles={{ body: { padding: 0 } }}>
+          {error ? (
+            <Alert
+              className="m-4"
+              type="error"
+              showIcon
+              message="Không thể tải danh sách trận đấu"
+              description={loadError || 'Vui lòng thử làm mới danh sách.'}
+            />
+          ) : null}
           <Table<any>
             rowKey="id"
             loading={isLoading}
             dataSource={data?.items || []}
-            pagination={{ pageSize: 20 }}
+            locale={{ emptyText: <Empty description="Chưa có trận đấu trong hạng đấu này." /> }}
+            pagination={{
+              current: data?.meta?.page || page,
+              pageSize,
+              total: data?.meta?.total || 0,
+              showSizeChanger: false,
+              hideOnSinglePage: true,
+              onChange: setPage,
+              showTotal: (total) => `${total} trận đấu`,
+            }}
             columns={[
               { title: '#', dataIndex: 'matchNumber', width: 70 },
               { title: 'Vòng', dataIndex: 'round', width: 90 },
