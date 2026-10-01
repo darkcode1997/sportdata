@@ -2357,6 +2357,94 @@ h3,
   overflow: visible !important;
 }
 
+/* Registration/payment review modal: keep the counter clear of the action bar. */
+.registration-review-modal .ant-modal-content {
+  overflow: hidden;
+  border-radius: 20px;
+  padding: 0;
+}
+
+.registration-review-modal .ant-modal-header {
+  margin: 0;
+  padding: 22px 24px 0;
+}
+
+.registration-review-modal .ant-modal-close {
+  inset-block-start: 17px;
+  inset-inline-end: 17px;
+}
+
+.registration-review-modal .ant-modal-body {
+  padding: 8px 24px 26px;
+}
+
+.registration-review-description {
+  margin: 0 0 14px;
+  line-height: 1.55;
+}
+
+.registration-review-reason {
+  padding-bottom: 18px;
+}
+
+.registration-review-reason textarea.ant-input {
+  min-height: 104px;
+  resize: vertical;
+}
+
+.registration-review-modal .ant-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin: 0;
+  border-top: 1px solid #e2e8f0;
+  padding: 16px 24px 20px;
+}
+
+.registration-review-modal .ant-modal-footer .ant-btn {
+  min-height: 42px;
+  margin-inline-start: 0 !important;
+  border-radius: 12px;
+  padding-inline: 18px;
+}
+
+.ticket-status-panel {
+  margin-bottom: 0;
+}
+
+.ticket-status-panel .ant-alert {
+  padding: 16px 20px;
+}
+
+.ticket-pass-stage {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  margin-top: 32px;
+}
+
+@media (max-width: 640px) {
+  .registration-review-modal .ant-modal-header {
+    padding: 20px 20px 0;
+  }
+
+  .registration-review-modal .ant-modal-body {
+    padding: 8px 20px 24px;
+  }
+
+  .registration-review-modal .ant-modal-footer {
+    padding: 14px 20px 18px;
+  }
+
+  .registration-review-modal .ant-modal-footer .ant-btn {
+    flex: 1;
+  }
+
+  .ticket-pass-stage {
+    margin-top: 24px;
+  }
+}
+
 .schedule-match-card.ant-card {
   overflow: hidden;
   border: 1px solid transparent;

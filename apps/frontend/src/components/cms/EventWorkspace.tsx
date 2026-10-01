@@ -423,8 +423,12 @@ function RegistrationsTab({ eventId, canOperate, canConfirmPayment }: { eventId:
       />
     </Card>
     <Modal
+      className="registration-review-modal"
       open={Boolean(reviewChange)}
       title={reviewChange?.kind === 'payment' ? 'Cập nhật trạng thái thanh toán' : 'Cập nhật trạng thái đăng ký'}
+      width={560}
+      centered
+      destroyOnHidden
       okText="Xác nhận thay đổi"
       cancelText="Hủy"
       confirmLoading={reviewSaving}
@@ -437,18 +441,20 @@ function RegistrationsTab({ eventId, canOperate, canConfirmPayment }: { eventId:
         }
       }}
     >
-      <p className="mb-3 text-sm text-slate-500">
+      <p className="registration-review-description text-sm text-slate-500">
         {reviewChange?.item.athlete.fullName} · Mọi thay đổi đều được lưu lịch sử để đối soát.
       </p>
-      <Input.TextArea
-        autoFocus
-        rows={4}
-        maxLength={1000}
-        showCount
-        value={reviewReason}
-        onChange={(event) => setReviewReason(event.target.value)}
-        placeholder="Nhập lý do thay đổi (bắt buộc, tối thiểu 3 ký tự)"
-      />
+      <div className="registration-review-reason">
+        <Input.TextArea
+          autoFocus
+          rows={3}
+          maxLength={1000}
+          showCount
+          value={reviewReason}
+          onChange={(event) => setReviewReason(event.target.value)}
+          placeholder="Nhập lý do thay đổi (bắt buộc, tối thiểu 3 ký tự)"
+        />
+      </div>
     </Modal>
     <AthleteQuickViewModal
       athleteId={selectedAthleteId}

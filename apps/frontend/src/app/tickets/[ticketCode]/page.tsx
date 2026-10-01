@@ -94,35 +94,40 @@ export default function TicketVerificationPage() {
           ) : null}
         </div>
 
-        <Alert
-          className="ticket-page-controls mb-6"
-          showIcon
-          type={ticket.isValid ? 'success' : ticket.status === 'REJECTED' ? 'error' : 'warning'}
-          icon={ticket.isValid ? <CheckCircle2 className="h-5 w-5" /> : undefined}
-          message={ticket.isValid ? 'Vé tham dự đã được phát hành' : status.label}
-          description={ticket.isValid
-            ? 'Hồ sơ đã được SportData duyệt. Vé A6 này có thể dùng để check-in sự kiện.'
-            : ticket.status === 'REJECTED' || ticket.status === 'CANCELLED'
-              ? 'Hồ sơ không được phát hành vé. Vui lòng liên hệ ban tổ chức nếu cần hỗ trợ.'
-              : 'Đây là trang theo dõi hồ sơ. Vé A6 chỉ được phát hành sau khi hồ sơ được SportData duyệt.'}
-        />
+        <div className="ticket-page-controls ticket-status-panel">
+          <Alert
+            showIcon
+            type={ticket.isValid ? 'success' : ticket.status === 'REJECTED' ? 'error' : 'warning'}
+            icon={ticket.isValid ? <CheckCircle2 className="h-5 w-5" /> : undefined}
+            message={ticket.isValid ? 'Vé tham dự đã được phát hành' : status.label}
+            description={ticket.isValid
+              ? 'Hồ sơ đã được SportData duyệt. Vé A6 này có thể dùng để check-in sự kiện.'
+              : ticket.status === 'REJECTED' || ticket.status === 'CANCELLED'
+                ? 'Hồ sơ không được phát hành vé. Vui lòng liên hệ ban tổ chức nếu cần hỗ trợ.'
+                : 'Đây là trang theo dõi hồ sơ. Vé A6 chỉ được phát hành sau khi hồ sơ được SportData duyệt.'}
+          />
+        </div>
 
         <PaymentCheckout ticket={ticket} onPaid={() => mutate()} />
 
         {ticket.isValid ? (
-          <EventParticipationCard ticket={ticket} />
+          <div className="ticket-pass-stage">
+            <EventParticipationCard ticket={ticket} />
+          </div>
         ) : (
-          <Card className="ticket-page-controls border-sky-500/20 text-center">
-            <FileCheck2 className="mx-auto h-10 w-10 text-sky-400" />
-            <h2 className="mt-3 text-lg font-bold">Vé A6 chưa được phát hành</h2>
-            <p className="mx-auto mt-2 max-w-xl text-sm text-slate-500">
-              Bạn vẫn có thể theo dõi hồ sơ và hoàn tất thanh toán tại trang này. Khi hồ sơ được duyệt,
-              vé sẽ xuất hiện tại đây và được gửi tới email đăng ký.
-            </p>
-          </Card>
+          <div className="ticket-pass-stage">
+            <Card className="ticket-page-controls border-sky-500/20 text-center">
+              <FileCheck2 className="mx-auto h-10 w-10 text-sky-400" />
+              <h2 className="mt-3 text-lg font-bold">Vé A6 chưa được phát hành</h2>
+              <p className="mx-auto mt-2 max-w-xl text-sm text-slate-500">
+                Bạn vẫn có thể theo dõi hồ sơ và hoàn tất thanh toán tại trang này. Khi hồ sơ được duyệt,
+                vé sẽ xuất hiện tại đây và được gửi tới email đăng ký.
+              </p>
+            </Card>
+          </div>
         )}
 
-        <div className="ticket-details mt-7 grid gap-6 lg:grid-cols-[1.15fr_.85fr]">
+        <div className="ticket-details mt-8 grid gap-6 lg:grid-cols-[1.15fr_.85fr]">
           <Card title="Thông tin vận động viên" extra={<Tag color={status.color}>{status.label}</Tag>}>
             <Descriptions column={1} size="small" colon={false}>
               <Descriptions.Item label="Họ và tên">{ticket.athlete.fullName}</Descriptions.Item>

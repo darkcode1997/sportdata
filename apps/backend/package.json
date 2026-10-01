@@ -15,6 +15,7 @@
     "seed": "ts-node prisma/seed.ts",
     "seed:demo-accounts": "ts-node prisma/seed-demo-accounts.ts",
     "seed:domestic-centers": "ts-node prisma/seed-domestic-centers.ts",
+    "seed:national-jujitsu": "ts-node prisma/seed-national-jujitsu.ts",
     "seed:sea-games:verify": "ts-node prisma/verify-sea-games-seed.ts"
   },
   "dependencies": {
