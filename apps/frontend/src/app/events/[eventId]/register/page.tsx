@@ -10,6 +10,7 @@ import {
   Button,
   Card,
   DatePicker,
+  Image,
   Input,
   InputNumber,
   Result,
@@ -18,7 +19,7 @@ import {
   Spin,
   Upload,
 } from 'antd';
-import { Download, FileImage, Loader2, Plus, Send, Trash2, UploadCloud, Users } from 'lucide-react';
+import { Download, FileImage, ImageIcon, Loader2, Plus, RefreshCw, Send, Trash2, UploadCloud, Users } from 'lucide-react';
 import { CameraCaptureButton } from '@/components/CameraCaptureButton';
 import { EventParticipationCard } from '@/components/EventParticipationCard';
 import { IdentityOcrReviewModal, type IdentityOcrFields, type IdentityOcrResult } from '@/components/IdentityOcrReviewModal';
@@ -81,6 +82,7 @@ function DocumentPicker({
   file,
   required,
   facingMode = 'environment',
+  allowPdf = true,
   onChange,
   reading,
 }: {
@@ -88,33 +90,76 @@ function DocumentPicker({
   file?: File;
   required?: boolean;
   facingMode?: 'user' | 'environment';
+  allowPdf?: boolean;
   onChange: (file?: File) => void;
   reading?: boolean;
 }) {
+  const [previewUrl, setPreviewUrl] = useState<string>();
+  const isImage = Boolean(file?.type.startsWith('image/'));
+
+  useEffect(() => {
+    if (!file || !file.type.startsWith('image/')) {
+      setPreviewUrl(undefined);
+      return;
+    }
+    const objectUrl = URL.createObjectURL(file);
+    setPreviewUrl(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [file]);
+
   return (
-    <div>
-      <label className="mb-2 block text-sm font-semibold text-slate-300">
+    <div className="registration-document-picker">
+      <label className="registration-document-label mb-2 block text-sm font-semibold text-slate-300">
         {label} {required && <span className="text-red-400">*</span>}
       </label>
-      <div className="flex flex-wrap gap-2">
+
+      {file && (
+        <div className={`registration-document-preview ${facingMode === 'user' ? 'is-portrait' : ''}`}>
+          {isImage && previewUrl ? (
+            <Image
+              alt={`${label} đã chọn`}
+              className="registration-document-image"
+              preview={{ mask: 'Xem ảnh' }}
+              src={previewUrl}
+            />
+          ) : (
+            <div className="registration-document-pdf">
+              <FileImage className="h-9 w-9" />
+              <strong>Tệp PDF đã chọn</strong>
+              <span>Có thể thay thế hoặc xóa tệp bên dưới</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="mt-2 flex flex-wrap gap-2">
         <Upload
-          accept="image/jpeg,image/png,image/webp,application/pdf"
+          accept={allowPdf ? 'image/jpeg,image/png,image/webp,application/pdf' : 'image/jpeg,image/png,image/webp'}
           maxCount={1}
+          showUploadList={false}
           beforeUpload={(selectedFile) => {
             onChange(selectedFile as File);
             return false;
           }}
-          onRemove={() => {
-            onChange(undefined);
-            return true;
-          }}
-          fileList={file ? [{ uid: `${label}-${file.name}`, name: file.name, status: 'done' }] : []}
         >
-          {!file && <Button icon={<UploadCloud className="h-4 w-4" />}>Chọn tệp</Button>}
+          <Button icon={file ? <RefreshCw className="h-4 w-4" /> : <UploadCloud className="h-4 w-4" />}>
+            {file ? (isImage ? 'Thay ảnh' : 'Thay tệp') : (allowPdf ? 'Chọn ảnh / PDF' : 'Chọn ảnh')}
+          </Button>
         </Upload>
         <CameraCaptureButton facingMode={facingMode} onCapture={(capturedFile) => onChange(capturedFile)} />
-        {reading && <span className="flex items-center gap-2 text-xs text-sky-400"><Loader2 className="h-4 w-4 animate-spin" /> Đang đọc giấy tờ...</span>}
+        {file && (
+          <Button danger icon={<Trash2 className="h-4 w-4" />} onClick={() => onChange(undefined)}>
+            Xóa
+          </Button>
+        )}
+        {reading && <span className="flex items-center gap-2 self-center text-xs text-sky-400"><Loader2 className="h-4 w-4 animate-spin" /> Đang đọc giấy tờ...</span>}
       </div>
+      {!file && (
+        <div className="registration-document-empty mt-2">
+          <ImageIcon className="h-5 w-5" />
+          <span>Ảnh sẽ hiển thị tại đây sau khi chọn hoặc chụp</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -443,7 +488,7 @@ export default function GuestEventRegistrationPage() {
               <div className="mt-6 border-t border-white/10 pt-6">
                 <h3 className="mb-4 font-bold">Ảnh và giấy tờ xác minh</h3>
                 <div className="grid gap-5 md:grid-cols-2">
-                  <DocumentPicker label="Ảnh đại diện" required facingMode="user" file={athlete.avatar} onChange={(file) => updateAthlete(athlete.key, { avatar: file })} />
+                  <DocumentPicker label="Ảnh đại diện" required facingMode="user" allowPdf={false} file={athlete.avatar} onChange={(file) => updateAthlete(athlete.key, { avatar: file })} />
                   <div><label className="mb-2 block text-sm font-semibold">Loại giấy tờ *</label><Select className="w-full" size="large" value={athlete.identityType} onChange={(value) => updateAthlete(athlete.key, { identityType: value })} options={[{ value: 'CCCD', label: 'CCCD hai mặt' }, { value: 'PASSPORT', label: 'Hộ chiếu' }]} /></div>
                   {athlete.identityType === 'CCCD' ? (
                     <>
