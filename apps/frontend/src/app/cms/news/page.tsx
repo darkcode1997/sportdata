@@ -1,9 +1,8 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import useSWR from 'swr';
 import {
-  Alert,
   Avatar,
   Button,
   Card,
@@ -23,6 +22,7 @@ import {
 import { ExternalLink, FileText, Pencil, Search, Star, Trash2 } from 'lucide-react';
 import { CmsPageHeader } from '@/components/cms/CmsPageHeader';
 import { api, fetcher } from '@/lib/api';
+import { useSportDataToast } from '@/hooks/useSportDataToast';
 
 const dateFormat = new Intl.DateTimeFormat('vi-VN', {
   day: '2-digit',
@@ -38,7 +38,7 @@ export default function NewsManagementPage() {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<'all' | 'published' | 'draft'>('all');
   const [page, setPage] = useState(1);
-  const [requestError, setRequestError] = useState<string | null>(null);
+  const toast = useSportDataToast();
 
   const query = useMemo(() => {
     const params = new URLSearchParams({ page: String(page), limit: '10' });
@@ -50,33 +50,37 @@ export default function NewsManagementPage() {
   const { data, error, isLoading, mutate } = useSWR<any>(query, fetcher);
   const articles = data?.items || [];
 
+  useEffect(() => {
+    if (error) toast.error('Không thể tải danh sách bài viết.');
+  }, [error, toast]);
+
   const updatePublished = async (article: any, isPublished: boolean) => {
-    setRequestError(null);
     try {
       await api.patch(`/articles/${article.id}`, { isPublished });
       await mutate();
+      toast.success(isPublished ? 'Đã xuất bản bài viết.' : 'Đã chuyển bài viết về bản nháp.');
     } catch (updateError: any) {
-      setRequestError(updateError.response?.data?.message || 'Không thể cập nhật trạng thái bài viết.');
+      toast.error(updateError.response?.data?.message || 'Không thể cập nhật trạng thái bài viết.');
     }
   };
 
   const updateFeatured = async (article: any) => {
-    setRequestError(null);
     try {
       await api.patch(`/articles/${article.id}`, { isFeatured: !article.isFeatured });
       await mutate();
+      toast.success(article.isFeatured ? 'Đã bỏ bài viết khỏi mục nổi bật.' : 'Đã đánh dấu bài viết nổi bật.');
     } catch (updateError: any) {
-      setRequestError(updateError.response?.data?.message || 'Không thể cập nhật bài viết nổi bật.');
+      toast.error(updateError.response?.data?.message || 'Không thể cập nhật bài viết nổi bật.');
     }
   };
 
   const remove = async (id: string) => {
-    setRequestError(null);
     try {
       await api.delete(`/articles/${id}`);
       await mutate();
+      toast.success('Đã xóa bài viết.');
     } catch (deleteError: any) {
-      setRequestError(deleteError.response?.data?.message || 'Không thể xóa bài viết.');
+      toast.error(deleteError.response?.data?.message || 'Không thể xóa bài viết.');
     }
   };
 
@@ -184,10 +188,6 @@ export default function NewsManagementPage() {
         actionHref="/cms/news/new"
         actionLabel="Soạn bài viết"
       />
-
-      {(error || requestError) && (
-        <Alert type="error" showIcon message={requestError || 'Không thể tải danh sách bài viết.'} />
-      )}
 
       <Card className="cms-toolbar" styles={{ body: { padding: 16 } }}>
         <Flex gap={12} wrap>

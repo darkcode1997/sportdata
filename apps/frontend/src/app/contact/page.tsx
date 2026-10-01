@@ -1,9 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { Alert, Button, Card, Col, Form, Input, Result, Row } from 'antd';
+import { Button, Card, Col, Form, Input, Result, Row } from 'antd';
 import { CheckCircle2, Clock3, Mail, MapPin, MessageSquareText, Send } from 'lucide-react';
 import { api } from '@/lib/api';
+import { useSportDataToast } from '@/hooks/useSportDataToast';
 
 type ContactFormValues = {
   fullName: string;
@@ -17,18 +18,18 @@ export default function ContactPage() {
   const [form] = Form.useForm<ContactFormValues>();
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
-  const [requestError, setRequestError] = useState<string | null>(null);
+  const toast = useSportDataToast();
 
   const submit = async (values: ContactFormValues) => {
     setSubmitting(true);
-    setRequestError(null);
     try {
       await api.post('/contacts', values);
       form.resetFields();
       setSubmitted(true);
+      toast.success('Đã gửi liên hệ. Chúng tôi sẽ phản hồi qua email sớm nhất.');
     } catch (error: any) {
       const message = error.response?.data?.message || 'Không thể gửi liên hệ. Vui lòng thử lại.';
-      setRequestError(Array.isArray(message) ? message.join(', ') : message);
+      toast.error(Array.isArray(message) ? message.join(', ') : message);
     } finally {
       setSubmitting(false);
     }
@@ -70,7 +71,6 @@ export default function ContactPage() {
                   <h2 className="text-xl font-extrabold text-slate-100">Gửi lời nhắn</h2>
                   <p className="mt-1 text-sm text-slate-500">Các trường có dấu * là bắt buộc.</p>
                 </div>
-                {requestError && <Alert className="mb-5" type="error" showIcon message={requestError} />}
                 <Row gutter={16}>
                   <Col xs={24} md={12}>
                     <Form.Item name="fullName" label="Họ và tên" rules={[{ required: true, message: 'Vui lòng nhập họ và tên' }, { min: 2, max: 120 }]}>

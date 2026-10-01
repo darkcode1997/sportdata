@@ -2,10 +2,11 @@
 
 import { useMemo, useState } from 'react';
 import useSWR from 'swr';
-import { Alert, Button, Card, Select, Space, Table, Tag, Typography } from 'antd';
+import { Button, Card, Select, Space, Table, Tag, Typography } from 'antd';
 import { CheckCircle2, Eye, RefreshCw, TicketCheck, XCircle } from 'lucide-react';
 import { api, fetcher } from '@/lib/api';
 import { CmsPageHeader } from '@/components/cms/CmsPageHeader';
+import { useSportDataToast } from '@/hooks/useSportDataToast';
 
 type Registration = {
   id: string;
@@ -41,7 +42,7 @@ type EventItem = { id: string; name: string };
 
 export default function CmsRegistrationsPage() {
   const [eventId, setEventId] = useState('');
-  const [error, setError] = useState('');
+  const toast = useSportDataToast();
   const { data: registrations = [], isLoading, mutate } = useSWR<Registration[]>(
     `/participant-auth/admin/registrations${eventId ? `?eventId=${eventId}` : ''}`,
     fetcher,
@@ -50,37 +51,36 @@ export default function CmsRegistrationsPage() {
   const events = useMemo(() => eventResponse?.items || [], [eventResponse]);
 
   const changeStatus = async (id: string, status: string) => {
-    setError('');
     try {
       await api.patch(`/participant-auth/admin/registrations/${id}/status`, { status });
       await mutate();
+      toast.success('Đã cập nhật trạng thái đăng ký.');
     } catch (requestError: any) {
-      setError(requestError.response?.data?.message || 'Không thể cập nhật trạng thái');
+      toast.error(requestError.response?.data?.message || 'Không thể cập nhật trạng thái.');
     }
   };
 
   const viewDocument = async (athleteId: string, type: string) => {
-    setError('');
     try {
       const response = await api.get(`/participant-auth/admin/athletes/${athleteId}/media/${type}`, { responseType: 'blob' });
       const url = URL.createObjectURL(response.data);
       window.open(url, '_blank', 'noopener,noreferrer');
       window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
     } catch (requestError: any) {
-      setError(requestError.response?.status === 404 ? 'Vận động viên chưa tải giấy tờ này' : 'Không thể mở giấy tờ');
+      toast.error(requestError.response?.status === 404 ? 'Vận động viên chưa tải giấy tờ này.' : 'Không thể mở giấy tờ.');
     }
   };
 
   const verifyDocument = async (athleteId: string, type: string, status: 'VERIFIED' | 'REJECTED') => {
-    setError('');
     try {
       await api.patch(`/participant-auth/admin/athletes/${athleteId}/media/${type}/verification`, {
         status,
         note: status === 'REJECTED' ? 'Giấy tờ không hợp lệ hoặc không đọc được. Vui lòng tải lại đúng giấy tờ.' : undefined,
       });
       await mutate();
+      toast.success(status === 'VERIFIED' ? 'Đã xác thực giấy tờ.' : 'Đã từ chối giấy tờ.');
     } catch (requestError: any) {
-      setError(requestError.response?.data?.message || 'Không thể cập nhật trạng thái xác thực');
+      toast.error(requestError.response?.data?.message || 'Không thể cập nhật trạng thái xác thực.');
     }
   };
 
@@ -91,7 +91,6 @@ export default function CmsRegistrationsPage() {
         description="Duyệt hồ sơ, đối chiếu giấy tờ và quản lý vé tham dự của vận động viên."
         icon={<TicketCheck className="h-6 w-6" />}
       />
-      {error && <Alert className="mb-5" showIcon closable type="error" message={error} />}
       <Card className="cms-surface mb-6">
         <div className="flex flex-wrap items-center gap-3">
           <Select

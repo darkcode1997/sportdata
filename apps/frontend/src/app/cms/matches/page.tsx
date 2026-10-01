@@ -1,9 +1,8 @@
 'use client';
 
-import { useDeferredValue, useMemo, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import useSWR from 'swr';
 import {
-  Alert,
   Button,
   Card,
   Divider,
@@ -28,6 +27,7 @@ import { CmsPageHeader } from '@/components/cms/CmsPageHeader';
 import { api, fetcher } from '@/lib/api';
 import { RemoteAthleteSelect } from '@/components/cms/RemoteAthleteSelect';
 import { SportdataBracket, type BracketDraw } from '@/components/brackets/SportdataBracket';
+import { useSportDataToast } from '@/hooks/useSportDataToast';
 
 const dateTime = new Intl.DateTimeFormat('vi-VN', {
   day: '2-digit',
@@ -67,10 +67,9 @@ export default function MatchesListPage() {
   const [sportId, setSportId] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [page, setPage] = useState(1);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [drawOpen, setDrawOpen] = useState(false);
   const [drawGenerating, setDrawGenerating] = useState(false);
-  const [drawError, setDrawError] = useState<string | null>(null);
+  const toast = useSportDataToast();
   const [drawForm] = Form.useForm();
   const selectedEventId = Form.useWatch('eventId', drawForm);
   const selectedSportIds: string[] = Form.useWatch('sportIds', drawForm) || [];
@@ -156,18 +155,25 @@ export default function MatchesListPage() {
   } = useSWR<{ draws: BracketDraw[] }>(drawQuery, fetcher);
   const draws = [...(drawsResponse?.draws || [])].sort((left, right) => left.sortOrder - right.sortOrder);
 
+  useEffect(() => {
+    if (error) toast.error('Không thể tải danh sách trận đấu.');
+  }, [error, toast]);
+
+  useEffect(() => {
+    if (drawsError) toast.error('Không thể tải sơ đồ cây thi đấu.');
+  }, [drawsError, toast]);
+
   const remove = async (id: string) => {
-    setDeleteError(null);
     try {
       await api.delete(`/matches/${id}`);
       await Promise.all([mutate(), mutateDraws()]);
+      toast.success('Đã xóa trận đấu.');
     } catch (requestError: any) {
-      setDeleteError(requestError.response?.data?.message || 'Không thể xóa trận đấu.');
+      toast.error(requestError.response?.data?.message || 'Không thể xóa trận đấu.');
     }
   };
 
   const generateDraw = async (values: DrawFormValues) => {
-    setDrawError(null);
     setDrawGenerating(true);
     const failures: Array<{ categoryId: string; categoryName: string; message: string }> = [];
     let generatedCount = 0;
@@ -208,14 +214,15 @@ export default function MatchesListPage() {
         setViewMode('tree');
         setDrawOpen(false);
         drawForm.resetFields();
+        toast.success(`Đã sinh ${generatedCount} cây thi đấu.`);
         return;
       }
 
       drawForm.setFieldValue('categoryIds', failures.map((failure) => failure.categoryId));
-      setDrawError([
+      toast.error({ content: [
         generatedCount ? `Đã sinh ${generatedCount}/${values.categoryIds.length} cây.` : '',
         ...failures.map((failure) => `${failure.categoryName}: ${failure.message}`),
-      ].filter(Boolean).join(' '));
+      ].filter(Boolean).join(' '), duration: 7 });
     } finally {
       setDrawGenerating(false);
     }
@@ -321,7 +328,6 @@ export default function MatchesListPage() {
               size="large"
               icon={<Network className="h-4 w-4" />}
               onClick={() => {
-                setDrawError(null);
                 setDrawOpen(true);
               }}
             >
@@ -352,7 +358,6 @@ export default function MatchesListPage() {
         onOk={() => drawForm.submit()}
         destroyOnHidden
       >
-        {drawError && <Alert className="mb-4" type="error" showIcon message={drawError} />}
         <Form
           form={drawForm}
           layout="vertical"
@@ -534,16 +539,6 @@ export default function MatchesListPage() {
         </Form>
       </Modal>
 
-      {(error || deleteError) && (
-        <Alert
-          type="error"
-          showIcon
-          closable={Boolean(deleteError)}
-          onClose={() => setDeleteError(null)}
-          message={deleteError || 'Không thể tải danh sách trận đấu.'}
-        />
-      )}
-
       <Card className="cms-toolbar" styles={{ body: { padding: 16 } }}>
         <Flex align="center" justify="space-between" gap={12} wrap>
           <Segmented
@@ -654,7 +649,6 @@ export default function MatchesListPage() {
 
       {viewMode === 'tree' ? (
         <div className="space-y-5">
-          {drawsError && <Alert type="error" showIcon message="Không thể tải sơ đồ cây thi đấu." />}
           {!eventId || !sportId || !categoryId ? (
             <Card className="cms-surface">
               <Empty description="Chọn sự kiện, bộ môn và hạng thi đấu để xem sơ đồ cây." />

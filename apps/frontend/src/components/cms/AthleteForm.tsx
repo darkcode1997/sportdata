@@ -8,7 +8,6 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import dayjs from 'dayjs';
 import {
-  Alert,
   Avatar,
   Button,
   Card,
@@ -30,6 +29,7 @@ import {
 } from 'antd';
 import { Check, ImagePlus, Pencil, Plus, Save, Trash2, UserRound, X } from 'lucide-react';
 import { api, fetcher } from '@/lib/api';
+import { useSportDataToast } from '@/hooks/useSportDataToast';
 
 type CountryOption = {
   id: string;
@@ -86,7 +86,7 @@ type AthleteFormValues = z.infer<typeof athleteSchema>;
 export function AthleteForm({ athleteId, initialData }: { athleteId?: string; initialData?: any }) {
   const { data: currentUser } = useSWR<any>('/auth/profile', fetcher);
   const router = useRouter();
-  const [submitError, setSubmitError] = useState<string | null>(null);
+  const toast = useSportDataToast();
   const [federationManagerOpen, setFederationManagerOpen] = useState(false);
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [avatarVersion, setAvatarVersion] = useState(0);
@@ -166,7 +166,6 @@ export function AthleteForm({ athleteId, initialData }: { athleteId?: string; in
   }));
 
   const onSubmit = async (values: AthleteFormValues) => {
-    setSubmitError(null);
     const selectedCategories = sports
       .flatMap((sport: any) => sport.categories || [])
       .filter((category: any) => values.categoryIds.includes(category.id));
@@ -196,18 +195,18 @@ export function AthleteForm({ athleteId, initialData }: { athleteId?: string; in
     try {
       if (athleteId) await api.patch(`/athletes/${athleteId}`, payload);
       else await api.post('/athletes', payload);
+      toast.success(athleteId ? 'Đã cập nhật vận động viên.' : 'Đã thêm vận động viên.');
       router.push('/cms/athletes');
       router.refresh();
     } catch (error: any) {
       const message = error.response?.data?.message || error.message || 'Không thể lưu vận động viên';
-      setSubmitError(Array.isArray(message) ? message.join(', ') : message);
+      toast.error(Array.isArray(message) ? message.join(', ') : message);
     }
   };
 
   const uploadAvatar = async (file: File) => {
     if (!athleteId) return;
     setAvatarUploading(true);
-    setSubmitError(null);
     const data = new FormData();
     data.append('file', file);
     try {
@@ -216,9 +215,10 @@ export function AthleteForm({ athleteId, initialData }: { athleteId?: string; in
       });
       setValue('photoUrl', response.data.photoUrl, { shouldDirty: true });
       setAvatarVersion((version) => version + 1);
+      toast.success('Đã cập nhật ảnh đại diện.');
     } catch (error: any) {
       const message = error.response?.data?.message || error.message || 'Không thể tải ảnh đại diện';
-      setSubmitError(Array.isArray(message) ? message.join(', ') : message);
+      toast.error(Array.isArray(message) ? message.join(', ') : message);
     } finally {
       setAvatarUploading(false);
     }
@@ -227,7 +227,6 @@ export function AthleteForm({ athleteId, initialData }: { athleteId?: string; in
   return (
     <>
       <Form layout="vertical" requiredMark={false} onFinish={handleSubmit(onSubmit)}>
-      {submitError && <ErrorMessage message={submitError} />}
       <Card className="cms-surface" title="Thông tin vận động viên">
         <Row gutter={[20, 2]}>
           <ControlledField name="firstName" control={control} label="Họ" error={errors.firstName?.message}>
@@ -471,7 +470,7 @@ function FederationManager({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const toast = useSportDataToast();
 
   useEffect(() => {
     if (!open) return;
@@ -486,7 +485,6 @@ function FederationManager({
     setCode('');
     setType('SPORTS_CENTER');
     setEditingId(null);
-    setError(null);
   }, [countries, federations, open, preferredCountryId, selectedFederationId]);
 
   const visibleFederations = federations.filter(
@@ -503,16 +501,15 @@ function FederationManager({
   const saveFederation = async () => {
     const normalizedName = name.trim();
     if (!countryId) {
-      setError('Vui lòng chọn quốc gia của liên đoàn.');
+      toast.error('Vui lòng chọn quốc gia của liên đoàn.');
       return;
     }
     if (!normalizedName) {
-      setError('Vui lòng nhập tên liên đoàn.');
+      toast.error('Vui lòng nhập tên liên đoàn.');
       return;
     }
 
     setSaving(true);
-    setError(null);
     try {
       const response = editingId
         ? await api.patch<FederationOption>(`/federations/${editingId}`, {
@@ -530,8 +527,9 @@ function FederationManager({
       await onChanged();
       onSelect(response.data.id);
       resetEditor();
+      toast.success(editingId ? 'Đã cập nhật đơn vị thể thao.' : 'Đã thêm đơn vị thể thao.');
     } catch (requestError: any) {
-      setError(getRequestError(requestError, 'Không thể lưu liên đoàn.'));
+      toast.error(getRequestError(requestError, 'Không thể lưu liên đoàn.'));
     } finally {
       setSaving(false);
     }
@@ -539,14 +537,14 @@ function FederationManager({
 
   const removeFederation = async (federation: FederationOption) => {
     setDeletingId(federation.id);
-    setError(null);
     try {
       await api.delete(`/federations/${federation.id}`);
       if (selectedFederationId === federation.id) onSelect('');
       if (editingId === federation.id) resetEditor();
       await onChanged();
+      toast.success('Đã xóa đơn vị thể thao.');
     } catch (requestError: any) {
-      setError(getRequestError(requestError, 'Không thể xóa liên đoàn.'));
+      toast.error(getRequestError(requestError, 'Không thể xóa liên đoàn.'));
     } finally {
       setDeletingId(null);
     }
@@ -562,16 +560,6 @@ function FederationManager({
       onCancel={onClose}
     >
       <div className="space-y-4 pt-2">
-        {error && (
-          <Alert
-            type="error"
-            showIcon
-            closable
-            message={error}
-            onClose={() => setError(null)}
-          />
-        )}
-
         <div>
           <Typography.Text strong>Quốc gia</Typography.Text>
           <Select
@@ -584,7 +572,6 @@ function FederationManager({
             onChange={(value) => {
               setCountryId(value);
               resetEditor();
-              setError(null);
             }}
             options={countries.map((country) => ({
               value: country.id,
@@ -697,7 +684,6 @@ function FederationManager({
                           setName(federation.name);
                           setCode(federation.code || '');
                           setType(federation.type || 'NATIONAL_FEDERATION');
-                          setError(null);
                         }}
                       />
                     </Tooltip>,
@@ -811,5 +797,11 @@ export function FormActions({ pending, label, cancelHref }: { pending: boolean; 
 }
 
 export function ErrorMessage({ message }: { message: string }) {
-  return <Alert className="mb-5" type="error" showIcon message="Không thể lưu dữ liệu" description={message} />;
+  const toast = useSportDataToast();
+
+  useEffect(() => {
+    toast.error(message);
+  }, [message, toast]);
+
+  return null;
 }

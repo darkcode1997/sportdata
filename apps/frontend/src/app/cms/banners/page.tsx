@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import useSWR from 'swr';
 import {
   Alert,
@@ -19,7 +19,6 @@ import {
   Tooltip,
   Typography,
   Upload,
-  message,
   type TableProps,
   type UploadFile,
 } from 'antd';
@@ -33,6 +32,7 @@ import {
 } from 'lucide-react';
 import { CmsPageHeader } from '@/components/cms/CmsPageHeader';
 import { api, fetcher } from '@/lib/api';
+import { useSportDataToast } from '@/hooks/useSportDataToast';
 
 type Banner = {
   id: string;
@@ -65,9 +65,12 @@ export default function BannerManagementPage() {
   const [editing, setEditing] = useState<Banner | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [requestError, setRequestError] = useState<string | null>(null);
   const [fileList, setFileList] = useState<UploadFile[]>([]);
-  const [messageApi, contextHolder] = message.useMessage();
+  const toast = useSportDataToast();
+
+  useEffect(() => {
+    if (error) toast.error('Không thể tải danh sách banner.');
+  }, [error, toast]);
 
   const nextSortOrder = useMemo(
     () => banners.reduce((highest, banner) => Math.max(highest, banner.sortOrder), -1) + 1,
@@ -77,7 +80,6 @@ export default function BannerManagementPage() {
   const openCreate = () => {
     setEditing(null);
     setFileList([]);
-    setRequestError(null);
     form.setFieldsValue({
       title: '',
       altText: '',
@@ -91,7 +93,6 @@ export default function BannerManagementPage() {
   const openEdit = (banner: Banner) => {
     setEditing(banner);
     setFileList([]);
-    setRequestError(null);
     form.setFieldsValue({
       title: banner.title || '',
       altText: banner.altText,
@@ -112,11 +113,11 @@ export default function BannerManagementPage() {
 
   const validateUpload = (file: File) => {
     if (!acceptedTypes.includes(file.type)) {
-      messageApi.error('Chỉ chấp nhận ảnh JPG, PNG, WebP hoặc AVIF.');
+      toast.error('Chỉ chấp nhận ảnh JPG, PNG, WebP hoặc AVIF.');
       return Upload.LIST_IGNORE;
     }
     if (file.size > 4 * 1024 * 1024) {
-      messageApi.error('Ảnh banner không được vượt quá 4 MB.');
+      toast.error('Ảnh banner không được vượt quá 4 MB.');
       return Upload.LIST_IGNORE;
     }
     setFileList([file as unknown as UploadFile]);
@@ -126,12 +127,11 @@ export default function BannerManagementPage() {
   const save = async (values: BannerFormValues) => {
     const image = fileList[0]?.originFileObj || fileList[0];
     if (!editing && !image) {
-      messageApi.error('Vui lòng chọn ảnh banner.');
+      toast.error('Vui lòng chọn ảnh banner.');
       return;
     }
 
     setSaving(true);
-    setRequestError(null);
     const payload = new FormData();
     if (image instanceof File) payload.append('image', image);
     payload.append('title', values.title?.trim() || '');
@@ -151,37 +151,36 @@ export default function BannerManagementPage() {
         });
       }
       await mutate();
-      messageApi.success(editing ? 'Đã cập nhật banner.' : 'Đã thêm banner mới.');
+      toast.success(editing ? 'Đã cập nhật banner.' : 'Đã thêm banner mới.');
       setModalOpen(false);
       setEditing(null);
       setFileList([]);
       form.resetFields();
     } catch (saveError: any) {
       const responseMessage = saveError.response?.data?.message;
-      setRequestError(Array.isArray(responseMessage) ? responseMessage.join(', ') : responseMessage || 'Không thể lưu banner.');
+      toast.error(Array.isArray(responseMessage) ? responseMessage.join(', ') : responseMessage || 'Không thể lưu banner.');
     } finally {
       setSaving(false);
     }
   };
 
   const updateActive = async (banner: Banner, isActive: boolean) => {
-    setRequestError(null);
     try {
       await api.patch(`/banners/${banner.id}`, { isActive });
       await mutate();
+      toast.success(isActive ? 'Đã bật banner.' : 'Đã ẩn banner.');
     } catch (updateError: any) {
-      setRequestError(updateError.response?.data?.message || 'Không thể cập nhật trạng thái banner.');
+      toast.error(updateError.response?.data?.message || 'Không thể cập nhật trạng thái banner.');
     }
   };
 
   const remove = async (banner: Banner) => {
-    setRequestError(null);
     try {
       await api.delete(`/banners/${banner.id}`);
       await mutate();
-      messageApi.success('Đã xóa banner.');
+      toast.success('Đã xóa banner.');
     } catch (deleteError: any) {
-      setRequestError(deleteError.response?.data?.message || 'Không thể xóa banner.');
+      toast.error(deleteError.response?.data?.message || 'Không thể xóa banner.');
     }
   };
 
@@ -273,7 +272,6 @@ export default function BannerManagementPage() {
 
   return (
     <div className="space-y-6">
-      {contextHolder}
       <CmsPageHeader
         title="Banner trang chủ"
         description="Tải ảnh lên, sắp xếp và quản lý slider hiển thị ở đầu trang chủ."
@@ -291,10 +289,6 @@ export default function BannerManagementPage() {
         message="Ảnh đề xuất: 1920 × 720 px hoặc cùng tỷ lệ, dung lượng tối đa 4 MB."
         description="Banner có thứ tự nhỏ hơn sẽ xuất hiện trước. Chỉ banner đang bật mới hiển thị ngoài trang chủ."
       />
-
-      {(error || requestError) && (
-        <Alert type="error" showIcon message={requestError || 'Không thể tải danh sách banner.'} />
-      )}
 
       <Card className="cms-table" styles={{ body: { padding: 0 } }}>
         <Table<Banner>
@@ -381,8 +375,6 @@ export default function BannerManagementPage() {
               <Switch checkedChildren="Bật" unCheckedChildren="Ẩn" />
             </Form.Item>
           </Flex>
-
-          {requestError && <Alert className="mb-5" type="error" showIcon message={requestError} />}
 
           <Flex justify="flex-end" gap={10}>
             <Button onClick={closeModal} disabled={saving}>Hủy</Button>

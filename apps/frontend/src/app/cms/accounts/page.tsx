@@ -2,10 +2,11 @@
 
 import { useState } from 'react';
 import useSWR from 'swr';
-import { Alert, Button, Card, Popconfirm, Space, Table, Tag, message, type TableProps } from 'antd';
+import { Button, Card, Popconfirm, Space, Table, Tag, type TableProps } from 'antd';
 import { Building2, CheckCircle2, UserCheck, XCircle } from 'lucide-react';
 import { CmsPageHeader } from '@/components/cms/CmsPageHeader';
 import { api, fetcher } from '@/lib/api';
+import { useSportDataToast } from '@/hooks/useSportDataToast';
 
 type FederationAccount = {
   id: string;
@@ -23,19 +24,17 @@ export default function FederationAccountsCmsPage() {
   const query = useSWR<FederationAccount[]>('/participant-auth/admin/federation-accounts', fetcher);
   const { data: currentUser } = useSWR<{ role?: string }>('/auth/profile', fetcher);
   const [updating, setUpdating] = useState<string>();
-  const [requestError, setRequestError] = useState('');
-  const [messageApi, contextHolder] = message.useMessage();
+  const toast = useSportDataToast();
   const canReview = ['ADMIN', 'GAMES_ADMIN'].includes(currentUser?.role || '');
 
   const updateStatus = async (account: FederationAccount, status: FederationAccount['verificationStatus']) => {
     setUpdating(account.id);
-    setRequestError('');
     try {
       await api.patch(`/participant-auth/admin/federation-accounts/${account.id}/status`, { status });
       await query.mutate();
-      messageApi.success(status === 'VERIFIED' ? 'Đã cấp quyền đại diện đơn vị.' : 'Đã từ chối yêu cầu tài khoản.');
+      toast.success(status === 'VERIFIED' ? 'Đã cấp quyền đại diện đơn vị.' : 'Đã từ chối yêu cầu tài khoản.');
     } catch (error: any) {
-      setRequestError(error.response?.data?.message || 'Không thể cập nhật tài khoản.');
+      toast.error(error.response?.data?.message || 'Không thể cập nhật tài khoản.');
     } finally {
       setUpdating(undefined);
     }
@@ -91,9 +90,7 @@ export default function FederationAccountsCmsPage() {
 
   return (
     <div>
-      {contextHolder}
       <CmsPageHeader title="Tài khoản liên đoàn / CLB" description="SportData xác minh người đại diện trước khi cho phép đăng ký danh sách vận động viên." icon={<UserCheck className="h-6 w-6" />} />
-      {requestError && <Alert className="mb-5" showIcon type="error" message={requestError} closable onClose={() => setRequestError('')} />}
       <Card title={<span className="flex items-center gap-2"><Building2 className="h-5 w-5" /> Yêu cầu quyền đại diện</span>}>
         <Table rowKey="id" loading={query.isLoading} columns={columns} dataSource={query.data || []} scroll={{ x: 900 }} pagination={{ pageSize: 10 }} />
       </Card>

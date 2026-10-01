@@ -1,9 +1,8 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import useSWR from 'swr';
 import {
-  Alert,
   Badge,
   Button,
   Card,
@@ -24,6 +23,7 @@ import {
 import { CheckCircle2, Eye, Mail, Search, Trash2 } from 'lucide-react';
 import { CmsPageHeader } from '@/components/cms/CmsPageHeader';
 import { api, fetcher } from '@/lib/api';
+import { useSportDataToast } from '@/hooks/useSportDataToast';
 
 type ContactStatus = 'NEW' | 'READ' | 'RESOLVED';
 
@@ -50,7 +50,7 @@ export default function ContactsManagementPage() {
   const [selectedContact, setSelectedContact] = useState<any>();
   const [adminNote, setAdminNote] = useState('');
   const [saving, setSaving] = useState(false);
-  const [requestError, setRequestError] = useState<string | null>(null);
+  const toast = useSportDataToast();
 
   const query = useMemo(() => {
     const params = new URLSearchParams({ page: String(page), limit: '20' });
@@ -60,6 +60,10 @@ export default function ContactsManagementPage() {
   }, [page, search, status]);
   const { data, error, isLoading, mutate } = useSWR<any>(query, fetcher);
   const contacts = data?.items || [];
+
+  useEffect(() => {
+    if (error) toast.error('Không thể tải danh sách liên hệ.');
+  }, [error, toast]);
 
   const openContact = async (contact: any) => {
     const nextContact = contact.status === 'NEW' ? { ...contact, status: 'READ' } : contact;
@@ -78,7 +82,6 @@ export default function ContactsManagementPage() {
   const saveContact = async (nextStatus: ContactStatus = selectedContact?.status || 'READ') => {
     if (!selectedContact) return;
     setSaving(true);
-    setRequestError(null);
     try {
       const { data: updated } = await api.patch(`/contacts/${selectedContact.id}`, {
         status: nextStatus,
@@ -86,21 +89,22 @@ export default function ContactsManagementPage() {
       });
       setSelectedContact(updated);
       await mutate();
+      toast.success(nextStatus === 'RESOLVED' ? 'Đã đánh dấu liên hệ là đã xử lý.' : 'Đã lưu ghi chú liên hệ.');
     } catch (updateError: any) {
-      setRequestError(updateError.response?.data?.message || 'Không thể cập nhật liên hệ.');
+      toast.error(updateError.response?.data?.message || 'Không thể cập nhật liên hệ.');
     } finally {
       setSaving(false);
     }
   };
 
   const remove = async (id: string) => {
-    setRequestError(null);
     try {
       await api.delete(`/contacts/${id}`);
       if (selectedContact?.id === id) setSelectedContact(undefined);
       await mutate();
+      toast.success('Đã xóa liên hệ.');
     } catch (deleteError: any) {
-      setRequestError(deleteError.response?.data?.message || 'Không thể xóa liên hệ.');
+      toast.error(deleteError.response?.data?.message || 'Không thể xóa liên hệ.');
     }
   };
 
@@ -176,8 +180,6 @@ export default function ContactsManagementPage() {
         description="Theo dõi email, nội dung yêu cầu và trạng thái phản hồi người dùng."
         action={data?.newCount ? <Tag color="error">{data.newCount} liên hệ mới</Tag> : undefined}
       />
-
-      {(error || requestError) && <Alert type="error" showIcon message={requestError || 'Không thể tải danh sách liên hệ.'} />}
 
       <Card className="cms-toolbar" styles={{ body: { padding: 16 } }}>
         <Flex gap={12} wrap>

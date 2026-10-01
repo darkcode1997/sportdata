@@ -9,8 +9,9 @@ import { z } from 'zod';
 import dayjs from 'dayjs';
 import { Card, Checkbox, Col, DatePicker, Form, Input, InputNumber, Row, Select } from 'antd';
 import { api, fetcher } from '@/lib/api';
-import { ErrorMessage, FormActions } from './AthleteForm';
+import { FormActions } from './AthleteForm';
 import { RemoteAthleteSelect } from './RemoteAthleteSelect';
+import { useSportDataToast } from '@/hooks/useSportDataToast';
 
 const eventSchema = z.object({
   name: z.string().min(3, 'Tên sự kiện phải có ít nhất 3 ký tự'),
@@ -56,7 +57,7 @@ const toLocalInput = (value?: string) => value ? dayjs(value).format('YYYY-MM-DD
 
 export function EventForm({ eventId, initialData }: { eventId?: string; initialData?: any }) {
   const router = useRouter();
-  const [submitError, setSubmitError] = useState<string | null>(null);
+  const toast = useSportDataToast();
   const [athleteCountryId, setAthleteCountryId] = useState<string>();
   const [athleteFederationId, setAthleteFederationId] = useState<string>();
   const { data: sports = [] } = useSWR<any[]>('/sports', fetcher);
@@ -136,7 +137,6 @@ export function EventForm({ eventId, initialData }: { eventId?: string; initialD
   }, [athleteFederationId, eligibleFederations]);
 
   const onSubmit = async (values: EventFormValues) => {
-    setSubmitError(null);
     const validCategoryIds = values.categoryIds.filter(
       (id) => availableCategories.some((category: any) => category.id === id),
     );
@@ -158,17 +158,17 @@ export function EventForm({ eventId, initialData }: { eventId?: string; initialD
     try {
       if (eventId) await api.patch(`/events/${eventId}`, payload);
       else await api.post('/events', payload);
+      toast.success(eventId ? 'Đã cập nhật sự kiện.' : 'Đã tạo sự kiện.');
       router.push('/cms/events');
       router.refresh();
     } catch (error: any) {
       const message = error.response?.data?.message || error.message || 'Không thể lưu sự kiện';
-      setSubmitError(Array.isArray(message) ? message.join(', ') : message);
+      toast.error(Array.isArray(message) ? message.join(', ') : message);
     }
   };
 
   return (
     <Form layout="vertical" requiredMark={false} onFinish={handleSubmit(onSubmit)}>
-      {submitError && <ErrorMessage message={submitError} />}
       <Card className="cms-surface" title="Thông tin sự kiện">
         <Row gutter={[20, 2]}>
           <ControlledField name="name" control={control} label="Tên sự kiện" error={errors.name?.message} wide required>

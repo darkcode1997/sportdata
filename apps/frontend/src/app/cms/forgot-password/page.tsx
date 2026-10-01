@@ -5,6 +5,7 @@ import Link from 'next/link';
 import axios from 'axios';
 import { Alert, Button, Card, Form, Input } from 'antd';
 import { ArrowLeft, KeyRound, Trophy, UserRound } from 'lucide-react';
+import { useSportDataToast } from '@/hooks/useSportDataToast';
 
 type ForgotPasswordResponse = {
   message: string;
@@ -15,19 +16,19 @@ export default function ForgotPasswordPage() {
   const [identifier, setIdentifier] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<ForgotPasswordResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const toast = useSportDataToast();
 
   const submit = async () => {
     setSubmitting(true);
-    setError(null);
     setResult(null);
     try {
       const response = await axios.post<ForgotPasswordResponse>('/api/auth/forgot-password', {
         identifier: identifier.trim(),
       });
       setResult(response.data);
+      toast.success(response.data.message);
     } catch (requestError: any) {
-      setError(
+      toast.error(
         requestError.response?.data?.message ||
           'Không thể gửi yêu cầu lúc này. Vui lòng thử lại.',
       );
@@ -50,20 +51,6 @@ export default function ForgotPasswordPage() {
         </div>
 
         <Card className="border-sdark-700 bg-sdark-900 shadow-2xl shadow-black/20">
-          {error && (
-            <Alert className="mb-5" type="error" showIcon message={error} />
-          )}
-
-          {result && (
-            <Alert
-              className="mb-5"
-              type="success"
-              showIcon
-              message="Đã tiếp nhận yêu cầu"
-              description={result.message}
-            />
-          )}
-
           {result?.resetUrl && (
             <Alert
               className="mb-5"

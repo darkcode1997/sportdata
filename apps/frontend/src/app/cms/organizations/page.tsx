@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import useSWR from 'swr';
 import {
-  Alert,
   Button,
   Card,
   Flex,
@@ -17,12 +16,12 @@ import {
   Tabs,
   Tag,
   Tooltip,
-  message,
   type TableProps,
 } from 'antd';
 import { Building2, Flag, Pencil, Plus, Trash2 } from 'lucide-react';
 import { CmsPageHeader } from '@/components/cms/CmsPageHeader';
 import { api, fetcher } from '@/lib/api';
+import { useSportDataToast } from '@/hooks/useSportDataToast';
 
 type Country = {
   id: string;
@@ -73,8 +72,7 @@ export default function OrganizationsManagementPage() {
   const [editingCountry, setEditingCountry] = useState<Country | null>(null);
   const [editingOrganization, setEditingOrganization] = useState<Organization | null>(null);
   const [saving, setSaving] = useState(false);
-  const [requestError, setRequestError] = useState<string | null>(null);
-  const [messageApi, contextHolder] = message.useMessage();
+  const toast = useSportDataToast();
 
   const openCountry = (country?: Country) => {
     setEditingCountry(country || null);
@@ -94,16 +92,15 @@ export default function OrganizationsManagementPage() {
 
   const saveCountry = async (values: CountryForm) => {
     setSaving(true);
-    setRequestError(null);
     const payload = { ...values, code: values.code.trim().toUpperCase(), flagUrl: values.flagUrl?.trim() || undefined };
     try {
       if (editingCountry) await api.patch(`/countries/${editingCountry.id}`, payload);
       else await api.post('/countries', payload);
       await Promise.all([countriesQuery.mutate(), organizationsQuery.mutate()]);
       setCountryModalOpen(false);
-      messageApi.success(editingCountry ? 'Đã cập nhật quốc gia.' : 'Đã thêm quốc gia.');
+      toast.success(editingCountry ? 'Đã cập nhật quốc gia.' : 'Đã thêm quốc gia.');
     } catch (error: any) {
-      setRequestError(error.response?.data?.message || 'Không thể lưu quốc gia.');
+      toast.error(error.response?.data?.message || 'Không thể lưu quốc gia.');
     } finally {
       setSaving(false);
     }
@@ -111,40 +108,37 @@ export default function OrganizationsManagementPage() {
 
   const saveOrganization = async (values: OrganizationForm) => {
     setSaving(true);
-    setRequestError(null);
     const payload = { ...values, code: values.code?.trim().toUpperCase() || undefined };
     try {
       if (editingOrganization) await api.patch(`/federations/${editingOrganization.id}`, payload);
       else await api.post('/federations', payload);
       await organizationsQuery.mutate();
       setOrganizationModalOpen(false);
-      messageApi.success(editingOrganization ? 'Đã cập nhật đơn vị.' : 'Đã thêm đơn vị.');
+      toast.success(editingOrganization ? 'Đã cập nhật đơn vị.' : 'Đã thêm đơn vị.');
     } catch (error: any) {
-      setRequestError(error.response?.data?.message || 'Không thể lưu đơn vị.');
+      toast.error(error.response?.data?.message || 'Không thể lưu đơn vị.');
     } finally {
       setSaving(false);
     }
   };
 
   const removeCountry = async (country: Country) => {
-    setRequestError(null);
     try {
       await api.delete(`/countries/${country.id}`);
       await countriesQuery.mutate();
-      messageApi.success('Đã xóa quốc gia.');
+      toast.success('Đã xóa quốc gia.');
     } catch (error: any) {
-      setRequestError(error.response?.data?.message || 'Không thể xóa quốc gia đang được sử dụng.');
+      toast.error(error.response?.data?.message || 'Không thể xóa quốc gia đang được sử dụng.');
     }
   };
 
   const removeOrganization = async (organization: Organization) => {
-    setRequestError(null);
     try {
       await api.delete(`/federations/${organization.id}`);
       await organizationsQuery.mutate();
-      messageApi.success('Đã xóa đơn vị.');
+      toast.success('Đã xóa đơn vị.');
     } catch (error: any) {
-      setRequestError(error.response?.data?.message || 'Không thể xóa đơn vị đang được sử dụng.');
+      toast.error(error.response?.data?.message || 'Không thể xóa đơn vị đang được sử dụng.');
     }
   };
 
@@ -204,7 +198,6 @@ export default function OrganizationsManagementPage() {
 
   return (
     <div className="space-y-6">
-      {contextHolder}
       <CmsPageHeader
         title="Quốc gia & đơn vị thể thao"
         description="Quản lý mạng lưới liên đoàn, trung tâm, câu lạc bộ và quốc gia tham gia sự kiện."
@@ -216,8 +209,6 @@ export default function OrganizationsManagementPage() {
           </Space>
         )}
       />
-
-      {requestError && <Alert closable showIcon type="error" message={requestError} onClose={() => setRequestError(null)} />}
 
       <Card className="cms-table" styles={{ body: { padding: 0 } }}>
         <Tabs

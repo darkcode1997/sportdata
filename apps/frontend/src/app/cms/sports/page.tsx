@@ -1,9 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import useSWR from 'swr';
 import {
-  Alert,
   App as AntApp,
   Button,
   Card,
@@ -100,7 +99,10 @@ export default function SportsPage() {
   const [backgroundPreview, setBackgroundPreview] = useState<string | null>(null);
   const [categoryForm, setCategoryForm] = useState(emptyCategory);
   const [saving, setSaving] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (error) toast.error('Không thể tải danh sách bộ môn.');
+  }, [error, toast]);
 
   const openSport = (sport?: any) => {
     setEditingSport(sport || null);
@@ -121,7 +123,6 @@ export default function SportsPage() {
     setLogoPreview(sport?.logoUrl || null);
     setBackgroundFileList([]);
     setBackgroundPreview(sport?.backgroundUrl || null);
-    setErrorMessage(null);
     setSportOpen(true);
   };
 
@@ -145,13 +146,11 @@ export default function SportsPage() {
           maxWeight: category.maxWeight == null ? '' : String(category.maxWeight),
         }
       : emptyCategory);
-    setErrorMessage(null);
     setCategoryOpen(true);
   };
 
   const saveSport = async () => {
     setSaving(true);
-    setErrorMessage(null);
     try {
       const payload = {
         ...sportForm,
@@ -186,7 +185,7 @@ export default function SportsPage() {
       await mutate();
       toast.success(editingSport ? 'Đã cập nhật bộ môn' : 'Đã thêm bộ môn');
     } catch (requestError: any) {
-      setErrorMessage(requestError.response?.data?.message || 'Không thể lưu bộ môn.');
+      toast.error(requestError.response?.data?.message || 'Không thể lưu bộ môn.');
     } finally {
       setSaving(false);
     }
@@ -209,7 +208,6 @@ export default function SportsPage() {
   const removeLogo = async () => {
     if (!editingSport?.logoUrl) return;
     setSaving(true);
-    setErrorMessage(null);
     try {
       const response = await api.delete(`/sports/${editingSport.id}/logo`);
       setEditingSport(response.data);
@@ -218,7 +216,7 @@ export default function SportsPage() {
       await mutate();
       toast.success('Đã xóa logo.');
     } catch (requestError: any) {
-      setErrorMessage(requestError.response?.data?.message || 'Không thể xóa logo.');
+      toast.error(requestError.response?.data?.message || 'Không thể xóa logo.');
     } finally {
       setSaving(false);
     }
@@ -241,7 +239,6 @@ export default function SportsPage() {
   const removeBackground = async () => {
     if (!editingSport?.backgroundUrl) return;
     setSaving(true);
-    setErrorMessage(null);
     try {
       const response = await api.delete(`/sports/${editingSport.id}/background`);
       setEditingSport(response.data);
@@ -250,26 +247,24 @@ export default function SportsPage() {
       await mutate();
       toast.success('Đã xóa ảnh nền.');
     } catch (requestError: any) {
-      setErrorMessage(requestError.response?.data?.message || 'Không thể xóa ảnh nền.');
+      toast.error(requestError.response?.data?.message || 'Không thể xóa ảnh nền.');
     } finally {
       setSaving(false);
     }
   };
 
   const updateVisibility = async (sport: any, isVisible: boolean) => {
-    setErrorMessage(null);
     try {
       await api.patch(`/sports/${sport.id}`, { isVisible });
       await mutate();
       toast.success(isVisible ? 'Đã hiển thị bộ môn trên trang Sự kiện.' : 'Đã ẩn bộ môn khỏi trang Sự kiện.');
     } catch (requestError: any) {
-      setErrorMessage(requestError.response?.data?.message || 'Không thể cập nhật trạng thái hiển thị.');
+      toast.error(requestError.response?.data?.message || 'Không thể cập nhật trạng thái hiển thị.');
     }
   };
 
   const saveCategory = async () => {
     setSaving(true);
-    setErrorMessage(null);
     try {
       const payload = {
         name: categoryForm.name,
@@ -297,20 +292,19 @@ export default function SportsPage() {
       await mutate();
       toast.success(editingCategory ? 'Đã cập nhật hạng đấu' : 'Đã thêm hạng đấu');
     } catch (requestError: any) {
-      setErrorMessage(requestError.response?.data?.message || 'Không thể tạo hạng đấu.');
+      toast.error(requestError.response?.data?.message || 'Không thể tạo hạng đấu.');
     } finally {
       setSaving(false);
     }
   };
 
   const removeSport = async (sport: any) => {
-    setErrorMessage(null);
     try {
       await api.delete(`/sports/${sport.id}`);
       await mutate();
       toast.success('Đã xóa bộ môn');
     } catch (requestError: any) {
-      setErrorMessage(
+      toast.error(
         requestError.response?.data?.message ||
           'Không thể xóa bộ môn đang được sử dụng.',
       );
@@ -318,13 +312,12 @@ export default function SportsPage() {
   };
 
   const removeCategory = async (category: any) => {
-    setErrorMessage(null);
     try {
       await api.delete(`/categories/${category.id}`);
       await mutate();
       toast.success('Đã xóa hạng đấu');
     } catch (requestError: any) {
-      setErrorMessage(
+      toast.error(
         requestError.response?.data?.message ||
           'Không thể xóa hạng đấu đang được sử dụng.',
       );
@@ -339,16 +332,6 @@ export default function SportsPage() {
         icon={<Dumbbell className="h-6 w-6" />}
         action={canManageSports ? <Button type="primary" size="large" icon={<Plus className="h-4 w-4" />} onClick={() => openSport()}>Thêm bộ môn</Button> : undefined}
       />
-
-      {(error || errorMessage) && (
-        <Alert
-          type="error"
-          showIcon
-          closable={Boolean(errorMessage)}
-          onClose={() => setErrorMessage(null)}
-          message={errorMessage || 'Không thể tải danh sách bộ môn.'}
-        />
-      )}
 
       {isLoading ? (
         <div className="grid gap-5 lg:grid-cols-2">

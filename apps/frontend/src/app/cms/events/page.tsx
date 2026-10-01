@@ -1,9 +1,8 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import useSWR from 'swr';
 import {
-  Alert,
   Avatar,
   Button,
   Card,
@@ -22,6 +21,7 @@ import {
 import { CalendarDays, Pencil, Search, Trash2 } from 'lucide-react';
 import { CmsPageHeader } from '@/components/cms/CmsPageHeader';
 import { api, fetcher } from '@/lib/api';
+import { useSportDataToast } from '@/hooks/useSportDataToast';
 
 const dateFormat = new Intl.DateTimeFormat('vi-VN', {
   day: '2-digit',
@@ -60,7 +60,7 @@ export default function EventsListPage() {
   const [search, setSearch] = useState('');
   const [level, setLevel] = useState('');
   const [page, setPage] = useState(1);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const toast = useSportDataToast();
 
   const query = useMemo(() => {
     const params = new URLSearchParams({ page: String(page), limit: '10' });
@@ -72,13 +72,17 @@ export default function EventsListPage() {
   const { data, error, isLoading, mutate } = useSWR<any>(query, fetcher);
   const events = data?.items || [];
 
+  useEffect(() => {
+    if (error) toast.error('Không thể tải danh sách sự kiện.');
+  }, [error, toast]);
+
   const remove = async (id: string) => {
-    setDeleteError(null);
     try {
       await api.delete(`/events/${id}`);
       await mutate();
+      toast.success('Đã xóa sự kiện.');
     } catch (requestError: any) {
-      setDeleteError(
+      toast.error(
         requestError.response?.data?.message ||
           'Không thể xóa sự kiện đang có dữ liệu liên quan.',
       );
@@ -201,16 +205,6 @@ export default function EventsListPage() {
         actionHref={canManage ? '/cms/events/new' : undefined}
         actionLabel={canManage ? 'Tạo sự kiện' : undefined}
       />
-
-      {(error || deleteError) && (
-        <Alert
-          type="error"
-          showIcon
-          closable={Boolean(deleteError)}
-          onClose={() => setDeleteError(null)}
-          message={deleteError || 'Không thể tải danh sách sự kiện.'}
-        />
-      )}
 
       <Card className="cms-toolbar" styles={{ body: { padding: 16 } }}>
         <Flex gap={12} wrap>

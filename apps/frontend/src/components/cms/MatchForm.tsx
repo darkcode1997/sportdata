@@ -1,7 +1,6 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
 import useSWR from 'swr';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -9,8 +8,9 @@ import { z } from 'zod';
 import dayjs from 'dayjs';
 import { Alert, Card, Col, DatePicker, Form, Input, Row, Select } from 'antd';
 import { api, fetcher } from '@/lib/api';
-import { ErrorMessage, FormActions } from './AthleteForm';
+import { FormActions } from './AthleteForm';
 import { RemoteAthleteSelect } from './RemoteAthleteSelect';
+import { useSportDataToast } from '@/hooks/useSportDataToast';
 
 const matchSchema = z.object({
   eventId: z.string().min(1, 'Vui lòng chọn sự kiện'),
@@ -53,7 +53,7 @@ const statusOptions = [
 
 export function MatchForm({ matchId, initialData }: { matchId?: string; initialData?: any }) {
   const router = useRouter();
-  const [submitError, setSubmitError] = useState<string | null>(null);
+  const toast = useSportDataToast();
   const { data: eventsResponse } = useSWR<any>('/events?limit=200', fetcher);
   const { data: categoriesResponse } = useSWR<any>('/categories?limit=200', fetcher);
   const events = eventsResponse?.items || [];
@@ -94,7 +94,6 @@ export function MatchForm({ matchId, initialData }: { matchId?: string; initialD
     || events.find((event: any) => event.id === selectedEventId);
 
   const onSubmit = async (values: MatchFormValues) => {
-    setSubmitError(null);
     const date = new Date(values.matchDate).toISOString();
     const selectedFop = selectedEvent?.fops?.find((fop: any) => fop.id === values.fopId);
     const payload = {
@@ -113,11 +112,12 @@ export function MatchForm({ matchId, initialData }: { matchId?: string; initialD
     try {
       if (matchId) await api.patch(`/matches/${matchId}`, payload);
       else await api.post('/matches', payload);
+      toast.success(matchId ? 'Đã cập nhật trận đấu.' : 'Đã tạo trận đấu.');
       router.push('/cms/matches');
       router.refresh();
     } catch (error: any) {
       const message = error.response?.data?.message || error.message || 'Không thể lưu trận đấu';
-      setSubmitError(Array.isArray(message) ? message.join(', ') : message);
+      toast.error(Array.isArray(message) ? message.join(', ') : message);
     }
   };
 
@@ -131,7 +131,6 @@ export function MatchForm({ matchId, initialData }: { matchId?: string; initialD
 
   return (
     <Form layout="vertical" requiredMark={false} onFinish={handleSubmit(onSubmit)}>
-      {submitError && <ErrorMessage message={submitError} />}
       <Card className="cms-surface" title="Thông tin trận đấu">
         <Alert
           className="mb-5"

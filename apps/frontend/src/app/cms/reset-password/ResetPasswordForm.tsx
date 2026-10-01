@@ -5,6 +5,7 @@ import Link from 'next/link';
 import axios from 'axios';
 import { Alert, Button, Card, Form, Input } from 'antd';
 import { ArrowLeft, Eye, EyeOff, KeyRound, Lock, Trophy } from 'lucide-react';
+import { useSportDataToast } from '@/hooks/useSportDataToast';
 
 export function ResetPasswordForm({ token }: { token: string }) {
   const [password, setPassword] = useState('');
@@ -12,20 +13,19 @@ export function ResetPasswordForm({ token }: { token: string }) {
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const toast = useSportDataToast();
 
   const submit = async () => {
-    setError(null);
     if (password.length < 8) {
-      setError('Mật khẩu phải có ít nhất 8 ký tự.');
+      toast.error('Mật khẩu phải có ít nhất 8 ký tự.');
       return;
     }
     if (password !== confirmation) {
-      setError('Mật khẩu xác nhận chưa khớp.');
+      toast.error('Mật khẩu xác nhận chưa khớp.');
       return;
     }
     if (!token) {
-      setError('Liên kết đặt lại mật khẩu không hợp lệ.');
+      toast.error('Liên kết đặt lại mật khẩu không hợp lệ.');
       return;
     }
 
@@ -36,10 +36,11 @@ export function ResetPasswordForm({ token }: { token: string }) {
         password,
       });
       setSuccess(response.data.message);
+      toast.success(response.data.message);
       setPassword('');
       setConfirmation('');
     } catch (requestError: any) {
-      setError(
+      toast.error(
         requestError.response?.data?.message ||
           'Không thể đặt lại mật khẩu. Vui lòng yêu cầu liên kết mới.',
       );
@@ -82,17 +83,6 @@ export function ResetPasswordForm({ token }: { token: string }) {
               description="Vui lòng quay lại trang quên mật khẩu để yêu cầu liên kết mới."
             />
           )}
-          {error && <Alert className="mb-5" type="error" showIcon message={error} />}
-          {success && (
-            <Alert
-              className="mb-5"
-              type="success"
-              showIcon
-              message="Đổi mật khẩu thành công"
-              description={success}
-            />
-          )}
-
           {!success && (
             <Form layout="vertical" requiredMark={false} onFinish={submit}>
               <Form.Item label="Mật khẩu mới" required extra="Tối thiểu 8 ký tự.">

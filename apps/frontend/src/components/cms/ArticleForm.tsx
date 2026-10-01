@@ -1,6 +1,5 @@
 'use client';
 
-import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -8,8 +7,9 @@ import { z } from 'zod';
 import { Card, Checkbox, Col, Form, Input, Row } from 'antd';
 import { Star } from 'lucide-react';
 import { api } from '@/lib/api';
-import { ErrorMessage, FormActions } from './AthleteForm';
+import { FormActions } from './AthleteForm';
 import { MarkdownEditor } from './MarkdownEditor';
+import { useSportDataToast } from '@/hooks/useSportDataToast';
 
 const articleSchema = z.object({
   title: z.string().min(3, 'Tiêu đề phải có ít nhất 3 ký tự').max(180, 'Tiêu đề tối đa 180 ký tự'),
@@ -27,7 +27,7 @@ type ArticleFormValues = z.infer<typeof articleSchema>;
 
 export function ArticleForm({ articleId, initialData }: { articleId?: string; initialData?: any }) {
   const router = useRouter();
-  const [submitError, setSubmitError] = useState<string | null>(null);
+  const toast = useSportDataToast();
   const {
     control,
     handleSubmit,
@@ -46,7 +46,6 @@ export function ArticleForm({ articleId, initialData }: { articleId?: string; in
   });
 
   const onSubmit = async (values: ArticleFormValues) => {
-    setSubmitError(null);
     const payload = {
       ...values,
       slug: values.slug || undefined,
@@ -57,17 +56,17 @@ export function ArticleForm({ articleId, initialData }: { articleId?: string; in
     try {
       if (articleId) await api.patch(`/articles/${articleId}`, payload);
       else await api.post('/articles', payload);
+      toast.success(articleId ? 'Đã cập nhật bài viết.' : 'Đã tạo bài viết.');
       router.push('/cms/news');
       router.refresh();
     } catch (error: any) {
       const message = error.response?.data?.message || error.message || 'Không thể lưu bài viết';
-      setSubmitError(Array.isArray(message) ? message.join(', ') : message);
+      toast.error(Array.isArray(message) ? message.join(', ') : message);
     }
   };
 
   return (
     <Form layout="vertical" requiredMark={false} onFinish={handleSubmit(onSubmit)}>
-      {submitError && <ErrorMessage message={submitError} />}
       <Card className="cms-surface" title="Nội dung bài viết">
         <Row gutter={[20, 2]}>
           <Col xs={24} lg={16}>

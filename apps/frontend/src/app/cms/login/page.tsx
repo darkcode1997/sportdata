@@ -7,8 +7,9 @@ import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import axios from 'axios';
-import { Alert, Button, Card, Checkbox, Form, Input, Spin } from 'antd';
+import { Button, Card, Checkbox, Form, Input, Spin } from 'antd';
 import { Eye, EyeOff, Lock, Trophy, UserRound } from 'lucide-react';
+import { useSportDataToast } from '@/hooks/useSportDataToast';
 
 const loginSchema = z.object({
   identifier: z.string().trim().min(3, 'Nhập email hoặc username'),
@@ -20,8 +21,8 @@ type LoginForm = z.infer<typeof loginSchema>;
 export default function LoginPage() {
   const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
-  const [globalError, setGlobalError] = useState<string | null>(null);
   const [isReady, setIsReady] = useState(false);
+  const toast = useSportDataToast();
 
   useEffect(() => {
     let cancelled = false;
@@ -65,19 +66,19 @@ export default function LoginPage() {
   });
 
   const onSubmit = async (data: LoginForm) => {
-    setGlobalError(null);
     try {
       const response = await axios.post('/api/auth/login', data);
       const { user, accessToken } = response.data;
       localStorage.setItem('cms_token', accessToken);
       localStorage.setItem('cms_user', JSON.stringify(user));
+      toast.success('Đăng nhập CMS thành công.');
       router.push('/cms');
     } catch (error: any) {
       const message =
         error.response?.data?.message ||
         error.message ||
         'Đăng nhập thất bại, vui lòng thử lại';
-      setGlobalError(Array.isArray(message) ? message.join('. ') : message);
+      toast.error(Array.isArray(message) ? message.join('. ') : message);
     }
   };
 
@@ -102,16 +103,6 @@ export default function LoginPage() {
 
         <Card className="border-sdark-700 bg-sdark-900 shadow-2xl shadow-black/20">
           <h2 className="mb-1 text-xl font-bold text-slate-100">Đăng nhập</h2>
-          {globalError && (
-            <Alert
-              className="mb-5"
-              type="error"
-              showIcon
-              message="Không thể đăng nhập"
-              description={globalError}
-            />
-          )}
-
           <Form layout="vertical" requiredMark={false} onFinish={handleSubmit(onSubmit)}>
             <Form.Item
               label="Email hoặc username"

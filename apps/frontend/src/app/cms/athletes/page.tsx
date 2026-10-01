@@ -1,9 +1,8 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import useSWR from 'swr';
 import {
-  Alert,
   Avatar,
   Button,
   Card,
@@ -22,6 +21,7 @@ import {
 import { Pencil, Search, Trash2, UserRound } from 'lucide-react';
 import { CmsPageHeader } from '@/components/cms/CmsPageHeader';
 import { api, fetcher } from '@/lib/api';
+import { useSportDataToast } from '@/hooks/useSportDataToast';
 
 const genderLabels: Record<string, string> = {
   MALE: 'Nam',
@@ -36,7 +36,7 @@ export default function AthletesListPage() {
   const [search, setSearch] = useState('');
   const [gender, setGender] = useState('');
   const [page, setPage] = useState(1);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const toast = useSportDataToast();
 
   const query = useMemo(() => {
     const params = new URLSearchParams({ page: String(page), limit: '10' });
@@ -48,13 +48,17 @@ export default function AthletesListPage() {
   const { data, error, isLoading, mutate } = useSWR<any>(query, fetcher);
   const athletes = data?.items || [];
 
+  useEffect(() => {
+    if (error) toast.error('Không thể tải danh sách vận động viên.');
+  }, [error, toast]);
+
   const remove = async (id: string) => {
-    setDeleteError(null);
     try {
       await api.delete(`/athletes/${id}`);
       await mutate();
+      toast.success('Đã xóa vận động viên.');
     } catch (requestError: any) {
-      setDeleteError(
+      toast.error(
         requestError.response?.data?.message ||
           'Không thể xóa vận động viên đang có dữ liệu thi đấu.',
       );
@@ -217,16 +221,6 @@ export default function AthletesListPage() {
         actionHref={canManage ? '/cms/athletes/new' : undefined}
         actionLabel={canManage ? 'Thêm VĐV' : undefined}
       />
-
-      {(error || deleteError) && (
-        <Alert
-          type="error"
-          showIcon
-          closable={Boolean(deleteError)}
-          onClose={() => setDeleteError(null)}
-          message={deleteError || 'Không thể tải danh sách vận động viên.'}
-        />
-      )}
 
       <Card className="cms-toolbar" styles={{ body: { padding: 16 } }}>
         <Flex gap={12} wrap>
