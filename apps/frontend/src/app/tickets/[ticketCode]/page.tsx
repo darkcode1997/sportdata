@@ -11,10 +11,10 @@ import { fetcher } from '@/lib/api';
 import type { ParticipationTicket, TicketStatistics } from '@/lib/ticket-types';
 
 const statusLabels: Record<string, { label: string; color: string }> = {
-  CONFIRMED: { label: 'Thẻ hợp lệ', color: 'success' },
+  CONFIRMED: { label: 'Vé hợp lệ', color: 'success' },
   SUBMITTED: { label: 'Đang chờ xác nhận', color: 'processing' },
   REJECTED: { label: 'Hồ sơ bị từ chối', color: 'error' },
-  CANCELLED: { label: 'Thẻ đã hủy', color: 'default' },
+  CANCELLED: { label: 'Hồ sơ đã hủy', color: 'default' },
 };
 
 const genderLabels: Record<string, string> = {
@@ -59,8 +59,8 @@ export default function TicketVerificationPage() {
       <main className="ticket-verification-page grid min-h-[75vh] place-items-center px-4">
         <Result
           status="404"
-          title="Không tìm thấy thẻ tham dự"
-          subTitle="Mã QR hoặc mã vé không tồn tại. Vui lòng kiểm tra lại với ban tổ chức SportData."
+          title="Không tìm thấy hồ sơ hoặc vé tham dự"
+          subTitle="Mã hồ sơ, mã QR hoặc mã vé không tồn tại. Vui lòng kiểm tra lại với ban tổ chức SportData."
           extra={<Link href="/events"><Button type="primary">Xem sự kiện</Button></Link>}
         />
       </main>
