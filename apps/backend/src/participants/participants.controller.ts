@@ -14,7 +14,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { AnyFilesInterceptor, FileInterceptor } from '@nestjs/platform-express';
-import { AthleteMediaType } from '@prisma/client';
+import { AthleteMediaType, SportDataAccountType } from '@prisma/client';
 import type { Request, Response } from 'express';
 import { ParticipantsService } from './participants.service';
 import { ParticipantAuthGuard } from './participant-auth.guard';
@@ -76,7 +76,18 @@ export class ParticipantsController {
     @Body('payload') payload: string,
     @UploadedFiles() files: Express.Multer.File[] = [],
   ) {
-    return this.service.createGuestRegistrations(payload, files, request.participant.id);
+    return this.service.createGuestRegistrations(payload, files, request.participant.id, SportDataAccountType.FEDERATION);
+  }
+
+  @Post('assisted-registrations')
+  @UseGuards(ParticipantAuthGuard)
+  @UseInterceptors(AnyFilesInterceptor({ limits: { fileSize: 8 * 1024 * 1024, files: 120 } }))
+  createAssistedRegistrations(
+    @Req() request: ParticipantRequest,
+    @Body('payload') payload: string,
+    @UploadedFiles() files: Express.Multer.File[] = [],
+  ) {
+    return this.service.createGuestRegistrations(payload, files, request.participant.id, SportDataAccountType.ATHLETE);
   }
 
   @Get('federation/me')
@@ -242,6 +253,12 @@ export class ParticipantsController {
   @UseGuards(ParticipantAuthGuard)
   createRegistration(@Req() request: ParticipantRequest, @Body() dto: CreatePublicRegistrationDto) {
     return this.service.createRegistration(request.participant.id, dto);
+  }
+
+  @Get('registrations/state')
+  @UseGuards(ParticipantAuthGuard)
+  registrationState(@Req() request: ParticipantRequest, @Query('eventId') eventId?: string) {
+    return this.service.getOwnRegistrationState(request.participant.id, eventId);
   }
 
   @Get('registrations')

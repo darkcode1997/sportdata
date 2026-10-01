@@ -214,7 +214,15 @@ export class AthletesService {
         statistics: {
           include: {
             sport: true,
-            event: true,
+            event: {
+              select: {
+                id: true,
+                name: true,
+                startDate: true,
+                endDate: true,
+                location: true,
+              },
+            },
           },
         },
       },
@@ -292,7 +300,15 @@ export class AthletesService {
           country: true,
         },
       },
-      events: true,
+      events: {
+        select: {
+          id: true,
+          name: true,
+          startDate: true,
+          endDate: true,
+          location: true,
+        },
+      },
       categories: {
         include: {
           sport: true,
@@ -301,7 +317,15 @@ export class AthletesService {
       statistics: {
         include: {
           sport: true,
-          event: true,
+          event: {
+            select: {
+              id: true,
+              name: true,
+              startDate: true,
+              endDate: true,
+              location: true,
+            },
+          },
         },
       },
     };

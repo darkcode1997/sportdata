@@ -25,7 +25,7 @@ import { EventParticipationCard } from '@/components/EventParticipationCard';
 import { IdentityOcrReviewModal, type IdentityOcrFields, type IdentityOcrResult } from '@/components/IdentityOcrReviewModal';
 import { useSportDataToast } from '@/hooks/useSportDataToast';
 import { fetcher } from '@/lib/api';
-import { getParticipantAccount, getParticipantToken, participantApi, participantError } from '@/lib/participant-auth';
+import { getParticipantAccount, getParticipantToken, participantApi, participantError, type SportDataAccount } from '@/lib/participant-auth';
 import type { ParticipationTicket } from '@/lib/ticket-types';
 
 type RegistrationMode = 'INDIVIDUAL' | 'GROUP';
@@ -70,6 +70,11 @@ type FederationSessionProfile = {
   phone?: string | null;
   verificationStatus: 'PENDING' | 'VERIFIED' | 'REJECTED';
   federation: { id: string; name: string; countryId: string };
+};
+type ParticipantSessionProfile = {
+  email: string;
+  displayName: string;
+  phone?: string | null;
 };
 
 const emptyAthlete = (key: string): AthleteDraft => ({
@@ -182,8 +187,9 @@ export default function GuestEventRegistrationPage() {
   const [ocrReview, setOcrReview] = useState<{ athleteKey: string; result: IdentityOcrResult }>();
   const [ocrReadingKey, setOcrReadingKey] = useState<string>();
   const [downloadingPdf, setDownloadingPdf] = useState(false);
-  const sessionAccount = getParticipantAccount();
+  const [sessionAccount, setSessionAccount] = useState<SportDataAccount | null>(null);
   const isFederationAccount = Boolean(getParticipantToken() && sessionAccount?.accountType === 'FEDERATION');
+  const isAthleteAccount = Boolean(getParticipantToken() && sessionAccount?.accountType !== 'FEDERATION' && sessionAccount);
   const { data: event, isLoading } = useSWR<EventData>(eventId ? `/events/${eventId}` : null, fetcher);
   const { data: countries = [] } = useSWR<Country[]>('/countries', fetcher);
   const { data: federations = [] } = useSWR<Federation[]>('/federations', fetcher);
@@ -191,6 +197,23 @@ export default function GuestEventRegistrationPage() {
     isFederationAccount ? '/participant-auth/federation/me' : null,
     (url: string) => participantApi.get(url).then((response) => response.data),
   );
+  const { data: participantProfile } = useSWR<ParticipantSessionProfile>(
+    isAthleteAccount ? '/participant-auth/me' : null,
+    (url: string) => participantApi.get(url).then((response) => response.data),
+  );
+
+  useEffect(() => {
+    const syncSession = () => {
+      setSessionAccount(getParticipantToken() ? getParticipantAccount() : null);
+    };
+    syncSession();
+    window.addEventListener('participant-session-change', syncSession);
+    window.addEventListener('storage', syncSession);
+    return () => {
+      window.removeEventListener('participant-session-change', syncSession);
+      window.removeEventListener('storage', syncSession);
+    };
+  }, []);
 
   useEffect(() => {
     const requestedMode = new URLSearchParams(window.location.search).get('mode');
@@ -210,6 +233,13 @@ export default function GuestEventRegistrationPage() {
       federationId: federationProfile.federation.id,
     })));
   }, [federationProfile]);
+
+  useEffect(() => {
+    if (!participantProfile || isFederationAccount) return;
+    setContactName(participantProfile.displayName);
+    setContactEmail(participantProfile.email);
+    setContactPhone(participantProfile.phone || '');
+  }, [isFederationAccount, participantProfile]);
 
   const activeAthletes = useMemo(
     () => mode === 'INDIVIDUAL' ? athletes.slice(0, 1) : athletes,
@@ -346,7 +376,11 @@ export default function GuestEventRegistrationPage() {
 
     setSubmitting(true);
     try {
-      const endpoint = isFederationAccount ? '/participant-auth/federation/registrations' : '/participant-auth/guest-registrations';
+      const endpoint = isFederationAccount
+        ? '/participant-auth/federation/registrations'
+        : isAthleteAccount
+          ? '/participant-auth/assisted-registrations'
+          : '/participant-auth/guest-registrations';
       const response = await participantApi.post<SubmissionResult>(endpoint, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
@@ -433,9 +467,19 @@ export default function GuestEventRegistrationPage() {
   return (
     <main className="guest-registration-page mx-auto min-h-screen max-w-6xl px-4 py-10">
       <div className="mb-7">
-        <p className="text-sm font-bold uppercase tracking-[0.18em] text-sky-400">Đăng ký không cần tài khoản</p>
+        <p className="text-sm font-bold uppercase tracking-[0.18em] text-sky-400">
+          {isFederationAccount
+            ? 'Đăng ký bằng tài khoản liên đoàn / CLB'
+            : isAthleteAccount
+              ? 'Đăng ký hộ bằng tài khoản SportData'
+              : 'Đăng ký không cần tài khoản'}
+        </p>
         <h1 className="mt-2 text-3xl font-black text-white">{event.name}</h1>
-        <p className="mt-2 text-slate-400">Đăng ký cá nhân hoặc gửi danh sách cho đội/CLB. Mọi giấy tờ đều chuyển sang trạng thái chờ xác thực.</p>
+        <p className="mt-2 text-slate-400">
+          {isAthleteAccount
+            ? 'Tài khoản của bạn là người liên hệ. Mỗi VĐV được đăng ký hộ có hồ sơ, giấy tờ và vé riêng.'
+            : 'Đăng ký cá nhân hoặc gửi danh sách cho đội/CLB. Mọi giấy tờ đều chuyển sang trạng thái chờ xác thực.'}
+        </p>
       </div>
 
       {isFederationAccount && (
@@ -447,13 +491,22 @@ export default function GuestEventRegistrationPage() {
           description="Thông tin đơn vị và người liên hệ được lấy từ tài khoản; mỗi vận động viên vẫn cần đủ hồ sơ và giấy tờ."
         />
       )}
+      {isAthleteAccount && (
+        <Alert
+          className="mb-6"
+          showIcon
+          type="info"
+          message={`Bạn đang đăng ký hộ với tài khoản ${participantProfile?.displayName || sessionAccount?.displayName || 'SportData'}`}
+          description="Hồ sơ VĐV được tạo độc lập, không thay đổi thông tin VĐV cá nhân của bạn. Vé và email xác nhận sẽ được quản lý bằng tài khoản đang đăng nhập."
+        />
+      )}
       <Card className="mb-6" title="Hình thức đăng ký">
         <Segmented
           block
           value={mode}
           onChange={(value) => setMode(value as RegistrationMode)}
           options={[
-            { value: 'INDIVIDUAL', label: 'Một vận động viên', icon: <FileImage className="h-4 w-4" />, disabled: isFederationAccount },
+            { value: 'INDIVIDUAL', label: isAthleteAccount ? 'Một VĐV khác' : 'Một vận động viên', icon: <FileImage className="h-4 w-4" />, disabled: isFederationAccount },
             { value: 'GROUP', label: 'Danh sách đội / CLB', icon: <Users className="h-4 w-4" /> },
           ]}
         />
@@ -461,8 +514,8 @@ export default function GuestEventRegistrationPage() {
 
       <Card className="mb-6" title="Người liên hệ hồ sơ">
         <div className="grid gap-4 md:grid-cols-2">
-          <div><label className="mb-2 block text-sm font-semibold">Họ tên người liên hệ *</label><Input disabled={isFederationAccount} size="large" value={contactName} onChange={(event) => setContactName(event.target.value)} /></div>
-          <div><label className="mb-2 block text-sm font-semibold">Email *</label><Input disabled={isFederationAccount} size="large" type="email" value={contactEmail} onChange={(event) => setContactEmail(event.target.value)} /></div>
+          <div><label className="mb-2 block text-sm font-semibold">Họ tên người liên hệ *</label><Input disabled={isFederationAccount || isAthleteAccount} size="large" value={contactName} onChange={(event) => setContactName(event.target.value)} /></div>
+          <div><label className="mb-2 block text-sm font-semibold">Email *</label><Input disabled={isFederationAccount || isAthleteAccount} size="large" type="email" value={contactEmail} onChange={(event) => setContactEmail(event.target.value)} /></div>
           <div><label className="mb-2 block text-sm font-semibold">Số điện thoại *</label><Input disabled={isFederationAccount} size="large" value={contactPhone} onChange={(event) => setContactPhone(event.target.value)} /></div>
           {mode === 'GROUP' && <div><label className="mb-2 block text-sm font-semibold">Đội / CLB / đơn vị *</label><Input disabled={isFederationAccount} size="large" value={organizationName} onChange={(event) => setOrganizationName(event.target.value)} /></div>}
         </div>

@@ -441,7 +441,12 @@ export class ParticipantsService {
     return media;
   }
 
-  async createGuestRegistrations(payloadText: string, files: Express.Multer.File[], federationAccountId?: string) {
+  async createGuestRegistrations(
+    payloadText: string,
+    files: Express.Multer.File[],
+    submittingAccountId?: string,
+    requiredAccountType?: SportDataAccountType,
+  ) {
     let payload: GuestRegistrationPayload;
     try {
       payload = JSON.parse(payloadText || '{}') as GuestRegistrationPayload;
@@ -449,23 +454,34 @@ export class ParticipantsService {
       throw new BadRequestException('Dữ liệu đăng ký không hợp lệ');
     }
 
-    const federationAccount = federationAccountId
+    const submittingAccount = submittingAccountId
       ? await this.prisma.participantAccount.findUnique({
-          where: { id: federationAccountId },
+          where: { id: submittingAccountId },
           include: { federation: true },
         })
       : null;
-    if (federationAccountId && (!federationAccount || federationAccount.accountType !== SportDataAccountType.FEDERATION || !federationAccount.federation)) {
-      throw new ForbiddenException('Tài khoản không có quyền đăng ký theo đoàn');
+    if (submittingAccountId && !submittingAccount) {
+      throw new ForbiddenException('Tài khoản đăng ký không còn tồn tại');
+    }
+    if (requiredAccountType && submittingAccount?.accountType !== requiredAccountType) {
+      throw new ForbiddenException(requiredAccountType === SportDataAccountType.FEDERATION
+        ? 'Chỉ tài khoản liên đoàn/CLB được đăng ký theo đoàn'
+        : 'Chỉ tài khoản cá nhân được đăng ký hộ vận động viên');
+    }
+    const federationAccount = submittingAccount?.accountType === SportDataAccountType.FEDERATION
+      ? submittingAccount
+      : null;
+    if (federationAccount && !federationAccount.federation) {
+      throw new ForbiddenException('Tài khoản đơn vị chưa được gắn với liên đoàn/CLB');
     }
     if (federationAccount && federationAccount.verificationStatus !== AccountVerificationStatus.VERIFIED) {
       throw new ForbiddenException('Tài khoản đơn vị phải được SportData duyệt trước khi gửi danh sách');
     }
 
     const eventId = payload.eventId?.trim();
-    const contactName = federationAccount?.displayName || payload.contactName?.trim();
-    const contactEmail = federationAccount?.email || payload.contactEmail?.trim().toLowerCase();
-    const contactPhone = federationAccount?.phone || payload.contactPhone?.trim();
+    const contactName = submittingAccount?.displayName || payload.contactName?.trim();
+    const contactEmail = submittingAccount?.email || payload.contactEmail?.trim().toLowerCase();
+    const contactPhone = submittingAccount?.phone || payload.contactPhone?.trim();
     const athletes = federationAccount
       ? (payload.athletes || []).map((athlete) => ({
           ...athlete,
@@ -591,7 +607,7 @@ export class ParticipantsService {
           contactPhone,
           organizationName,
           referenceCode,
-          accountId: federationAccount?.id,
+          accountId: submittingAccount?.id,
         },
       });
 
@@ -620,6 +636,7 @@ export class ParticipantsService {
           data: {
             eventId: event.id,
             athleteId: createdAthlete.id,
+            accountId: submittingAccount?.id,
             submissionId: submission.id,
             categoryId: item.category.id,
             federationId: item.athlete.federationId || null,
@@ -654,6 +671,13 @@ export class ParticipantsService {
 
   async createRegistration(accountId: string, dto: CreatePublicRegistrationDto) {
     const profile = await this.getProfile(accountId);
+    const existingRegistration = await this.prisma.eventRegistration.findFirst({
+      where: { eventId: dto.eventId, athleteId: profile.athlete.id },
+      select: { ticketCode: true },
+    });
+    if (existingRegistration) {
+      throw new ConflictException(`Bạn đã đăng ký sự kiện này với vé ${existingRegistration.ticketCode}`);
+    }
     const event = await this.prisma.event.findUnique({
       where: { id: dto.eventId },
       include: {
@@ -731,6 +755,29 @@ export class ParticipantsService {
       include: this.registrationInclude(),
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  async getOwnRegistrationState(accountId: string, eventId?: string) {
+    if (!eventId?.trim()) throw new BadRequestException('Thiếu sự kiện cần kiểm tra');
+    const account = await this.prisma.participantAccount.findUnique({
+      where: { id: accountId },
+      select: { athlete: { select: { id: true } } },
+    });
+    if (!account?.athlete) throw new NotFoundException('Không tìm thấy hồ sơ vận động viên của tài khoản');
+
+    const registration = await this.prisma.eventRegistration.findFirst({
+      where: { eventId: eventId.trim(), athleteId: account.athlete.id },
+      select: {
+        id: true,
+        ticketCode: true,
+        status: true,
+        createdAt: true,
+        category: { select: { id: true, name: true, sport: { select: { id: true, name: true } } } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return { registered: Boolean(registration), registration };
   }
 
   async getTicket(ticketCode: string, includeAssets = false) {

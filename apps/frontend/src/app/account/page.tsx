@@ -253,7 +253,7 @@ export default function ParticipantAccountPage() {
           onChange={(value) => setTab(value as typeof tab)}
           options={[
             { value: 'profile', label: 'Thông tin & giấy tờ', icon: <CreditCard className="h-4 w-4" /> },
-            { value: 'tickets', label: `Vé tham dự (${registrations.length})`, icon: <TicketCheck className="h-4 w-4" /> },
+            { value: 'tickets', label: `Vé & hồ sơ đã đăng ký (${registrations.length})`, icon: <TicketCheck className="h-4 w-4" /> },
           ]}
         />
 
