@@ -345,7 +345,9 @@ function BracketParticipantNode({
         <span className="sportdata-node-match">
           {match.matchNumber ? `#${match.matchNumber}` : ''}
           {[
-            `${formatDate(match.startTime || match.matchDate, 'dd/MM')} ${formatTime(match.startTime || match.matchDate)}`,
+            match.startTime
+              ? `${formatDate(match.startTime, 'dd/MM')} ${formatTime(match.startTime)}`
+              : formatDate(match.matchDate, 'dd/MM'),
             match.fop,
           ].filter(Boolean).join(' · ')}
         </span>

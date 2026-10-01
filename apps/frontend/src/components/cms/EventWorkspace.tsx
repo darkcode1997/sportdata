@@ -763,7 +763,19 @@ function MatchesTab({ event, returnTo, canOperate }: { event: any; returnTo: str
             columns={[
               { title: '#', dataIndex: 'matchNumber', width: 70 },
               { title: 'Vòng', dataIndex: 'round', width: 90 },
-              { title: 'Thời gian', width: 165, render: (_: unknown, match: any) => new Date(match.startTime || match.matchDate).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) },
+              {
+                title: 'Ngày / giờ',
+                width: 185,
+                render: (_: unknown, match: any) => match.startTime
+                  ? new Date(match.startTime).toLocaleString('vi-VN', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })
+                  : `${new Date(match.matchDate).toLocaleDateString('vi-VN')} · Chưa xếp giờ`,
+              },
               { title: 'VĐV 1', render: (_: unknown, match: any) => match.athlete1 ? <Button type="link" className="h-auto !p-0" onClick={() => setSelectedAthleteId(match.athlete1.id)}>{match.athlete1.fullName}</Button> : 'Chờ xác định' },
               { title: 'VĐV 2', render: (_: unknown, match: any) => match.athlete2 ? <Button type="link" className="h-auto !p-0" onClick={() => setSelectedAthleteId(match.athlete2.id)}>{match.athlete2.fullName}</Button> : 'Chờ xác định' },
               { title: 'Sân', dataIndex: 'fop', width: 120 },
