@@ -156,11 +156,11 @@ export class ParticipantsController {
 
   @Get('tickets/:ticketCode/pdf')
   async ticketPdfFile(@Param('ticketCode') ticketCode: string, @Res() response: Response) {
-    const ticket = await this.service.getTicket(ticketCode);
+    const ticket = await this.service.getTicket(ticketCode, true);
     const pdf = await this.ticketPdf.generate([ticket]);
     response.setHeader('Content-Type', 'application/pdf');
     response.setHeader('Cache-Control', 'private, no-store');
-    response.setHeader('Content-Disposition', `attachment; filename="sportdata-${ticket.ticketCode}.pdf"`);
+    response.setHeader('Content-Disposition', `attachment; filename="sportdata-${ticket.ticketCode}-A6.pdf"`);
     response.send(pdf);
   }
 
@@ -170,11 +170,11 @@ export class ParticipantsController {
     @Body() dto: DownloadSubmissionTicketsDto,
     @Res() response: Response,
   ) {
-    const batch = await this.service.getSubmissionTickets(referenceCode, dto.contactEmail);
+    const batch = await this.service.getSubmissionTickets(referenceCode, dto.contactEmail, true);
     const pdf = await this.ticketPdf.generate(batch.tickets, batch.meta);
     response.setHeader('Content-Type', 'application/pdf');
     response.setHeader('Cache-Control', 'private, no-store');
-    response.setHeader('Content-Disposition', `attachment; filename="sportdata-${batch.meta.referenceCode}.pdf"`);
+    response.setHeader('Content-Disposition', `attachment; filename="sportdata-${batch.meta.referenceCode}-A6.pdf"`);
     response.send(pdf);
   }
 

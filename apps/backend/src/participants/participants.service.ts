@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -35,6 +36,7 @@ import {
   UpdateParticipantProfileDto,
 } from './dto/participant.dto';
 import { IdentityOcrService, type IdentityOcrFields, type IdentityOcrResult } from './identity-ocr.service';
+import { TicketEmailService } from './ticket-email.service';
 
 const mediaSelect = {
   id: true,
@@ -81,10 +83,13 @@ type GuestRegistrationPayload = {
 
 @Injectable()
 export class ParticipantsService {
+  private readonly logger = new Logger(ParticipantsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly identityOcr: IdentityOcrService,
+    private readonly ticketEmail: TicketEmailService,
   ) {}
 
   async register(dto: ParticipantRegisterDto) {
@@ -576,7 +581,7 @@ export class ParticipantsService {
     });
 
     const referenceCode = this.submissionReference();
-    return this.prisma.$transaction(async (transaction) => {
+    const result = await this.prisma.$transaction(async (transaction) => {
       const submission = await transaction.registrationSubmission.create({
         data: {
           eventId: event.id,
@@ -642,6 +647,9 @@ export class ParticipantsService {
         registrations,
       };
     });
+    const batch = await this.getSubmissionTickets(referenceCode, contactEmail, true);
+    const ticketEmailSent = await this.ticketEmail.send(contactEmail, batch.tickets, batch.meta);
+    return { ...result, ticketEmailSent };
   }
 
   async createRegistration(accountId: string, dto: CreatePublicRegistrationDto) {
@@ -679,7 +687,7 @@ export class ParticipantsService {
     const free = event.paymentMode === PaymentMode.FREE;
     const canConfirmImmediately = free && identity.verified;
     try {
-      return await this.prisma.$transaction(async (transaction) => {
+      const registration = await this.prisma.$transaction(async (transaction) => {
         const registration = await transaction.eventRegistration.create({
           data: {
             eventId: event.id,
@@ -708,6 +716,9 @@ export class ParticipantsService {
           include: this.registrationInclude(),
         });
       });
+      const ticket = await this.getTicket(registration.ticketCode, true);
+      const ticketEmailSent = await this.ticketEmail.send(profile.email, [ticket]);
+      return { ...registration, ticketEmailSent };
     } catch (error: any) {
       if (error?.code === 'P2002') throw new ConflictException('Bạn đã đăng ký hạng đấu này');
       throw error;
@@ -722,7 +733,7 @@ export class ParticipantsService {
     });
   }
 
-  async getTicket(ticketCode: string) {
+  async getTicket(ticketCode: string, includeAssets = false) {
     const registration = await this.prisma.eventRegistration.findUnique({
       where: { ticketCode: ticketCode.trim().toUpperCase() },
       include: {
@@ -734,6 +745,11 @@ export class ParticipantsService {
             country: true,
             federation: true,
             statistics: true,
+            media: {
+              where: { type: AthleteMediaType.AVATAR },
+              select: { data: true, mimeType: true },
+              take: 1,
+            },
           },
         },
       },
@@ -759,6 +775,9 @@ export class ParticipantsService {
         endDate: registration.event.endDate,
         location: registration.event.location,
         logoUrl: registration.event.logoUrl,
+        ticketBackgroundUrl: registration.event.ticketBackgroundSize
+          ? `/api/events/${registration.event.id}/ticket-background`
+          : null,
       },
       sport: {
         id: registration.category.sport.id,
@@ -791,10 +810,18 @@ export class ParticipantsService {
         event: this.aggregateStatistics(eventStatistics),
         career: this.aggregateStatistics(careerStatistics),
       },
+      ...(includeAssets ? {
+        assets: {
+          backgroundData: registration.event.ticketBackgroundData,
+          backgroundMimeType: registration.event.ticketBackgroundMimeType,
+          avatarData: registration.athlete.media[0]?.data || null,
+          avatarMimeType: registration.athlete.media[0]?.mimeType || null,
+        },
+      } : {}),
     };
   }
 
-  async getSubmissionTickets(referenceCode: string, contactEmail: string) {
+  async getSubmissionTickets(referenceCode: string, contactEmail: string, includeAssets = false) {
     const submission = await this.prisma.registrationSubmission.findUnique({
       where: { referenceCode: referenceCode.trim().toUpperCase() },
       include: { registrations: { select: { ticketCode: true }, orderBy: { createdAt: 'asc' } } },
@@ -802,7 +829,7 @@ export class ParticipantsService {
     if (!submission || submission.contactEmail.toLowerCase() !== contactEmail.trim().toLowerCase()) {
       throw new NotFoundException('Không tìm thấy bộ vé với mã hồ sơ và email này');
     }
-    const tickets = await Promise.all(submission.registrations.map((item) => this.getTicket(item.ticketCode)));
+    const tickets = await Promise.all(submission.registrations.map((item) => this.getTicket(item.ticketCode, includeAssets)));
     return {
       meta: {
         referenceCode: submission.referenceCode,
@@ -822,7 +849,13 @@ export class ParticipantsService {
   }
 
   async updateRegistrationStatus(id: string, status: RegistrationStatus) {
-    const registration = await this.prisma.eventRegistration.findUnique({ where: { id } });
+    const registration = await this.prisma.eventRegistration.findUnique({
+      where: { id },
+      include: {
+        account: { select: { email: true } },
+        submission: { select: { contactEmail: true } },
+      },
+    });
     if (!registration) throw new NotFoundException('Không tìm thấy lượt đăng ký');
     const athlete = await this.prisma.athlete.findUnique({
       where: { id: registration.athleteId },
@@ -838,7 +871,7 @@ export class ParticipantsService {
     if (status === RegistrationStatus.CONFIRMED && !this.identityDocumentState(athlete.media).verified) {
       throw new BadRequestException('Chỉ có thể xác nhận khi CCCD hai mặt hoặc hộ chiếu đã được xác thực');
     }
-    return this.prisma.$transaction(async (transaction) => {
+    const updated = await this.prisma.$transaction(async (transaction) => {
       await transaction.eventRegistration.update({ where: { id }, data: { status } });
       await this.syncCompetitionEntry(transaction, {
         eventId: registration.eventId,
@@ -852,6 +885,18 @@ export class ParticipantsService {
         include: this.registrationInclude(),
       });
     });
+    if (status === RegistrationStatus.CONFIRMED) {
+      const email = registration.account?.email || registration.submission?.contactEmail;
+      if (email) {
+        try {
+          const ticket = await this.getTicket(registration.ticketCode, true);
+          await this.ticketEmail.send(email, [ticket]);
+        } catch (error) {
+          this.logger.error('Không thể gửi lại vé sau khi duyệt hồ sơ', error instanceof Error ? error.stack : String(error));
+        }
+      }
+    }
+    return updated;
   }
 
   private async syncCompetitionEntry(
@@ -895,7 +940,19 @@ export class ParticipantsService {
 
   private registrationInclude() {
     return {
-      event: { include: { sport: true, organizer: true } },
+      event: {
+        select: {
+          id: true,
+          name: true,
+          startDate: true,
+          endDate: true,
+          location: true,
+          logoUrl: true,
+          ticketBackgroundSize: true,
+          sport: true,
+          organizer: true,
+        },
+      },
       category: { include: { sport: true } },
       athlete: {
         include: {

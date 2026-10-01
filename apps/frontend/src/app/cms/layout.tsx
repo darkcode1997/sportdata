@@ -18,7 +18,6 @@ import {
 import {
   Building2,
   CalendarDays,
-  ClipboardCheck,
   ChevronsLeft,
   ChevronsRight,
   LayoutDashboard,
@@ -65,7 +64,6 @@ type CmsNavGroup = {
 const navItems: Array<CmsNavLeaf | CmsNavGroup> = [
   { label: 'Dashboard', key: '/cms', icon: <LayoutDashboard className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms'] },
   { label: 'Sự kiện', key: '/cms/events', icon: <CalendarDays className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/events'] },
-  { label: 'Đăng ký thi đấu', key: '/cms/registrations', icon: <ClipboardCheck className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/registrations'] },
   { label: 'Danh sách vận động viên', key: '/cms/athletes', icon: <Users className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/athletes'] },
   { label: 'Bộ môn & hạng đấu', key: '/cms/sports', icon: <Trophy className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/sports'] },
   { label: 'Danh sách đơn vị thể thao', key: '/cms/organizations', icon: <Building2 className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/organizations'] },

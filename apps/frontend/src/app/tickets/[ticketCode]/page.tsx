@@ -81,8 +81,13 @@ export default function TicketVerificationPage() {
           <Link href="/events">
             <Button icon={<ArrowLeft className="h-4 w-4" />}>Sự kiện</Button>
           </Link>
-          <Button type="primary" icon={<Printer className="h-4 w-4" />} onClick={() => window.print()}>
-            In / lưu PDF thẻ
+          <Button
+            type="primary"
+            href={`/api/participant-auth/tickets/${encodeURIComponent(ticket.ticketCode)}/pdf`}
+            target="_blank"
+            icon={<Printer className="h-4 w-4" />}
+          >
+            Tải vé A6 PDF
           </Button>
         </div>
 

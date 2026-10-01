@@ -10,7 +10,12 @@ import {
   HttpCode,
   HttpStatus,
   UseGuards,
+  UploadedFile,
+  UseInterceptors,
+  Res,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import type { Response } from 'express';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { EventsService } from './events.service';
 import { CreateEventDto } from './dto/create-event.dto';
@@ -58,6 +63,33 @@ export class EventsController {
   @ApiOperation({ summary: 'Get event details including selected athletes for editing' })
   findAdminDetail(@Param('id') id: string) {
     return this.eventsService.findOne(id, true);
+  }
+
+  @Get(':id/ticket-background')
+  async ticketBackground(@Param('id') id: string, @Res() response: Response) {
+    const background = await this.eventsService.getTicketBackground(id);
+    response.setHeader('Content-Type', background.mimeType);
+    response.setHeader('Cache-Control', 'public, max-age=300');
+    response.setHeader('ETag', `"${background.etag}"`);
+    response.send(background.data);
+  }
+
+  @Patch(':id/ticket-background')
+  @UseGuards(JwtAuthGuard)
+  @Roles(UserRole.ADMIN, UserRole.CONTENT, UserRole.GAMES_ADMIN)
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 6 * 1024 * 1024 } }))
+  uploadTicketBackground(
+    @Param('id') id: string,
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
+    return this.eventsService.uploadTicketBackground(id, file);
+  }
+
+  @Delete(':id/ticket-background')
+  @UseGuards(JwtAuthGuard)
+  @Roles(UserRole.ADMIN, UserRole.CONTENT, UserRole.GAMES_ADMIN)
+  removeTicketBackground(@Param('id') id: string) {
+    return this.eventsService.removeTicketBackground(id);
   }
 
   @Get(':id')

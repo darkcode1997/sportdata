@@ -5,6 +5,7 @@ import { UpdateEventDto } from './dto/update-event.dto';
 import { QueryEventsDto } from './dto/query-events.dto';
 import { QueryEligibleAthletesDto } from './dto/query-eligible-athletes.dto';
 import { EventLevel, Prisma } from '@prisma/client';
+import { createHash } from 'crypto';
 
 @Injectable()
 export class EventsService {
@@ -50,7 +51,7 @@ export class EventsService {
       data.startDate,
     );
 
-    return this.prisma.event.create({
+    const event = await this.prisma.event.create({
       data: {
         ...data,
         level,
@@ -70,6 +71,7 @@ export class EventsService {
       },
       include: this.getEventInclude(true),
     });
+    return this.serializeEvent(event);
   }
 
   async findAll(query: QueryEventsDto) {
@@ -152,7 +154,7 @@ export class EventsService {
     ]);
 
     return {
-      items,
+      items: items.map((event) => this.serializeEvent(event)),
       total,
       page,
       limit,
@@ -170,7 +172,7 @@ export class EventsService {
       throw new NotFoundException(`Không tìm thấy sự kiện có mã ${id}`);
     }
 
-    return event;
+    return this.serializeEvent(event);
   }
 
   async findEligibleAthletes(
@@ -322,7 +324,7 @@ export class EventsService {
       data.startDate || existingEvent.startDate,
     );
 
-    return this.prisma.event.update({
+    const event = await this.prisma.event.update({
       where: { id },
       data: {
         ...data,
@@ -351,6 +353,65 @@ export class EventsService {
       },
       include: this.getEventInclude(true),
     });
+    return this.serializeEvent(event);
+  }
+
+  async uploadTicketBackground(id: string, file?: Express.Multer.File) {
+    if (!file) throw new BadRequestException('Vui lòng chọn ảnh nền vé');
+    if (!['image/jpeg', 'image/png'].includes(file.mimetype)) {
+      throw new BadRequestException('Ảnh nền vé chỉ hỗ trợ JPG hoặc PNG để bảo đảm tương thích PDF');
+    }
+    if (file.size > 6 * 1024 * 1024) {
+      throw new BadRequestException('Ảnh nền vé không được vượt quá 6 MB');
+    }
+    const validSignature = file.mimetype === 'image/jpeg'
+      ? file.buffer.length >= 3 && file.buffer[0] === 0xff && file.buffer[1] === 0xd8 && file.buffer[2] === 0xff
+      : file.buffer.length >= 8 && file.buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+    if (!validSignature) throw new BadRequestException('Nội dung tệp không đúng định dạng ảnh đã khai báo');
+    await this.ensureEvent(id);
+    const event = await this.prisma.event.update({
+      where: { id },
+      data: {
+        ticketBackgroundData: file.buffer,
+        ticketBackgroundMimeType: file.mimetype,
+        ticketBackgroundSize: file.size,
+      },
+      include: this.getEventInclude(true),
+    });
+    return this.serializeEvent(event);
+  }
+
+  async removeTicketBackground(id: string) {
+    await this.ensureEvent(id);
+    const event = await this.prisma.event.update({
+      where: { id },
+      data: {
+        ticketBackgroundData: null,
+        ticketBackgroundMimeType: null,
+        ticketBackgroundSize: null,
+      },
+      include: this.getEventInclude(true),
+    });
+    return this.serializeEvent(event);
+  }
+
+  async getTicketBackground(id: string) {
+    const event = await this.prisma.event.findUnique({
+      where: { id },
+      select: {
+        ticketBackgroundData: true,
+        ticketBackgroundMimeType: true,
+      },
+    });
+    if (!event) throw new NotFoundException(`Không tìm thấy sự kiện có mã ${id}`);
+    if (!event.ticketBackgroundData || !event.ticketBackgroundMimeType) {
+      throw new NotFoundException('Sự kiện chưa có ảnh nền vé');
+    }
+    return {
+      data: event.ticketBackgroundData,
+      mimeType: event.ticketBackgroundMimeType,
+      etag: createHash('sha256').update(event.ticketBackgroundData).digest('hex'),
+    };
   }
 
   async remove(id: string) {
@@ -408,6 +469,8 @@ export class EventsService {
       location: true,
       bannerUrl: true,
       logoUrl: true,
+      ticketBackgroundMimeType: true,
+      ticketBackgroundSize: true,
       isPublished: true,
       level: true,
       allowIndependentAthletes: true,
@@ -450,6 +513,22 @@ export class EventsService {
         },
       },
     };
+  }
+
+  private serializeEvent(event: any) {
+    const { ticketBackgroundData: _ticketBackgroundData, ...safeEvent } = event;
+    return {
+      ...safeEvent,
+      ticketBackgroundUrl: event.ticketBackgroundSize
+        ? `/api/events/${event.id}/ticket-background`
+        : null,
+    };
+  }
+
+  private async ensureEvent(id: string) {
+    const event = await this.prisma.event.findUnique({ where: { id }, select: { id: true } });
+    if (!event) throw new NotFoundException(`Không tìm thấy sự kiện có mã ${id}`);
+    return event;
   }
 
   private async validateCategories(categoryIds: string[] | undefined, sportIds: string[]) {

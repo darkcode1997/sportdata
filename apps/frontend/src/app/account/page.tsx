@@ -53,7 +53,7 @@ type Registration = {
   feeAmount: number;
   currency: string;
   createdAt: string;
-  event: { id: string; name: string; startDate: string; endDate?: string; location?: string; sport?: { id: string; name: string } };
+  event: { id: string; name: string; startDate: string; endDate?: string; location?: string; sport?: { id: string; name: string }; ticketBackgroundSize?: number | null };
   category: { id: string; name: string; sport?: { id: string; name: string } };
   athlete: {
     id: string;
@@ -106,7 +106,12 @@ function registrationTicket(registration: Registration): ParticipationTicket {
     paymentStatus: registration.paymentStatus,
     isValid: registration.status === 'CONFIRMED',
     issuedAt: registration.createdAt,
-    event: registration.event,
+    event: {
+      ...registration.event,
+      ticketBackgroundUrl: registration.event.ticketBackgroundSize
+        ? `/api/events/${registration.event.id}/ticket-background`
+        : null,
+    },
     sport,
     category: registration.category,
     athlete: {

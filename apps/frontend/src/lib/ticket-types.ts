@@ -23,6 +23,7 @@ export type ParticipationTicket = {
     endDate?: string;
     location?: string | null;
     logoUrl?: string | null;
+    ticketBackgroundUrl?: string | null;
   };
   sport?: {
     id?: string;

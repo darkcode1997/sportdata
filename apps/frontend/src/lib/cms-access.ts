@@ -49,7 +49,7 @@ export const CMS_ROLE_INFO: Record<CmsRole, {
     label: 'Trưởng bộ môn',
     shortLabel: 'Trưởng môn',
     description: 'Quản lý chuyên môn, lượt đăng ký, thể thức, lịch và xác nhận trọng tài.',
-    startPath: '/cms/registrations',
+    startPath: '/cms/events',
     capabilities: ['Quản lý VĐV/hạng mục', 'Sinh thể thức và xếp lịch', 'Nhập và xác nhận kết quả'],
     restrictions: ['Không phê duyệt/công bố kết quả cuối', 'Không tạo hoặc xóa venue'],
   },

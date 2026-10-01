@@ -42,7 +42,7 @@ type Category = {
   maxWeight?: number | null;
   sport?: { name: string } | null;
 };
-type EventData = { id: string; name: string; startDate: string; endDate?: string; location?: string | null; categories: Category[] };
+type EventData = { id: string; name: string; startDate: string; endDate?: string; location?: string | null; ticketBackgroundUrl?: string | null; categories: Category[] };
 type AthleteDraft = {
   key: string;
   fullName: string;
@@ -61,6 +61,7 @@ type AthleteDraft = {
 };
 type SubmissionResult = {
   referenceCode: string;
+  ticketEmailSent?: boolean;
   registrations: { id: string; athleteId: string; athleteName: string; ticketCode: string; status: string }[];
 };
 type FederationSessionProfile = {
@@ -281,7 +282,7 @@ export default function GuestEventRegistrationPage() {
       const url = URL.createObjectURL(response.data);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `sportdata-${submission.referenceCode}.pdf`;
+      link.download = `sportdata-${submission.referenceCode}-A6.pdf`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -350,7 +351,9 @@ export default function GuestEventRegistrationPage() {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       setResult(response.data);
-      toast.success('Đã tiếp nhận hồ sơ đăng ký và tạo vé tham dự.');
+      toast.success(response.data.ticketEmailSent
+        ? 'Đã tiếp nhận hồ sơ. Bộ vé A6 đã được gửi về email và đang được tải xuống.'
+        : 'Đã tiếp nhận hồ sơ. Bộ vé A6 đang được tải xuống; email chưa gửi được, bạn có thể tải lại tại đây.');
       window.scrollTo({ top: 0, behavior: 'smooth' });
       await downloadSubmissionPdf(response.data);
     } catch (requestError) {
@@ -394,6 +397,7 @@ export default function GuestEventRegistrationPage() {
                   startDate: event.startDate,
                   endDate: event.endDate,
                   location: event.location,
+                  ticketBackgroundUrl: event.ticketBackgroundUrl,
                 },
                 sport: category?.sport || null,
                 category: { id: category?.id, name: category?.name || 'Hạng đấu đang cập nhật' },

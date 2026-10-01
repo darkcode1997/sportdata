@@ -18,7 +18,7 @@ import {
   Typography,
   type TableProps,
 } from 'antd';
-import { CalendarDays, Pencil, Search, Trash2 } from 'lucide-react';
+import { CalendarDays, Search, Settings2, Trash2 } from 'lucide-react';
 import { CmsPageHeader } from '@/components/cms/CmsPageHeader';
 import { api, fetcher } from '@/lib/api';
 import { useSportDataToast } from '@/hooks/useSportDataToast';
@@ -167,14 +167,14 @@ export default function EventsListPage() {
       width: 112,
       render: (_, event) => (
         <Space size={4}>
-          {canManage && <Tooltip title="Chỉnh sửa">
+          <Tooltip title="Quản lý sự kiện">
             <Button
               type="text"
-              href={`/cms/events/${event.id}/edit`}
-              aria-label="Chỉnh sửa"
-              icon={<Pencil className="h-4 w-4" />}
+              href={`/cms/events/${event.id}`}
+              aria-label="Quản lý sự kiện"
+              icon={<Settings2 className="h-4 w-4" />}
             />
-          </Tooltip>}
+          </Tooltip>
           {canDelete && <Popconfirm
             title={`Xóa “${event.name}”?`}
             description="Toàn bộ trận đấu, sơ đồ và thống kê của sự kiện cũng sẽ bị xóa."

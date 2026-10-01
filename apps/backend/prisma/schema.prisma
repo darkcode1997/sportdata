@@ -433,6 +433,9 @@ model Event {
   location                 String?
   bannerUrl                String?
   logoUrl                  String?
+  ticketBackgroundData     Bytes?
+  ticketBackgroundMimeType String?
+  ticketBackgroundSize     Int?
   matches                  Match[]
   draws                    Draw[]
   fops                     Fop[]

@@ -338,8 +338,8 @@ export default function EventDetailPage() {
       });
       toast.success({
         content: data.status === 'CONFIRMED'
-          ? `Đăng ký đã được xác nhận. Mã vé: ${data.ticketCode}`
-          : `Đã tiếp nhận hồ sơ ${data.ticketCode}. Giấy tờ đang chờ xác thực trước khi vé có hiệu lực.`,
+          ? `Đăng ký đã được xác nhận. Vé A6 ${data.ticketCode}${data.ticketEmailSent ? ' đã được gửi về email.' : ' đã sẵn sàng để tải.'}`
+          : `Đã tiếp nhận hồ sơ ${data.ticketCode}.${data.ticketEmailSent ? ' Vé A6 đã được gửi về email.' : ' Bạn có thể tải vé A6 trong tài khoản.'} Giấy tờ đang chờ xác thực.`,
         duration: 6,
       });
     } catch (requestError) {
