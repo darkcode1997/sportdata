@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Button, Card, Tag, Tooltip } from 'antd';
-import { ChevronDown, ChevronUp, Maximize2, Minus, Plus, RotateCcw } from 'lucide-react';
+import { Avatar, Button, Card, Tag, Tooltip } from 'antd';
+import { ChevronDown, ChevronUp, Maximize2, Minus, Plus, RotateCcw, UserRound } from 'lucide-react';
 import { cn, formatDate, formatTime } from '@/lib/utils';
 
 export interface BracketCountry {
@@ -15,6 +15,7 @@ export interface BracketCountry {
 export interface BracketAthlete {
   id: string;
   fullName: string;
+  photoUrl?: string | null;
   country?: BracketCountry | null;
   federation?: { id?: string; name?: string } | null;
 }
@@ -330,6 +331,14 @@ function BracketParticipantNode({
 }) {
   const content = (
     <>
+      <Avatar
+        shape="square"
+        size={58}
+        src={athlete ? athlete.photoUrl || `/api/participant-auth/avatar/${athlete.id}` : undefined}
+        icon={<UserRound className="h-6 w-6" />}
+        alt={athlete?.fullName || 'Vận động viên'}
+        className="sportdata-node-avatar"
+      />
       <div className="sportdata-node-country">
         <CountryFlag country={athlete?.country} />
         <span>{athlete?.country?.code || '—'}</span>

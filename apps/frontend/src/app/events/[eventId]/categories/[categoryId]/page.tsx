@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import useSWR from 'swr';
 import useSWRInfinite from 'swr/infinite';
-import { Button, Card, Empty, Skeleton, Table, Tag, Tooltip, type TableProps } from 'antd';
+import { Avatar, Button, Card, Empty, Skeleton, Table, Tag, Tooltip, type TableProps } from 'antd';
 import {
   ArrowLeft,
   ChevronDown,
@@ -19,6 +19,7 @@ import {
   RotateCcw,
   Swords,
   Trophy,
+  UserRound,
 } from 'lucide-react';
 import { fetcher } from '@/lib/api';
 import { cn, formatTime } from '@/lib/utils';
@@ -38,6 +39,7 @@ interface Federation {
 interface Athlete {
   id: string;
   fullName: string;
+  photoUrl?: string | null;
   country?: Country | null;
   federation?: Federation | null;
 }
@@ -879,6 +881,14 @@ function BracketParticipantNode({
 }) {
   const content = (
     <>
+      <Avatar
+        shape="square"
+        size={58}
+        src={athlete ? athlete.photoUrl || `/api/participant-auth/avatar/${athlete.id}` : undefined}
+        icon={<UserRound className="h-6 w-6" />}
+        alt={athlete?.fullName || 'Vận động viên'}
+        className="sportdata-node-avatar"
+      />
       <div className="sportdata-node-country">
         <CountryFlag country={athlete?.country} />
         <span>{athlete?.country?.code || '—'}</span>

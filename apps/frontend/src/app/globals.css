@@ -3265,8 +3265,9 @@ h3,
   position: absolute;
   z-index: 1;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-rows: 20px 24px 18px 12px;
+  grid-template-columns: 58px minmax(0, 1fr) auto;
+  grid-template-rows: 18px 22px 16px 12px;
+  column-gap: 9px;
   overflow: hidden;
   border: 1px solid #aeb5c1;
   border-left: 14px solid #b90f0f;
@@ -3302,6 +3303,8 @@ h3,
 
 .sportdata-node-country {
   display: flex;
+  grid-column: 2;
+  grid-row: 1;
   min-width: 0;
   align-items: center;
   gap: 0.35rem;
@@ -3313,7 +3316,7 @@ h3,
 .sportdata-bracket-node > strong,
 .sportdata-bracket-node > small,
 .sportdata-node-match {
-  grid-column: 1 / -1;
+  grid-column: 2 / -1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3321,12 +3324,14 @@ h3,
 
 .sportdata-bracket-node > strong {
   align-self: end;
+  grid-row: 2;
   font-size: 0.72rem;
   font-weight: 1000;
   text-transform: uppercase;
 }
 
 .sportdata-bracket-node > small {
+  grid-row: 3;
   color: #111827;
   font-size: 0.5rem;
   font-weight: 850;
@@ -3337,7 +3342,7 @@ h3,
   display: grid;
   width: 24px;
   height: 24px;
-  grid-column: 2;
+  grid-column: 3;
   grid-row: 1 / span 2;
   place-items: center;
   border-radius: 2px;
@@ -3348,11 +3353,28 @@ h3,
 }
 
 .sportdata-node-match {
+  grid-row: 4;
   color: #536071;
   font-size: 0.47rem;
   font-weight: 800;
   text-align: right;
   text-transform: uppercase;
+}
+
+.sportdata-node-avatar.ant-avatar {
+  width: 58px;
+  height: 58px;
+  grid-column: 1;
+  grid-row: 1 / span 4;
+  align-self: center;
+  border: 1px solid rgba(15, 23, 42, 0.22);
+  border-radius: 3px;
+  background: #cbd5e1;
+  color: #475569;
+}
+
+.sportdata-node-avatar.ant-avatar > img {
+  object-fit: cover;
 }
 
 .category-subsection-heading {
