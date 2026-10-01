@@ -77,7 +77,7 @@ const registrationWindowFrom = (startValue?: string) => {
   };
 };
 
-export function EventForm({ eventId, initialData }: { eventId?: string; initialData?: any }) {
+export function EventForm({ eventId, initialData, returnTo = '/cms/events' }: { eventId?: string; initialData?: any; returnTo?: string }) {
   const router = useRouter();
   const toast = useSportDataToast();
   const [athleteCountryId, setAthleteCountryId] = useState<string>();
@@ -216,7 +216,7 @@ export function EventForm({ eventId, initialData }: { eventId?: string; initialD
         syncImage('logo', logoFile, logoRemoved),
       ]);
       toast.success(eventId ? 'Đã cập nhật sự kiện.' : 'Đã tạo sự kiện.');
-      router.push('/cms/events');
+      router.push(eventId ? returnTo : '/cms/events');
       router.refresh();
     } catch (error: any) {
       const message = error.response?.data?.message || error.message || 'Không thể lưu sự kiện';
@@ -621,7 +621,7 @@ export function EventForm({ eventId, initialData }: { eventId?: string; initialD
           </Col>
         </Row>
       </Card>
-      <FormActions pending={isSubmitting} label={eventId ? 'Lưu thay đổi' : 'Tạo sự kiện'} cancelHref="/cms/events" />
+      <FormActions pending={isSubmitting} label={eventId ? 'Lưu thay đổi' : 'Tạo sự kiện'} cancelHref={eventId ? returnTo : '/cms/events'} />
     </Form>
   );
 }

@@ -9,6 +9,7 @@ type CmsPageHeaderProps = {
   actionHref?: string;
   actionLabel?: string;
   backHref?: string;
+  backLabel?: string;
   icon?: React.ReactNode;
   action?: React.ReactNode;
 };
@@ -19,6 +20,7 @@ export function CmsPageHeader({
   actionHref,
   actionLabel,
   backHref,
+  backLabel = 'Quay lại danh sách',
   icon,
   action,
 }: CmsPageHeaderProps) {
@@ -26,7 +28,7 @@ export function CmsPageHeader({
     <Flex vertical gap={14}>
       {backHref && (
         <Button type="link" href={backHref} className="w-fit px-0" icon={<ArrowLeft className="h-4 w-4" />}>
-          Quay lại danh sách
+          {backLabel}
         </Button>
       )}
       <Flex justify="space-between" align="flex-end" gap={20} wrap>

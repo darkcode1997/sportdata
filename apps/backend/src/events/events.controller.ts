@@ -22,6 +22,7 @@ import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
 import { QueryEventsDto } from './dto/query-events.dto';
 import { QueryEligibleAthletesDto } from './dto/query-eligible-athletes.dto';
+import { CreateEventFopDto, UpdateEventFopDto } from './dto/event-fop.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { UserRole } from '../common/enums/user-role.enum';
@@ -63,6 +64,35 @@ export class EventsController {
   @ApiOperation({ summary: 'Get event details including selected athletes for editing' })
   findAdminDetail(@Param('id') id: string) {
     return this.eventsService.findOne(id, true);
+  }
+
+  @Post(':id/fops')
+  @UseGuards(JwtAuthGuard)
+  @Roles(UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER)
+  @ApiOperation({ summary: 'Add a floor/FOP to an event' })
+  createFop(@Param('id') id: string, @Body() dto: CreateEventFopDto) {
+    return this.eventsService.createFop(id, dto);
+  }
+
+  @Patch(':id/fops/:fopId')
+  @UseGuards(JwtAuthGuard)
+  @Roles(UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER)
+  @ApiOperation({ summary: 'Update an event floor/FOP' })
+  updateFop(
+    @Param('id') id: string,
+    @Param('fopId') fopId: string,
+    @Body() dto: UpdateEventFopDto,
+  ) {
+    return this.eventsService.updateFop(id, fopId, dto);
+  }
+
+  @Delete(':id/fops/:fopId')
+  @UseGuards(JwtAuthGuard)
+  @Roles(UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Remove an unused floor/FOP from an event' })
+  removeFop(@Param('id') id: string, @Param('fopId') fopId: string) {
+    return this.eventsService.removeFop(id, fopId);
   }
 
   @Get(':id/ticket-background')

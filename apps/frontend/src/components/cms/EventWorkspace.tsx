@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import useSWR, { useSWRConfig } from 'swr';
 import {
   Alert,
@@ -33,9 +34,11 @@ import {
   Images,
   List,
   LayoutTemplate,
+  MapPin,
   Network,
   Palette,
   Pencil,
+  Plus,
   RefreshCw,
   Settings2,
   TicketCheck,
@@ -49,6 +52,7 @@ import { EventParticipationCard } from '@/components/EventParticipationCard';
 import { SportdataBracket, type BracketDraw } from '@/components/brackets/SportdataBracket';
 import type { ParticipationTicket } from '@/lib/ticket-types';
 import { AthleteQuickViewModal } from '@/components/cms/AthleteQuickViewModal';
+import { withCmsReturnTo } from '@/lib/cms-navigation';
 
 type EventWorkspaceProps = {
   event: any;
@@ -113,6 +117,9 @@ const ticketThemePresets = [
   { value: 'ROYAL', label: 'Royal', description: 'Tím hoàng gia và vàng', layout: 'STRIPE', primary: '#4F46E5', secondary: '#1E1B4B', accent: '#D97706' },
 ] as const;
 
+const eventTabKeys = ['overview', 'registrations', 'fops', 'matches', 'payment', 'ticket', 'bracket'] as const;
+type EventTabKey = typeof eventTabKeys[number];
+
 function SeedInput({ value, disabled, onSave }: { value?: number | null; disabled?: boolean; onSave: (value: number | null) => void }) {
   const [draft, setDraft] = useState<number | null>(value ?? null);
   useEffect(() => setDraft(value ?? null), [value]);
@@ -141,21 +148,37 @@ function dateTimeInput(value?: string | null) {
 }
 
 export function EventWorkspace({ event, onRefresh }: EventWorkspaceProps) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { data: currentUser } = useSWR<any>('/auth/profile', fetcher);
   const canEditEvent = ['ADMIN', 'CONTENT', 'GAMES_ADMIN'].includes(currentUser?.role);
   const canOperate = ['ADMIN', 'GAMES_ADMIN', 'SPORT_MANAGER'].includes(currentUser?.role);
   const canConfirmPayment = ['ADMIN', 'GAMES_ADMIN'].includes(currentUser?.role);
+  const requestedTab = searchParams.get('tab');
+  const activeTab: EventTabKey = eventTabKeys.includes(requestedTab as EventTabKey)
+    ? requestedTab as EventTabKey
+    : 'overview';
+  const workspaceHref = (tab: EventTabKey) => `/cms/events/${event.id}?tab=${tab}`;
+
+  const selectTab = (tab: string) => {
+    if (!eventTabKeys.includes(tab as EventTabKey)) return;
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('tab', tab);
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  };
 
   return (
     <Tabs
-      defaultActiveKey="overview"
+      activeKey={activeTab}
+      onChange={selectTab}
       size="large"
       destroyInactiveTabPane={false}
       items={[
         {
           key: 'overview',
           label: <span className="flex items-center gap-2"><Settings2 className="h-4 w-4" />Tổng quan</span>,
-          children: <EventOverview event={event} canEdit={canEditEvent} />,
+          children: <EventOverview event={event} canEdit={canEditEvent} returnTo={workspaceHref('overview')} />,
         },
         {
           key: 'registrations',
@@ -163,9 +186,14 @@ export function EventWorkspace({ event, onRefresh }: EventWorkspaceProps) {
           children: <RegistrationsTab eventId={event.id} canOperate={canOperate} canConfirmPayment={canConfirmPayment} />,
         },
         {
+          key: 'fops',
+          label: <span className="flex items-center gap-2"><MapPin className="h-4 w-4" />Sàn / FOP</span>,
+          children: <FopsTab event={event} canOperate={canOperate} onRefresh={onRefresh} />,
+        },
+        {
           key: 'matches',
           label: <span className="flex items-center gap-2"><List className="h-4 w-4" />Trận đấu</span>,
-          children: <MatchesTab event={event} />,
+          children: <MatchesTab event={event} returnTo={workspaceHref('matches')} />,
         },
         {
           key: 'payment',
@@ -187,10 +215,10 @@ export function EventWorkspace({ event, onRefresh }: EventWorkspaceProps) {
   );
 }
 
-function EventOverview({ event, canEdit }: { event: any; canEdit: boolean }) {
+function EventOverview({ event, canEdit, returnTo }: { event: any; canEdit: boolean; returnTo: string }) {
   return (
     <div className="grid gap-6 xl:grid-cols-[1fr_340px]">
-      <Card title="Thông tin sự kiện" extra={canEdit ? <Button href={`/cms/events/${event.id}/edit`} icon={<Pencil className="h-4 w-4" />}>Chỉnh sửa</Button> : null}>
+      <Card title="Thông tin sự kiện" extra={canEdit ? <Button href={withCmsReturnTo(`/cms/events/${event.id}/edit`, returnTo)} icon={<Pencil className="h-4 w-4" />}>Chỉnh sửa</Button> : null}>
         <Descriptions column={{ xs: 1, md: 2 }} colon={false}>
           <Descriptions.Item label="Tên sự kiện">{event.name}</Descriptions.Item>
           <Descriptions.Item label="Địa điểm">{event.location || 'Chưa cập nhật'}</Descriptions.Item>
@@ -217,6 +245,173 @@ function EventOverview({ event, canEdit }: { event: any; canEdit: boolean }) {
         </div>
       </Card>
     </div>
+  );
+}
+
+function FopsTab({ event, canOperate, onRefresh }: EventWorkspaceProps & { canOperate: boolean }) {
+  const toast = useSportDataToast();
+  const { data: venues = [], isLoading: venuesLoading } = useSWR<any[]>(
+    canOperate ? `/scheduling/venues?eventId=${event.id}` : null,
+    fetcher,
+  );
+  const [form] = Form.useForm();
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editingFop, setEditingFop] = useState<any>();
+  const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string>();
+  const fops = useMemo(
+    () => [...(event.fops || [])].sort((left: any, right: any) => left.name.localeCompare(right.name, 'vi')),
+    [event.fops],
+  );
+
+  const openEditor = (fop?: any) => {
+    setEditingFop(fop);
+    form.setFieldsValue({ name: fop?.name || '', venueId: fop?.venueId || undefined });
+    setEditorOpen(true);
+  };
+
+  const save = async (values: { name: string; venueId?: string }) => {
+    setSaving(true);
+    try {
+      const payload = { name: values.name.trim(), venueId: values.venueId || null };
+      if (editingFop) await api.patch(`/events/${event.id}/fops/${editingFop.id}`, payload);
+      else await api.post(`/events/${event.id}/fops`, payload);
+      await onRefresh();
+      toast.success(editingFop ? 'Đã cập nhật sân/FOP.' : 'Đã thêm sân/FOP vào sự kiện.');
+      setEditorOpen(false);
+    } catch (error: any) {
+      const message = error.response?.data?.message;
+      toast.error(Array.isArray(message) ? message.join('. ') : message || 'Không thể lưu sân/FOP.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const remove = async (fop: any) => {
+    setDeletingId(fop.id);
+    try {
+      await api.delete(`/events/${event.id}/fops/${fop.id}`);
+      await onRefresh();
+      toast.success(`Đã xóa ${fop.name}.`);
+    } catch (error: any) {
+      const message = error.response?.data?.message;
+      toast.error(Array.isArray(message) ? message.join('. ') : message || 'Không thể xóa sân/FOP.');
+    } finally {
+      setDeletingId(undefined);
+    }
+  };
+
+  return (
+    <>
+      <Card
+        title={`Danh sách Sàn / FOP (${fops.length})`}
+        extra={canOperate ? <Button type="primary" icon={<Plus className="h-4 w-4" />} onClick={() => openEditor()}>Thêm Sàn / FOP</Button> : null}
+        styles={{ body: { padding: 0 } }}
+      >
+        <Table<any>
+          rowKey="id"
+          dataSource={fops}
+          pagination={false}
+          scroll={{ x: 760 }}
+          locale={{ emptyText: <Empty description="Sự kiện chưa có Sàn / FOP." /> }}
+          columns={[
+            {
+              title: 'Tên Sàn / FOP',
+              dataIndex: 'name',
+              width: 260,
+              render: (name: string) => <strong>{name}</strong>,
+            },
+            {
+              title: 'Địa điểm',
+              key: 'venue',
+              render: (_: unknown, fop: any) => fop.venue?.name || <Tag>Chưa gán địa điểm</Tag>,
+            },
+            {
+              title: 'Đang sử dụng',
+              key: 'usage',
+              width: 240,
+              render: (_: unknown, fop: any) => (
+                <Space wrap size={[4, 4]}>
+                  <Tag color={fop._count?.matches ? 'blue' : 'default'}>{fop._count?.matches || 0} trận</Tag>
+                  <Tag color={fop._count?.timeSlots ? 'cyan' : 'default'}>{fop._count?.timeSlots || 0} khung giờ</Tag>
+                  {fop._count?.draws ? <Tag color="purple">{fop._count.draws} nhánh đấu</Tag> : null}
+                </Space>
+              ),
+            },
+            {
+              title: '',
+              key: 'actions',
+              width: 120,
+              fixed: 'right' as const,
+              render: (_: unknown, fop: any) => {
+                const isInUse = Boolean(fop._count?.matches || fop._count?.timeSlots || fop._count?.draws);
+                return canOperate ? (
+                  <Space>
+                    <Button type="text" aria-label={`Chỉnh sửa ${fop.name}`} icon={<Pencil className="h-4 w-4" />} onClick={() => openEditor(fop)} />
+                    <Popconfirm
+                      title={`Xóa ${fop.name}?`}
+                      description="Sân/FOP sẽ bị xóa khỏi sự kiện."
+                      okText="Xóa"
+                      cancelText="Hủy"
+                      okButtonProps={{ danger: true }}
+                      onConfirm={() => remove(fop)}
+                    >
+                      <Button
+                        danger
+                        type="text"
+                        disabled={isInUse}
+                        loading={deletingId === fop.id}
+                        title={isInUse ? 'Không thể xóa Sàn/FOP đang được sử dụng' : `Xóa ${fop.name}`}
+                        aria-label={`Xóa ${fop.name}`}
+                        icon={<Trash2 className="h-4 w-4" />}
+                      />
+                    </Popconfirm>
+                  </Space>
+                ) : null;
+              },
+            },
+          ]}
+        />
+      </Card>
+
+      <Modal
+        open={editorOpen}
+        title={editingFop ? 'Chỉnh sửa Sàn / FOP' : 'Thêm Sàn / FOP'}
+        okText={editingFop ? 'Lưu thay đổi' : 'Thêm Sàn / FOP'}
+        cancelText="Hủy"
+        confirmLoading={saving}
+        destroyOnHidden
+        onOk={() => form.submit()}
+        onCancel={() => !saving && setEditorOpen(false)}
+        afterClose={() => {
+          form.resetFields();
+          setEditingFop(undefined);
+        }}
+      >
+        <Form form={form} layout="vertical" onFinish={save} requiredMark={false}>
+          <Form.Item
+            name="name"
+            label="Tên Sàn / FOP"
+            rules={[
+              { required: true, whitespace: true, message: 'Nhập tên Sàn / FOP' },
+              { max: 100, message: 'Tên không được vượt quá 100 ký tự' },
+            ]}
+          >
+            <Input autoFocus placeholder="Ví dụ: FOP 1, Sân trung tâm" maxLength={100} />
+          </Form.Item>
+          <Form.Item name="venueId" label="Địa điểm" extra="Có thể để trống và gán địa điểm sau.">
+            <Select
+              allowClear
+              showSearch
+              loading={venuesLoading}
+              optionFilterProp="label"
+              placeholder="Chọn địa điểm"
+              options={venues.map((venue: any) => ({ value: venue.id, label: venue.name }))}
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
+    </>
   );
 }
 
@@ -465,7 +660,7 @@ function RegistrationsTab({ eventId, canOperate, canConfirmPayment }: { eventId:
   );
 }
 
-function MatchesTab({ event }: { event: any }) {
+function MatchesTab({ event, returnTo }: { event: any; returnTo: string }) {
   const [categoryId, setCategoryId] = useState<string>(event.categories?.[0]?.id || '');
   const [view, setView] = useState<'tree' | 'list'>('tree');
   const [page, setPage] = useState(1);
@@ -491,7 +686,7 @@ function MatchesTab({ event }: { event: any }) {
       </Card>
       {view === 'tree' ? (
         <div className="space-y-5">
-          {drawsLoading ? <Card loading /> : draws.length ? draws.map((draw) => <SportdataBracket key={draw.id} draw={draw} matchHref={(match) => `/cms/matches/${match.id}/edit`} />) : <Card><Empty description="Chưa sinh sơ đồ cây cho hạng đấu này." /></Card>}
+          {drawsLoading ? <Card loading /> : draws.length ? draws.map((draw) => <SportdataBracket key={draw.id} draw={draw} matchHref={(match) => withCmsReturnTo(`/cms/matches/${match.id}/edit`, returnTo)} />) : <Card><Empty description="Chưa sinh sơ đồ cây cho hạng đấu này." /></Card>}
         </div>
       ) : (
         <Card styles={{ body: { padding: 0 } }}>
@@ -525,7 +720,7 @@ function MatchesTab({ event }: { event: any }) {
               { title: 'VĐV 2', render: (_: unknown, match: any) => match.athlete2 ? <Button type="link" className="h-auto !p-0" onClick={() => setSelectedAthleteId(match.athlete2.id)}>{match.athlete2.fullName}</Button> : 'Chờ xác định' },
               { title: 'Sân', dataIndex: 'fop', width: 120 },
               { title: 'Trạng thái', dataIndex: 'status', width: 130, render: (value) => <Tag>{value}</Tag> },
-              { title: '', width: 60, render: (_: unknown, match: any) => <Button type="text" href={`/cms/matches/${match.id}/edit`} icon={<Eye className="h-4 w-4" />} /> },
+              { title: '', width: 60, render: (_: unknown, match: any) => <Button type="text" href={withCmsReturnTo(`/cms/matches/${match.id}/edit`, returnTo)} icon={<Eye className="h-4 w-4" />} /> },
             ]}
           />
         </Card>

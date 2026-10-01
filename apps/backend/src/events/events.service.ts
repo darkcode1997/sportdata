@@ -1,9 +1,10 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
 import { QueryEventsDto } from './dto/query-events.dto';
 import { QueryEligibleAthletesDto } from './dto/query-eligible-athletes.dto';
+import { CreateEventFopDto, UpdateEventFopDto } from './dto/event-fop.dto';
 import { EventLevel, PaymentMode, PaymentProvider, Prisma } from '@prisma/client';
 import { createHash } from 'crypto';
 
@@ -178,6 +179,69 @@ export class EventsService {
     }
 
     return this.serializeEvent(event);
+  }
+
+  async createFop(eventId: string, dto: CreateEventFopDto) {
+    await this.ensureEvent(eventId);
+    const name = this.normalizeFopName(dto.name);
+    await this.ensureFopNameAvailable(eventId, name);
+    await this.validateFopVenue(eventId, dto.venueId);
+
+    return this.prisma.fop.create({
+      data: {
+        eventId,
+        name,
+        venueId: dto.venueId || null,
+      },
+      include: this.getFopInclude(),
+    });
+  }
+
+  async updateFop(eventId: string, fopId: string, dto: UpdateEventFopDto) {
+    const existing = await this.prisma.fop.findFirst({
+      where: { id: fopId, eventId },
+    });
+    if (!existing) throw new NotFoundException('Không tìm thấy sân/FOP trong sự kiện này');
+
+    const name = dto.name === undefined ? existing.name : this.normalizeFopName(dto.name);
+    if (name !== existing.name) await this.ensureFopNameAvailable(eventId, name, fopId);
+    await this.validateFopVenue(eventId, dto.venueId);
+
+    return this.prisma.$transaction(async (transaction) => {
+      const fop = await transaction.fop.update({
+        where: { id: fopId },
+        data: {
+          name,
+          ...(dto.venueId !== undefined ? { venueId: dto.venueId || null } : {}),
+        },
+        include: this.getFopInclude(),
+      });
+      if (name !== existing.name) {
+        await transaction.match.updateMany({
+          where: { fopId },
+          data: { fop: name },
+        });
+      }
+      return fop;
+    });
+  }
+
+  async removeFop(eventId: string, fopId: string) {
+    const fop = await this.prisma.fop.findFirst({
+      where: { id: fopId, eventId },
+      include: { _count: { select: { matches: true, draws: true, timeSlots: true } } },
+    });
+    if (!fop) throw new NotFoundException('Không tìm thấy sân/FOP trong sự kiện này');
+
+    const usageCount = fop._count.matches + fop._count.draws + fop._count.timeSlots;
+    if (usageCount) {
+      throw new BadRequestException(
+        'Không thể xóa sân/FOP đang được dùng cho trận đấu, nhánh đấu hoặc khung giờ',
+      );
+    }
+
+    await this.prisma.fop.delete({ where: { id: fopId } });
+    return { id: fopId };
   }
 
   async findEligibleAthletes(
@@ -538,6 +602,10 @@ export class EventsService {
         orderBy: { name: 'asc' as const },
       },
       fops: {
+        include: {
+          venue: { select: { id: true, code: true, name: true } },
+          _count: { select: { matches: true, draws: true, timeSlots: true } },
+        },
         orderBy: { name: 'asc' as const },
       },
       categories: {
@@ -655,6 +723,40 @@ export class EventsService {
     const event = await this.prisma.event.findUnique({ where: { id }, select: { id: true } });
     if (!event) throw new NotFoundException(`Không tìm thấy sự kiện có mã ${id}`);
     return event;
+  }
+
+  private getFopInclude() {
+    return {
+      venue: { select: { id: true, code: true, name: true } },
+      _count: { select: { matches: true, draws: true, timeSlots: true } },
+    } as const;
+  }
+
+  private normalizeFopName(name: string) {
+    const normalized = name.trim().replace(/\s+/g, ' ');
+    if (!normalized) throw new BadRequestException('Tên sân/FOP không được để trống');
+    return normalized;
+  }
+
+  private async ensureFopNameAvailable(eventId: string, name: string, excludeId?: string) {
+    const duplicate = await this.prisma.fop.findFirst({
+      where: {
+        eventId,
+        name: { equals: name, mode: 'insensitive' },
+        ...(excludeId ? { id: { not: excludeId } } : {}),
+      },
+      select: { id: true },
+    });
+    if (duplicate) throw new ConflictException(`Sự kiện đã có sân/FOP tên “${name}”`);
+  }
+
+  private async validateFopVenue(eventId: string, venueId: string | null | undefined) {
+    if (!venueId) return;
+    const venue = await this.prisma.venue.findFirst({
+      where: { id: venueId, events: { some: { id: eventId } } },
+      select: { id: true },
+    });
+    if (!venue) throw new BadRequestException('Địa điểm không thuộc sự kiện này');
   }
 
   private async validateCategories(categoryIds: string[] | undefined, sportIds: string[]) {
