@@ -357,7 +357,7 @@ export function EventForm({ eventId, initialData, returnTo = '/cms/events' }: { 
               />
             )}
           </ControlledField>
-          <ControlledField name="athleteIds" control={control} label="Vận động viên tham gia" error={errors.athleteIds?.message} wide>
+          {/* <ControlledField name="athleteIds" control={control} label="Vận động viên tham gia" error={errors.athleteIds?.message} wide>
             {(field) => (
               <div className="event-athlete-picker">
                 <div className="event-picker-heading">
@@ -432,7 +432,7 @@ export function EventForm({ eventId, initialData, returnTo = '/cms/events' }: { 
                 </div>
               </div>
             )}
-          </ControlledField>
+          </ControlledField> */}
           <ControlledField name="location" control={control} label="Địa điểm" error={errors.location?.message}>
             {(field) => <Input {...field} size="large" placeholder="Nhà thi đấu, thành phố" />}
           </ControlledField>

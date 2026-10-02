@@ -1,0 +1,14 @@
+import { IsEnum, IsIn, IsInt, IsOptional, IsString, Length, Max, Min } from 'class-validator';
+import { WinMethod } from '@prisma/client';
+
+export class ScoreboardCommandDto {
+  @IsString() @Length(20, 100) clientId: string;
+  @IsInt() @Min(0) expectedVersion: number;
+  @IsIn(['START', 'RESUME', 'PAUSE', 'AWARD', 'UNDO', 'FINISH']) action: string;
+  @IsInt() @Min(1) @Max(2) @IsOptional() side?: number;
+  @IsIn(['POINTS', 'ADVANTAGE', 'PENALTY', 'SUBMISSION', 'ATTACK']) @IsOptional() award?: string;
+  @IsInt() @Min(1) @Max(4) @IsOptional() points?: number;
+  @IsInt() @Min(1) @Max(4) @IsOptional() penaltyLevel?: number;
+  @IsString() @IsOptional() winnerId?: string;
+  @IsEnum(WinMethod) @IsOptional() winMethod?: WinMethod;
+}

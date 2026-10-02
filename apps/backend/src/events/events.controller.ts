@@ -60,7 +60,7 @@ export class EventsController {
 
   @Get(':id/admin-detail')
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN, UserRole.CONTENT, UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER, UserRole.READ_ONLY)
+  @Roles(UserRole.ADMIN, UserRole.CONTENT, UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER, UserRole.SCOREKEEPER, UserRole.READ_ONLY)
   @ApiOperation({ summary: 'Get event details including selected athletes for editing' })
   findAdminDetail(@Param('id') id: string) {
     return this.eventsService.findOne(id, true);

@@ -90,7 +90,7 @@ export const CMS_ROLE_INFO: Record<CmsRole, {
 export const CMS_PAGE_ACCESS: Record<string, readonly CmsRole[]> = {
   '/cms': ALL_CMS_ROLES,
   '/cms/operations': ['ADMIN', 'GAMES_ADMIN', 'SPORT_MANAGER', 'VENUE_OPERATOR', 'SCOREKEEPER', 'RESULT_APPROVER', 'READ_ONLY'],
-  '/cms/events': ['ADMIN', 'CONTENT', 'GAMES_ADMIN', 'SPORT_MANAGER', 'READ_ONLY'],
+  '/cms/events': ['ADMIN', 'CONTENT', 'GAMES_ADMIN', 'SPORT_MANAGER', 'SCOREKEEPER', 'READ_ONLY'],
   '/cms/registrations': ['ADMIN', 'GAMES_ADMIN', 'SPORT_MANAGER', 'READ_ONLY'],
   '/cms/athletes': ['ADMIN', 'CONTENT', 'GAMES_ADMIN', 'SPORT_MANAGER', 'READ_ONLY'],
   '/cms/sports': ['ADMIN', 'CONTENT', 'GAMES_ADMIN', 'SPORT_MANAGER', 'READ_ONLY'],
@@ -98,7 +98,7 @@ export const CMS_PAGE_ACCESS: Record<string, readonly CmsRole[]> = {
   '/cms/accounts': ['ADMIN', 'GAMES_ADMIN', 'READ_ONLY'],
   '/cms/users': ['ADMIN'],
   '/cms/account': ALL_CMS_ROLES,
-  '/cms/matches': ['ADMIN', 'CONTENT', 'GAMES_ADMIN', 'SPORT_MANAGER', 'VENUE_OPERATOR', 'READ_ONLY'],
+  '/cms/matches': ['ADMIN', 'CONTENT', 'GAMES_ADMIN', 'SPORT_MANAGER', 'VENUE_OPERATOR', 'SCOREKEEPER', 'RESULT_APPROVER', 'READ_ONLY'],
   '/cms/statistics': ALL_CMS_ROLES,
   '/cms/banners': ['ADMIN', 'CONTENT'],
   '/cms/news': ['ADMIN', 'CONTENT'],
@@ -124,6 +124,8 @@ export function isCmsRole(role?: string | null): role is CmsRole {
 export function canAccessCmsPath(pathname: string, role?: string | null) {
   if (!isCmsRole(role)) return false;
   if (pathname === '/cms') return true;
+
+  if (/^\/cms\/matches\/[^/]+\/scoreboard$/.test(pathname)) return ['ADMIN', 'GAMES_ADMIN', 'SPORT_MANAGER', 'SCOREKEEPER'].includes(role);
 
   const mutationRouteRoles: Array<{ matches: boolean; roles: readonly CmsRole[] }> = [
     {

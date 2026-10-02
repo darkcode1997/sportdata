@@ -114,6 +114,55 @@ type DateAssignableMatch = {
 export class MatchesService {
   constructor(private readonly prisma: PrismaService) {}
 
+  async assertScoreboardReady(db: PrismaService | Prisma.TransactionClient, match: Match) {
+    if (!match.athlete1Id || !match.athlete2Id || match.athlete1Id === match.athlete2Id) {
+      throw new BadRequestException('Cần đủ hai VĐV khác nhau trước khi bắt đầu');
+    }
+    if (!match.fopId || !match.startTime || !match.endTime || match.endTime <= match.startTime) {
+      throw new BadRequestException('Cần xếp sân/FOP, giờ bắt đầu và kết thúc trước khi thi đấu');
+    }
+    const event = await db.event.findUnique({ where: { id: match.eventId }, select: { startDate: true, endDate: true } });
+    if (!event) throw new BadRequestException('Không tìm thấy sự kiện');
+    this.assertInsideEventDates(event, match.matchDate, match.startTime, match.endTime);
+    const fop = await db.fop.findFirst({ where: { id: match.fopId, eventId: match.eventId }, include: { venue: true } });
+    if (!fop || fop.venue?.isActive === false) throw new BadRequestException('Sân/FOP không khả dụng');
+    if (match.sessionId) {
+      const session = await db.competitionSession.findUnique({ where: { id: match.sessionId } });
+      if (!session || session.eventId !== match.eventId || match.startTime < session.startTime || match.endTime > session.endTime) {
+        throw new BadRequestException('Giờ thi đấu không nằm trong ca đã xếp');
+      }
+    }
+    if (match.timeSlotId) {
+      const slot = await db.timeSlot.findUnique({ where: { id: match.timeSlotId } });
+      if (!slot || slot.fopId !== match.fopId || match.startTime < slot.startTime || match.endTime > slot.endTime) {
+        throw new BadRequestException('Trận đấu không khớp sân hoặc khung giờ đã xếp');
+      }
+    }
+    if (match.startTime.getTime() > Date.now()) throw new BadRequestException('Chưa đến giờ thi đấu theo lịch');
+    const feeder = await db.match.findFirst({ where: {
+      OR: [{ winnerToMatchId: match.id }, { loserToMatchId: match.id }], status: { not: MatchStatus.FINISHED },
+    } });
+    if (feeder) throw new BadRequestException('Trận đấu nguồn chưa hoàn thành');
+    const athletes = [match.athlete1Id, match.athlete2Id];
+    const live = await db.match.findFirst({ where: {
+      id: { not: match.id }, status: MatchStatus.RUNNING,
+      OR: [{ fopId: match.fopId }, { athlete1Id: { in: athletes } }, { athlete2Id: { in: athletes } }],
+    } });
+    if (live) throw new ConflictException('Sân hoặc VĐV đang thi đấu ở trận khác');
+    await this.assertFopAvailability(db, match.eventId, match.fopId, match.startTime, match.endTime, match.id);
+    await this.assertParticipantAvailability(db, match.eventId, match.categoryId, athletes, match.startTime, match.endTime, match.id);
+    const category = await db.category.findUnique({ where: { id: match.categoryId } });
+    const rule = await db.sportSchedulingRule.findUnique({ where: { eventId_sportId: { eventId: match.eventId, sportId: category.sportId } } });
+    const recent = await db.match.findMany({ where: { eventId: match.eventId, status: MatchStatus.FINISHED,
+      OR: [{ athlete1Id: { in: athletes } }, { athlete2Id: { in: athletes } }],
+    }, select: { resultData: true, resultEnteredAt: true } });
+    const restMs = (rule?.minRestMinutes ?? 60) * 60_000;
+    if (recent.some((item) => {
+      const finishedAt = (item.resultData as any)?.scoreboard?.finishedAt || item.resultEnteredAt?.toISOString();
+      return finishedAt && Date.now() - Date.parse(finishedAt) < restMs;
+    })) throw new ConflictException('VĐV chưa đủ thời gian nghỉ sau trận vừa kết thúc');
+  }
+
   async findAll(query: QueryMatchDto, includeUnpublishedResults = false) {
     const {
       search,
@@ -282,6 +331,7 @@ export class MatchesService {
   }
 
   async create(createMatchDto: CreateMatchDto) {
+    if (createMatchDto.status === MatchStatus.RUNNING) throw new BadRequestException('Bắt đầu trận qua bảng điểm sau khi xếp lịch');
     const createsResult = [
       'athlete1Score',
       'athlete2Score',
@@ -439,10 +489,13 @@ export class MatchesService {
   async update(id: string, updateMatchDto: UpdateMatchDto) {
     try {
       return await this.prisma.$transaction(async (transaction) => {
+      await transaction.$queryRaw`SELECT id FROM "Match" WHERE id = ${id} FOR UPDATE`;
       const previous = await transaction.match.findUnique({ where: { id } });
       if (!previous) {
         throw new NotFoundException(`Không tìm thấy trận đấu có mã ${id}`);
       }
+      if (updateMatchDto.status === MatchStatus.RUNNING) throw new BadRequestException('Bắt đầu trận qua bảng điểm');
+      if (previous.status === MatchStatus.RUNNING) throw new BadRequestException('Trận đang thi đấu; sử dụng bảng điểm để điều hành');
       const changesResult = [
         'athlete1Score',
         'athlete2Score',
@@ -739,11 +792,16 @@ export class MatchesService {
 
   async generateDraw(eventId: string, categoryId: string, dto: GenerateDrawDto) {
     const drawType = dto.type || DrawType.MAIN_TREE;
-    if (drawType !== DrawType.MAIN_TREE && drawType !== DrawType.DOUBLE_ELIMINATION) {
-      throw new BadRequestException('Sinh cây tự động chỉ hỗ trợ nhánh chính và loại kép');
+    const supportedTypes: DrawType[] = [DrawType.MAIN_TREE, DrawType.REPECHAGE, DrawType.DOUBLE_ELIMINATION];
+    if (!supportedTypes.includes(drawType)) {
+      throw new BadRequestException('Sinh cây tự động chỉ hỗ trợ nhánh chính, đấu vớt và loại kép');
     }
     if (drawType === DrawType.DOUBLE_ELIMINATION && dto.athleteIds.length < 4) {
       throw new BadRequestException('Thể thức loại kép cần ít nhất 4 vận động viên');
+    }
+
+    if (drawType === DrawType.REPECHAGE && dto.athleteIds.length < 6) {
+      throw new BadRequestException('Dưới 6 VĐV cần dùng đấu vòng tròn, không sinh nhánh Repechage');
     }
 
     const [event, category, athletes, entries] = await Promise.all([
@@ -807,7 +865,7 @@ export class MatchesService {
       where: {
         eventId,
         categoryId,
-        name: { in: [baseName, `${baseName} - DOUBLE-ELIMINATION TREE`] },
+        name: { in: [baseName, `${baseName} - REPECHAGE`, `${baseName} - DOUBLE-ELIMINATION TREE`] },
       },
       select: { name: true },
     });
@@ -864,6 +922,13 @@ export class MatchesService {
           }),
         );
       }
+      if (drawType === DrawType.REPECHAGE) {
+        loserDrawId = randomUUID();
+        generatedMatches.push(...this.buildRepechageBracket({
+          drawId: loserDrawId, eventId, categoryId, divisionId: dto.divisionId,
+          matchDate: event.startDate, fops, fopCursor, winnersRounds: mainRounds, number,
+        }));
+      }
       this.resolveGeneratedWalkovers(generatedMatches);
       this.assignEvenMatchDates(
         generatedMatches as Array<GeneratedMatch & DateAssignableMatch>,
@@ -890,12 +955,12 @@ export class MatchesService {
         await transaction.draw.create({
           data: {
             id: loserDrawId,
-            name: `${baseName} - DOUBLE-ELIMINATION TREE`,
-            type: DrawType.DOUBLE_ELIMINATION,
+            name: `${baseName} - ${drawType === DrawType.REPECHAGE ? 'REPECHAGE' : 'DOUBLE-ELIMINATION TREE'}`,
+            type: drawType,
             eventId,
             categoryId,
             divisionId: dto.divisionId,
-            bracketSize: Math.max(2, bracketSize / 2),
+            bracketSize: Math.max(2, (drawType === DrawType.REPECHAGE ? Math.min(32, bracketSize) : bracketSize) / 2),
             sortOrder: 20,
             fops: fops.length
               ? { connect: fops.map(({ id }) => ({ id })) }
@@ -1014,18 +1079,6 @@ export class MatchesService {
           match.winnerToMatchId = target.id;
           match.winnerToSide = position % 2 === 0 ? BracketSide.ATHLETE1 : BracketSide.ATHLETE2;
         }
-
-        const athleteIds = [match.athlete1Id, match.athlete2Id].filter(Boolean) as string[];
-        if (athleteIds.length === 1) {
-          match.status = MatchStatus.FINISHED;
-          match.winnerId = athleteIds[0];
-          match.winMethod = WinMethod.WALKOVVER;
-          if (match.winnerToMatchId && match.winnerToSide) {
-            const target = rounds[roundIndex + 1][Math.floor(position / 2)];
-            if (match.winnerToSide === BracketSide.ATHLETE1) target.athlete1Id = athleteIds[0];
-            else target.athlete2Id = athleteIds[0];
-          }
-        }
       }
     }
 
@@ -1130,6 +1183,59 @@ export class MatchesService {
     }
 
     return [...loserRounds.flat(), grandFinal];
+  }
+
+  private buildRepechageBracket(input: {
+    drawId: string;
+    eventId: string;
+    categoryId: string;
+    divisionId?: string;
+    matchDate: Date;
+    fops: ScheduledFop[];
+    fopCursor: { value: number };
+    winnersRounds: GeneratedMatch[][];
+    number: { value: number };
+  }) {
+    // JJIF Sporting Code, Appendix 9: two bronze matches; gold stays in the main tree.
+    // Above 32 places, earlier qualifying rounds remain single elimination (4.2.5).
+    const eligibleRounds = input.winnersRounds.slice(-5);
+    const roundCount = eligibleRounds.length * 2 - 4;
+    const rounds: GeneratedMatch[][] = [];
+    for (let stage = 1; stage <= roundCount; stage += 1) {
+      const matchCount = eligibleRounds[0].length / 2 ** Math.ceil(stage / 2);
+      rounds.push(Array.from({ length: matchCount }, (_, position) => {
+        const fop = this.takeNextFop(input.fops, input.fopCursor);
+        return {
+          id: randomUUID(), eventId: input.eventId, categoryId: input.categoryId,
+          divisionId: input.divisionId, drawId: input.drawId,
+          matchNumber: input.number.value++, fop: fop?.name, fopId: fop?.id,
+          matchDate: input.matchDate, status: MatchStatus.SCHEDULED,
+          matchType: MatchType.ELIMINATION, round: stage, bracketPosition: position,
+          notes: stage === roundCount
+            ? `Generated repechage bronze medal ${position === 0 ? 'A' : 'B'}`
+            : `Generated repechage · round ${stage}`,
+        } satisfies GeneratedMatch;
+      }));
+    }
+    eligibleRounds[0].forEach((match, position) => {
+      match.loserToMatchId = rounds[0][Math.floor(position / 2)].id;
+      match.loserToSide = position % 2 === 0 ? BracketSide.ATHLETE1 : BracketSide.ATHLETE2;
+    });
+    rounds.forEach((current, index) => {
+      const stage = index + 1;
+      const next = rounds[index + 1];
+      if (next) current.forEach((match, position) => {
+        match.winnerToMatchId = next[stage % 2 === 1 ? position : Math.floor(position / 2)].id;
+        match.winnerToSide = stage % 2 === 1 || position % 2 === 0 ? BracketSide.ATHLETE1 : BracketSide.ATHLETE2;
+      });
+      if (stage % 2 === 0) eligibleRounds[stage / 2].forEach((match, position) => {
+        // Cross the semifinal losers into the opposite bronze path (Appendix 9.2–9.4).
+        const destination = stage === roundCount ? position ^ 1 : position;
+        match.loserToMatchId = current[destination].id;
+        match.loserToSide = BracketSide.ATHLETE2;
+      });
+    });
+    return rounds.flat();
   }
 
   private seedAthletes(
@@ -1373,6 +1479,7 @@ export class MatchesService {
 
       for (const match of matches) {
         if (match.status !== MatchStatus.SCHEDULED) continue;
+        if ('resultStatus' in match && match.resultStatus !== ResultStatus.DRAFT) continue;
         const incoming = matches.filter((source) => (
           source.winnerToMatchId === match.id || source.loserToMatchId === match.id
         ));
@@ -1383,16 +1490,23 @@ export class MatchesService {
             (source.winnerToMatchId === match.id && source.winnerToSide === side)
             || (source.loserToMatchId === match.id && source.loserToSide === side)
           ));
-          return feeders.length === 0 || feeders.every((source) => source.status === MatchStatus.FINISHED);
+          return feeders.every((source) => {
+            if (source.status !== MatchStatus.FINISHED) return false;
+            const routedAthlete = source.winnerToMatchId === match.id && source.winnerToSide === side
+              ? source.winnerId
+              : !source.winnerId ? null : source.winnerId === source.athlete1Id ? source.athlete2Id : source.athlete1Id;
+            // A newly resolved bye may still need to propagate on the next pass.
+            return !routedAthlete;
+          });
         };
         const athleteIds = [match.athlete1Id, match.athlete2Id].filter(Boolean) as string[];
         if (
-          athleteIds.length === 1
+          athleteIds.length <= 1
           && sideResolved(BracketSide.ATHLETE1)
           && sideResolved(BracketSide.ATHLETE2)
         ) {
           match.status = MatchStatus.FINISHED;
-          match.winnerId = athleteIds[0];
+          match.winnerId = athleteIds[0] || null;
           match.winMethod = WinMethod.WALKOVVER;
           changed = true;
         }
@@ -1405,6 +1519,8 @@ export class MatchesService {
     previous: Match,
     updated: Match,
   ) {
+    const progressionFields: Array<keyof Match> = ['status', 'winnerId', 'winnerTeamId', 'athlete1Id', 'athlete2Id', 'team1Id', 'team2Id', 'winnerToMatchId', 'winnerToSide', 'loserToMatchId', 'loserToSide'];
+    if (progressionFields.every((field) => previous[field] === updated[field])) return;
     await this.clearProgressionTarget(transaction, previous.winnerToMatchId, previous.winnerToSide, previous.winnerId);
     await this.clearProgressionTarget(
       transaction,
@@ -1451,6 +1567,100 @@ export class MatchesService {
       updated.loserToSide,
       this.getLoserTeamId(updated),
     );
+    await this.resolveProgressionWalkovers(transaction, [updated.winnerToMatchId, updated.loserToMatchId]);
+  }
+
+  private async resolveProgressionWalkovers(transaction: Prisma.TransactionClient, targetIds: Array<string | null>) {
+    const pending = targetIds.filter((id): id is string => Boolean(id));
+    const visited = new Set<string>();
+    while (pending.length) {
+      const id = pending.shift()!;
+      if (visited.has(id)) continue;
+      await transaction.$queryRaw`SELECT id FROM "Match" WHERE id = ${id} FOR UPDATE`;
+      const target = await transaction.match.findUnique({ where: { id } });
+      if (!target || target.status !== MatchStatus.SCHEDULED || target.resultStatus !== ResultStatus.DRAFT
+        || !target.drawId || !target.notes?.startsWith('Generated ') || target.resultEnteredAt) continue;
+      const incoming = await transaction.match.findMany({
+        where: { OR: [{ winnerToMatchId: id }, { loserToMatchId: id }] },
+      });
+      const resolved = (side: BracketSide) => {
+        const occupant = side === BracketSide.ATHLETE1 ? target.athlete1Id : target.athlete2Id;
+        if (occupant) return true;
+        return incoming.filter((source) => (
+          source.winnerToMatchId === id && source.winnerToSide === side
+          || source.loserToMatchId === id && source.loserToSide === side
+        )).every((source) => {
+          if (source.status !== MatchStatus.FINISHED) return false;
+          const routedAthlete = source.winnerToMatchId === id && source.winnerToSide === side
+            ? source.winnerId : this.getLoserId(source);
+          return !routedAthlete;
+        });
+      };
+      const athletes = [target.athlete1Id, target.athlete2Id].filter(Boolean);
+      if (athletes.length > 1 || !resolved(BracketSide.ATHLETE1) || !resolved(BracketSide.ATHLETE2)) continue;
+      visited.add(id);
+      const winnerId = athletes[0] || null;
+      await transaction.match.update({
+        where: { id },
+        data: { status: MatchStatus.FINISHED, winnerId, winMethod: WinMethod.WALKOVVER, resultVersion: { increment: 1 } },
+      });
+      await this.assignProgressionTarget(transaction, target.winnerToMatchId, target.winnerToSide, winnerId);
+      pending.push(...[target.winnerToMatchId, target.loserToMatchId].filter((next): next is string => Boolean(next)));
+    }
+  }
+
+  private async assertProgressionTargetEditable(transaction: Prisma.TransactionClient, id: string) {
+    await transaction.$queryRaw`SELECT id FROM "Match" WHERE id = ${id} FOR UPDATE`;
+    let target = await transaction.match.findUnique({ where: { id } });
+    if (target && this.isGeneratedWalkover(target)) {
+      await this.reopenGeneratedWalkover(transaction, target, new Set());
+      target = await transaction.match.findUnique({ where: { id } });
+    }
+    if (!target || target.status !== MatchStatus.SCHEDULED || target.resultStatus !== ResultStatus.DRAFT) {
+      throw new ConflictException('Trận đích đã bắt đầu hoặc đã có kết quả; không thể thay đổi VĐV của nhánh đấu');
+    }
+    return target;
+  }
+
+  private isGeneratedWalkover(match: Match) {
+    return match.status === MatchStatus.FINISHED
+      && match.resultStatus === ResultStatus.DRAFT
+      && match.winMethod === WinMethod.WALKOVVER
+      && !match.resultEnteredAt
+      && Boolean(match.notes?.startsWith('Generated '));
+  }
+
+  private async reopenGeneratedWalkover(
+    transaction: Prisma.TransactionClient,
+    match: Match,
+    visited: Set<string>,
+  ) {
+    if (!this.isGeneratedWalkover(match) || visited.has(match.id)) return;
+    visited.add(match.id);
+
+    if (match.winnerToMatchId && match.winnerToSide && match.winnerId) {
+      await transaction.$queryRaw`SELECT id FROM "Match" WHERE id = ${match.winnerToMatchId} FOR UPDATE`;
+      let next = await transaction.match.findUnique({ where: { id: match.winnerToMatchId } });
+      if (next && this.isGeneratedWalkover(next)) {
+        await this.reopenGeneratedWalkover(transaction, next, visited);
+        next = await transaction.match.findUnique({ where: { id: match.winnerToMatchId } });
+      }
+      if (!next || next.status !== MatchStatus.SCHEDULED || next.resultStatus !== ResultStatus.DRAFT) {
+        throw new ConflictException('Không thể sửa walkover tự động vì trận kế tiếp đã bắt đầu hoặc có kết quả');
+      }
+      const field = match.winnerToSide === BracketSide.ATHLETE1 ? 'athlete1Id' : 'athlete2Id';
+      if (next[field] === match.winnerId) {
+        await transaction.match.update({
+          where: { id: next.id },
+          data: match.winnerToSide === BracketSide.ATHLETE1 ? { athlete1Id: null } : { athlete2Id: null },
+        });
+      }
+    }
+
+    await transaction.match.update({
+      where: { id: match.id },
+      data: { status: MatchStatus.SCHEDULED, winnerId: null, winMethod: null },
+    });
   }
 
   private getLoserId(match: Match) {
@@ -1470,6 +1680,7 @@ export class MatchesService {
     athleteId: string | null,
   ) {
     if (!targetMatchId || !targetSide || !athleteId) return;
+    await this.assertProgressionTargetEditable(transaction, targetMatchId);
     await transaction.match.updateMany({
       where: {
         id: targetMatchId,
@@ -1486,6 +1697,9 @@ export class MatchesService {
     athleteId: string | null,
   ) {
     if (!targetMatchId || !targetSide || !athleteId) return;
+    const target = await this.assertProgressionTargetEditable(transaction, targetMatchId);
+    const occupant = targetSide === 'ATHLETE1' ? target.athlete1Id : target.athlete2Id;
+    if (occupant && occupant !== athleteId) throw new ConflictException('Ô nhánh đấu đã có VĐV khác');
     await transaction.match.update({
       where: { id: targetMatchId },
       data: targetSide === 'ATHLETE1' ? { athlete1Id: athleteId } : { athlete2Id: athleteId },
@@ -1499,6 +1713,7 @@ export class MatchesService {
     teamId: string | null,
   ) {
     if (!targetMatchId || !targetSide || !teamId) return;
+    await this.assertProgressionTargetEditable(transaction, targetMatchId);
     await transaction.match.updateMany({
       where: {
         id: targetMatchId,
@@ -1515,6 +1730,7 @@ export class MatchesService {
     teamId: string | null,
   ) {
     if (!targetMatchId || !targetSide || !teamId) return;
+    await this.assertProgressionTargetEditable(transaction, targetMatchId);
     await transaction.match.update({
       where: { id: targetMatchId },
       data: targetSide === 'ATHLETE1' ? { team1Id: teamId } : { team2Id: teamId },

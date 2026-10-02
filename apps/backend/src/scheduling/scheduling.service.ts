@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import {
   EntryStatus,
   MatchStatus,
@@ -568,7 +568,7 @@ export class SchedulingService {
       where: {
         eventId,
         scheduleLocked: false,
-        status: { not: MatchStatus.CANCELLED },
+        status: MatchStatus.SCHEDULED,
         ...(onlyUnscheduled ? { OR: [{ startTime: null }, { timeSlotId: null }] } : {}),
         ...(dto.categoryIds?.length ? { categoryId: { in: dto.categoryIds } } : {}),
         ...(dto.sportIds?.length ? { category: { sportId: { in: dto.sportIds } } } : {}),
@@ -688,18 +688,24 @@ export class SchedulingService {
     }
 
     if (!dryRun && assignments.length) {
-      await this.prisma.$transaction(assignments.map((assignment) => this.prisma.match.update({
-        where: { id: assignment.matchId },
-        data: {
-          matchDate: assignment.startTime,
-          startTime: assignment.startTime,
-          endTime: assignment.endTime,
-          fop: assignment.fop,
-          fopId: assignment.fopId,
-          sessionId: assignment.sessionId,
-          timeSlotId: assignment.timeSlotId,
-        },
-      })));
+      await this.prisma.$transaction(async (transaction) => {
+        for (const assignment of assignments) {
+          const original = matches.find((match) => match.id === assignment.matchId)!;
+          const written = await transaction.match.updateMany({
+            where: { id: assignment.matchId, status: MatchStatus.SCHEDULED, scheduleLocked: false, updatedAt: original.updatedAt },
+            data: {
+              matchDate: assignment.startTime,
+              startTime: assignment.startTime,
+              endTime: assignment.endTime,
+              fop: assignment.fop,
+              fopId: assignment.fopId,
+              sessionId: assignment.sessionId,
+              timeSlotId: assignment.timeSlotId,
+            },
+          });
+          if (written.count !== 1) throw new ConflictException('Trận đấu đã bắt đầu hoặc lịch đã thay đổi. Hãy xếp lịch lại.');
+        }
+      });
     }
     return {
       dryRun,

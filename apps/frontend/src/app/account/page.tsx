@@ -8,6 +8,7 @@ import { Avatar, Button, Card, Empty, Image as AntImage, Segmented, Spin, Tag, U
 import { CreditCard, Download, Eye, FileCheck2, FileText, ImagePlus, ScanText, TicketCheck, UploadCloud, UserRound } from 'lucide-react';
 import { CameraCaptureButton } from '@/components/CameraCaptureButton';
 import { EventParticipationCard } from '@/components/EventParticipationCard';
+import type { TicketDesign } from '@/lib/ticket-design';
 import { IdentityOcrReviewModal, type IdentityOcrFields, type IdentityOcrResult } from '@/components/IdentityOcrReviewModal';
 import { useSportDataToast } from '@/hooks/useSportDataToast';
 import { clearParticipantSession, getParticipantAccount, getParticipantToken, participantApi, participantError } from '@/lib/participant-auth';
@@ -61,6 +62,8 @@ type Registration = {
     location?: string;
     sport?: { id: string; name: string };
     ticketBackgroundSize?: number | null;
+    updatedAt?: string;
+    ticketDesign?: TicketDesign | null;
     ticketThemePreset?: string | null;
     ticketLayout?: string | null;
     ticketPrimaryColor?: string | null;
@@ -123,7 +126,7 @@ function registrationTicket(registration: Registration): ParticipationTicket {
     event: {
       ...registration.event,
       ticketBackgroundUrl: registration.event.ticketBackgroundSize
-        ? `/api/events/${registration.event.id}/ticket-background`
+        ? `/api/events/${registration.event.id}/ticket-background${registration.event.updatedAt ? `?v=${new Date(registration.event.updatedAt).getTime()}` : ''}`
         : null,
     },
     sport,

@@ -46,7 +46,7 @@ const matchTypeOptions = [
 ];
 const statusOptions = [
   { value: 'SCHEDULED', label: 'Sắp diễn ra' },
-  { value: 'RUNNING', label: 'Đang thi đấu' },
+  { value: 'RUNNING', label: 'Đang thi đấu · bắt đầu tại Bảng điểm', disabled: true },
   { value: 'FINISHED', label: 'Hoàn thành · quản lý tại Điều hành', disabled: true },
   { value: 'CANCELLED', label: 'Đã hủy' },
 ];

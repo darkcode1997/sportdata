@@ -80,7 +80,9 @@ export class ResultsService {
 
   async enter(matchId: string, userId: string, dto: EnterResultDto) {
     return this.prisma.$transaction(async (transaction) => {
+      await transaction.$queryRaw`SELECT id FROM "Match" WHERE id = ${matchId} FOR UPDATE`;
       const before = await this.loadMatch(transaction, matchId);
+      if (before.status === MatchStatus.RUNNING && (before.resultData as any)?.scoreboard) throw new BadRequestException('Xác nhận trận đang thi đấu qua bảng điểm');
       this.assertExpectedVersion(before.resultVersion, dto.expectedVersion);
       if (before.resultStatus === ResultStatus.LOCKED) throw new BadRequestException('Kết quả đã khóa và không thể chỉnh sửa');
       if (before.resultStatus === ResultStatus.APPROVED || before.resultStatus === ResultStatus.PUBLISHED) {
