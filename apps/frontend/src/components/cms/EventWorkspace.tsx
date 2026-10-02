@@ -23,6 +23,7 @@ import {
   Tabs,
   Tag,
   Upload,
+  Tooltip,
 } from 'antd';
 import type { UploadProps } from 'antd';
 import {
@@ -34,12 +35,11 @@ import {
   Eye,
   Images,
   List,
-  LayoutTemplate,
   MapPin,
   Network,
-  Palette,
   Pencil,
   Plus,
+  Play,
   RefreshCw,
   Settings2,
   TicketCheck,
@@ -49,7 +49,8 @@ import {
 } from 'lucide-react';
 import { api, fetcher } from '@/lib/api';
 import { useSportDataToast } from '@/hooks/useSportDataToast';
-import { EventParticipationCard } from '@/components/EventParticipationCard';
+import { TicketDesignEditor } from '@/components/cms/TicketDesignEditor';
+import { ticketDesign, validateTicketDesign, type TicketDesign } from '@/lib/ticket-design';
 import { SportdataBracket, type BracketDraw } from '@/components/brackets/SportdataBracket';
 import type { ParticipationTicket } from '@/lib/ticket-types';
 import { AthleteQuickViewModal } from '@/components/cms/AthleteQuickViewModal';
@@ -111,13 +112,6 @@ const paymentProviderOptions = [
   { value: 'BANK_QR', label: 'Chuyển khoản VietQR' },
 ];
 
-const ticketThemePresets = [
-  { value: 'OCEAN', label: 'Ocean', description: 'Xanh thể thao, bố cục cổ điển', layout: 'CLASSIC', primary: '#0284C7', secondary: '#075985', accent: '#059669' },
-  { value: 'CRIMSON', label: 'Crimson', description: 'Đỏ mạnh, đầu vé dạng dải', layout: 'STRIPE', primary: '#DC2626', secondary: '#7F1D1D', accent: '#F59E0B' },
-  { value: 'EMERALD', label: 'Emerald', description: 'Xanh lá, bố cục tối giản', layout: 'MINIMAL', primary: '#059669', secondary: '#064E3B', accent: '#0EA5E9' },
-  { value: 'ROYAL', label: 'Royal', description: 'Tím hoàng gia và vàng', layout: 'STRIPE', primary: '#4F46E5', secondary: '#1E1B4B', accent: '#D97706' },
-] as const;
-
 const eventTabKeys = ['overview', 'registrations', 'fops', 'matches', 'payment', 'ticket', 'bracket'] as const;
 type EventTabKey = typeof eventTabKeys[number];
 
@@ -154,6 +148,7 @@ export function EventWorkspace({ event, onRefresh }: EventWorkspaceProps) {
   const searchParams = useSearchParams();
   const { data: currentUser } = useSWR<any>('/auth/profile', fetcher);
   const canEditEvent = ['ADMIN', 'CONTENT', 'GAMES_ADMIN'].includes(currentUser?.role);
+  const canScore = ['ADMIN', 'GAMES_ADMIN', 'SPORT_MANAGER', 'SCOREKEEPER'].includes(currentUser?.role);
   const canOperate = ['ADMIN', 'GAMES_ADMIN', 'SPORT_MANAGER'].includes(currentUser?.role);
   const canConfirmPayment = ['ADMIN', 'GAMES_ADMIN'].includes(currentUser?.role);
   const requestedTab = searchParams.get('tab');
@@ -194,7 +189,7 @@ export function EventWorkspace({ event, onRefresh }: EventWorkspaceProps) {
         {
           key: 'matches',
           label: <span className="flex items-center gap-2"><List className="h-4 w-4" />Trận đấu</span>,
-          children: <MatchesTab event={event} returnTo={workspaceHref('matches')} canOperate={canOperate} />,
+          children: <MatchesTab event={event} returnTo={workspaceHref('matches')} canOperate={canOperate} canScore={canScore} canEditMatch={canEditEvent || canOperate} />,
         },
         {
           key: 'payment',
@@ -661,19 +656,19 @@ function RegistrationsTab({ eventId, canOperate, canConfirmPayment }: { eventId:
   );
 }
 
-function MatchesTab({ event, returnTo, canOperate }: { event: any; returnTo: string; canOperate: boolean }) {
+function MatchesTab({ event, returnTo, canOperate, canScore, canEditMatch }: { event: any; returnTo: string; canOperate: boolean; canScore: boolean; canEditMatch: boolean }) {
   const toast = useSportDataToast();
   const { mutate: mutateGlobal } = useSWRConfig();
   const [categoryId, setCategoryId] = useState<string>(event.categories?.[0]?.id || '');
-  const [view, setView] = useState<'tree' | 'list'>('tree');
+  const [view, setView] = useState<'tree' | 'list'>('list');
   const [page, setPage] = useState(1);
   const [selectedAthleteId, setSelectedAthleteId] = useState<string>();
   const [distributingDates, setDistributingDates] = useState(false);
   const pageSize = 50;
   const query = new URLSearchParams({ eventId: event.id, limit: String(pageSize), page: String(page) });
   if (categoryId) query.set('categoryId', categoryId);
-  const { data, error, isLoading, mutate } = useSWR<any>(`/matches?${query}`, fetcher);
-  const { data: drawData, isLoading: drawsLoading, mutate: mutateDraws } = useSWR<{ draws: BracketDraw[] }>(categoryId ? `/matches/event/${event.id}/category/${categoryId}/draws` : null, fetcher);
+  const { data, error, isLoading, mutate } = useSWR<any>(`/matches?${query}`, fetcher, { refreshInterval: 5000 });
+  const { data: drawData, isLoading: drawsLoading, mutate: mutateDraws } = useSWR<{ draws: BracketDraw[] }>(categoryId ? `/matches/event/${event.id}/category/${categoryId}/draws` : null, fetcher, { refreshInterval: 5000 });
   const draws = [...(drawData?.draws || [])].sort((a, b) => a.sortOrder - b.sortOrder);
   const loadError = Array.isArray(error?.response?.data?.message)
     ? error.response.data.message.join(', ')
@@ -733,7 +728,7 @@ function MatchesTab({ event, returnTo, canOperate }: { event: any; returnTo: str
       </Card>
       {view === 'tree' ? (
         <div className="space-y-5">
-          {drawsLoading ? <Card loading /> : draws.length ? draws.map((draw) => <SportdataBracket key={draw.id} draw={draw} matchHref={(match) => withCmsReturnTo(`/cms/matches/${match.id}/edit`, returnTo)} />) : <Card><Empty description="Chưa sinh sơ đồ cây cho hạng đấu này." /></Card>}
+          {drawsLoading ? <Card loading /> : draws.length ? draws.map((draw) => <SportdataBracket key={draw.id} draw={draw} sourceMatches={draws.flatMap((item) => item.matches)} matchHref={(match) => withCmsReturnTo(`/cms/matches/${match.id}/edit`, returnTo)} />) : <Card><Empty description="Chưa sinh sơ đồ cây cho hạng đấu này." /></Card>}
         </div>
       ) : (
         <Card styles={{ body: { padding: 0 } }}>
@@ -780,7 +775,12 @@ function MatchesTab({ event, returnTo, canOperate }: { event: any; returnTo: str
               { title: 'VĐV 2', render: (_: unknown, match: any) => match.athlete2 ? <Button type="link" className="h-auto !p-0" onClick={() => setSelectedAthleteId(match.athlete2.id)}>{match.athlete2.fullName}</Button> : 'Chờ xác định' },
               { title: 'Sân', dataIndex: 'fop', width: 120 },
               { title: 'Trạng thái', dataIndex: 'status', width: 130, render: (value) => <Tag>{value}</Tag> },
-              { title: '', width: 60, render: (_: unknown, match: any) => <Button type="text" href={withCmsReturnTo(`/cms/matches/${match.id}/edit`, returnTo)} icon={<Eye className="h-4 w-4" />} /> },
+              { title: 'Điều hành', width: 190, render: (_: unknown, match: any) => {
+                const ready = match.athlete1Id && match.athlete2Id && match.fopId && match.startTime && match.endTime;
+                const playable = ['SCHEDULED', 'RUNNING'].includes(match.status);
+                const reason = !canScore ? 'Bạn không có quyền chấm điểm' : !playable ? 'Trận đã kết thúc hoặc bị hủy' : !ready ? 'Cần đủ hai VĐV, sân và giờ thi đấu' : 'Mở bảng điểm; kiểm tra điều kiện trước khi bắt đầu';
+                return <Space><Tooltip title={reason}><span><Button aria-label={`Mở bảng điểm trận ${match.matchNumber || match.id}`} type="primary" target="sportdata-scoreboard" disabled={!canScore || !playable || !ready} href={canScore && playable && ready ? `/cms/matches/${match.id}/scoreboard` : undefined} icon={<Play className="h-4 w-4" />}>Bảng điểm</Button></span></Tooltip>{canEditMatch && <Button aria-label="Chỉnh sửa trận" type="text" href={withCmsReturnTo(`/cms/matches/${match.id}/edit`, returnTo)} icon={<Eye className="h-4 w-4" />} />}</Space>;
+              } },
             ]}
           />
         </Card>
@@ -911,67 +911,35 @@ function PaymentTab({ event, canEdit, onRefresh }: EventWorkspaceProps & { canEd
 
 function TicketDesignTab({ event, canEdit, onRefresh }: EventWorkspaceProps & { canEdit: boolean }) {
   const toast = useSportDataToast();
-  const [form] = Form.useForm();
   const [uploading, setUploading] = useState(false);
-  const [savingTheme, setSavingTheme] = useState(false);
-  const selectedPreset = Form.useWatch('ticketThemePreset', form) || event.ticketThemePreset || 'OCEAN';
-  const selectedLayout = Form.useWatch('ticketLayout', form) || event.ticketLayout || 'CLASSIC';
-  const primaryColor = Form.useWatch('ticketPrimaryColor', form) || event.ticketPrimaryColor || '#0284C7';
-  const secondaryColor = Form.useWatch('ticketSecondaryColor', form) || event.ticketSecondaryColor || '#075985';
-  const accentColor = Form.useWatch('ticketAccentColor', form) || event.ticketAccentColor || '#059669';
-
+  const [saving, setSaving] = useState(false);
+  const savedDesign = JSON.stringify(event.ticketDesign || null);
+  const [design, setDesign] = useState<TicketDesign>(() => ticketDesign(event.ticketDesign));
+  const [savedSnapshot, setSavedSnapshot] = useState(() => JSON.stringify(ticketDesign(event.ticketDesign)));
   useEffect(() => {
-    form.setFieldsValue({
-      ticketThemePreset: event.ticketThemePreset || 'OCEAN',
-      ticketLayout: event.ticketLayout || 'CLASSIC',
-      ticketPrimaryColor: event.ticketPrimaryColor || '#0284C7',
-      ticketSecondaryColor: event.ticketSecondaryColor || '#075985',
-      ticketAccentColor: event.ticketAccentColor || '#059669',
-    });
-  }, [event, form]);
-
+    const next = ticketDesign(JSON.parse(savedDesign));
+    setDesign(next);
+    setSavedSnapshot(JSON.stringify(next));
+  }, [event.id, savedDesign]);
+  const dirty = JSON.stringify(design) !== savedSnapshot;
   const sampleTicket: ParticipationTicket = {
-    ticketCode: 'SD-A6-PREVIEW',
-    status: 'CONFIRMED',
-    event: {
-      id: event.id,
-      name: event.name,
-      startDate: event.startDate,
-      endDate: event.endDate,
-      location: event.location,
-      ticketBackgroundUrl: event.ticketBackgroundUrl,
-      ticketThemePreset: selectedPreset,
-      ticketLayout: selectedLayout,
-      ticketPrimaryColor: primaryColor,
-      ticketSecondaryColor: secondaryColor,
-      ticketAccentColor: accentColor,
-    },
+    ticketCode: 'SD-A6-PREVIEW', status: 'CONFIRMED',
+    event: { id: event.id, name: event.name, startDate: event.startDate, endDate: event.endDate, location: event.location, ticketBackgroundUrl: event.ticketBackgroundUrl },
     sport: event.sports?.[0] || event.sport,
     category: { name: event.categories?.[0]?.name || 'Hạng đấu / nội dung' },
     athlete: { fullName: 'NGUYỄN VĂN ĐỘNG VIÊN', country: { name: 'Việt Nam' }, federation: { name: 'Đơn vị / CLB' } },
   };
-
-  const applyPreset = (preset: (typeof ticketThemePresets)[number]) => {
-    form.setFieldsValue({
-      ticketThemePreset: preset.value,
-      ticketLayout: preset.layout,
-      ticketPrimaryColor: preset.primary,
-      ticketSecondaryColor: preset.secondary,
-      ticketAccentColor: preset.accent,
-    });
-  };
-
-  const saveTheme = async (values: any) => {
-    setSavingTheme(true);
+  const save = async () => {
+    setSaving(true);
     try {
-      await api.patch(`/events/${event.id}`, values);
+      const layout = validateTicketDesign(design);
+      await api.patch(`/events/${event.id}`, { ticketDesign: layout });
+      setDesign(layout); setSavedSnapshot(JSON.stringify(layout));
       await onRefresh();
-      toast.success('Đã lưu theme vé A6 cho sự kiện. Vé PDF mới sẽ dùng cấu hình này.');
+      toast.success('Đã lưu bố cục. Vé tải xuống và gửi email sẽ dùng vị trí này.');
     } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Không thể lưu theme vé.');
-    } finally {
-      setSavingTheme(false);
-    }
+      toast.error(error.response?.data?.message || error.message || 'Không thể lưu bố cục vé.');
+    } finally { setSaving(false); }
   };
 
   const uploadProps: UploadProps = {
@@ -1018,66 +986,18 @@ function TicketDesignTab({ event, canEdit, onRefresh }: EventWorkspaceProps & { 
   };
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[430px_1fr]">
-      <Card title={<span className="flex items-center gap-2"><Palette className="h-5 w-5 text-sky-500" />Theme & nền vé</span>}>
-        <Form
-          form={form}
-          layout="vertical"
-          disabled={!canEdit}
-          onFinish={saveTheme}
-          onValuesChange={(changed) => {
-            if ('ticketLayout' in changed || 'ticketPrimaryColor' in changed || 'ticketSecondaryColor' in changed || 'ticketAccentColor' in changed) {
-              form.setFieldValue('ticketThemePreset', 'CUSTOM');
-            }
-          }}
-        >
-          <Form.Item name="ticketThemePreset" hidden><Input /></Form.Item>
-          <Form.Item label="Bộ theme dựng sẵn">
-            <div className="grid grid-cols-2 gap-3">
-              {ticketThemePresets.map((preset) => (
-                <button
-                  key={preset.value}
-                  type="button"
-                  onClick={() => applyPreset(preset)}
-                  className={`rounded-xl border p-3 text-left transition ${selectedPreset === preset.value ? 'border-sky-500 bg-sky-500/10 ring-1 ring-sky-500' : 'border-slate-200/15 hover:border-sky-500/60'}`}
-                >
-                  <span className="mb-2 flex gap-1.5">
-                    {[preset.primary, preset.secondary, preset.accent].map((item) => <i key={item} className="h-4 w-4 rounded-full border border-white/30" style={{ backgroundColor: item }} />)}
-                  </span>
-                  <strong className="block">{preset.label}</strong>
-                  <span className="mt-1 block text-xs text-slate-500">{preset.description}</span>
-                </button>
-              ))}
-            </div>
-          </Form.Item>
-
-          <Form.Item name="ticketLayout" label={<span className="flex items-center gap-2"><LayoutTemplate className="h-4 w-4" />Bố cục vé</span>}>
-            <Segmented block options={[{ value: 'CLASSIC', label: 'Cổ điển' }, { value: 'STRIPE', label: 'Dải màu' }, { value: 'MINIMAL', label: 'Tối giản' }]} />
-          </Form.Item>
-
-          <div className="grid grid-cols-3 gap-3">
-            <Form.Item name="ticketPrimaryColor" label="Màu chính"><Input type="color" className="h-10 p-1" /></Form.Item>
-            <Form.Item name="ticketSecondaryColor" label="Màu đậm"><Input type="color" className="h-10 p-1" /></Form.Item>
-            <Form.Item name="ticketAccentColor" label="Điểm nhấn"><Input type="color" className="h-10 p-1" /></Form.Item>
-          </div>
-
-          {canEdit && <Button htmlType="submit" type="primary" block loading={savingTheme}>Lưu theme vé</Button>}
-        </Form>
-
-        <div className="mt-6 border-t border-slate-200/10 pt-6">
-          <h3 className="font-bold">Ảnh nền riêng của sự kiện</h3>
-          <p className="mb-4 mt-2 text-sm text-slate-500">Ảnh dọc đúng tỉ lệ A6 (105 × 148 mm), JPG/PNG tối đa 6 MB. Mỗi sự kiện có thể dùng nền riêng kết hợp với theme đã chọn.</p>
-          <Space wrap>
-            <Upload {...uploadProps}><Button loading={uploading} icon={<UploadCloud className="h-4 w-4" />}>{event.ticketBackgroundUrl ? 'Thay ảnh nền' : 'Tải ảnh nền'}</Button></Upload>
-            {event.ticketBackgroundUrl && canEdit && <Popconfirm title="Xóa ảnh nền vé?" onConfirm={remove} okText="Xóa" cancelText="Hủy"><Button danger icon={<Trash2 className="h-4 w-4" />}>Xóa nền</Button></Popconfirm>}
-          </Space>
-        </div>
-        <div className="mt-6 rounded-xl border border-sky-500/20 bg-sky-500/5 p-4 text-sm text-slate-500">PDF xuất đúng A6. Bản xem trước, PDF tải xuống và vé gửi email đều dùng cùng theme của sự kiện.</div>
-      </Card>
-      <Card title="Xem trước vùng in A6" extra={<Tag color="blue">105 × 148 mm</Tag>}>
-        <EventParticipationCard ticket={sampleTicket} />
-      </Card>
-    </div>
+    <Card title="Xem trước vùng in A6" extra={<Tag color="blue">105 × 148 mm</Tag>}>
+      <div className="mb-5 flex flex-wrap items-center gap-3">
+        {canEdit && <>
+          <Upload {...uploadProps}><Button loading={uploading} disabled={saving} icon={<UploadCloud className="h-4 w-4" />}>{event.ticketBackgroundUrl ? 'Thay ảnh nền' : 'Tải ảnh nền'}</Button></Upload>
+          {event.ticketBackgroundUrl && <Popconfirm title="Xóa ảnh nền vé?" onConfirm={remove} okText="Xóa" cancelText="Hủy"><Button danger disabled={uploading || saving} icon={<Trash2 className="h-4 w-4" />}>Xóa nền</Button></Popconfirm>}
+          <Button type="primary" loading={saving} disabled={uploading || !dirty} onClick={save}>Lưu bố cục vé</Button>
+          {dirty && <Tag color="orange">Chưa lưu bố cục</Tag>}
+        </>}
+        <span className="text-sm text-slate-500">Nền JPG/PNG tối đa 6 MB, giữ nguyên màu. Nên dùng ảnh đúng tỉ lệ A6.</span>
+      </div>
+      <TicketDesignEditor key={event.id} ticket={sampleTicket} design={design} onChange={setDesign} disabled={!canEdit || saving} />
+    </Card>
   );
 }
 
@@ -1085,7 +1005,7 @@ function BracketTab({ event, canOperate }: { event: any; canOperate: boolean }) 
   const toast = useSportDataToast();
   const { mutate: mutateGlobal } = useSWRConfig();
   const [categoryId, setCategoryId] = useState<string>(event.categories?.[0]?.id || '');
-  const [format, setFormat] = useState<'SINGLE' | 'DOUBLE' | 'ROUND_ROBIN' | 'ABSOLUTE'>('SINGLE');
+  const [format, setFormat] = useState<'SINGLE' | 'REPECHAGE' | 'ROUND_ROBIN' | 'ABSOLUTE'>('SINGLE');
   const [seedingMode, setSeedingMode] = useState('STANDARD');
   const [groupCount, setGroupCount] = useState(1);
   const [generating, setGenerating] = useState(false);
@@ -1108,26 +1028,22 @@ function BracketTab({ event, canOperate }: { event: any; canOperate: boolean }) 
       toast.error('Cần ít nhất 2 lượt đăng ký hợp lệ để sinh nhánh đấu.');
       return;
     }
-    if (format === 'DOUBLE' && activeEntries.length < 4) {
-      toast.error('Thể thức hai nhánh cần ít nhất 4 vận động viên.');
-      return;
-    }
     if (format === 'ABSOLUTE' && (category?.minWeight != null || category?.maxWeight != null)) {
       toast.error('Hạng Tuyệt đối phải là hạng mở, không cấu hình giới hạn cân nặng.');
       return;
     }
     setGenerating(true);
     try {
-      if (format === 'ROUND_ROBIN') {
+      if (format === 'ROUND_ROBIN' || (format === 'REPECHAGE' && activeEntries.length < 6)) {
         await api.post(`/competitions/events/${event.id}/categories/${categoryId}/round-robin/generate`, {
           entryIds: activeEntries.map((entry) => entry.id),
-          groupCount,
+          groupCount: format === 'REPECHAGE' ? 1 : groupCount,
           namePrefix: 'Bảng',
         });
       } else {
         await api.post(`/matches/event/${event.id}/category/${categoryId}/generate-draw`, {
           athleteIds: activeEntries.map((entry) => entry.athlete.id),
-          type: format === 'DOUBLE' ? 'DOUBLE_ELIMINATION' : 'MAIN_TREE',
+          type: format === 'REPECHAGE' ? 'REPECHAGE' : 'MAIN_TREE',
           seedingMode,
           name: format === 'ABSOLUTE' ? 'Hạng Tuyệt đối' : undefined,
           fops: event.fops?.length ? event.fops.map((fop: any) => fop.name) : undefined,
@@ -1147,7 +1063,7 @@ function BracketTab({ event, canOperate }: { event: any; canOperate: boolean }) 
 
   const formatCards = [
     { value: 'SINGLE', title: 'Loại trực tiếp', description: 'Thua một trận bị loại. Phù hợp phần lớn giải đấu.' },
-    { value: 'DOUBLE', title: 'Hai nhánh / Repechage', description: 'Có nhánh thắng và nhánh thua, cho cơ hội tranh hạng.' },
+    { value: 'REPECHAGE', title: 'Đấu vớt / Repechage', description: 'Nhánh chính tranh vàng/bạc, hai nhánh vớt tranh HCĐ. Dưới 6 VĐV tự động đấu vòng tròn.' },
     { value: 'ROUND_ROBIN', title: 'Đấu vòng tròn', description: 'Mọi VĐV trong bảng thi đấu với nhau, phù hợp bảng nhỏ.' },
     { value: 'ABSOLUTE', title: 'Tuyệt đối / Open Weight', description: 'Không giới hạn hạng cân; dùng cây loại trực tiếp.' },
   ] as const;

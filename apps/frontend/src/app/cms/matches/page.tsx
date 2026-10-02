@@ -22,7 +22,7 @@ import {
   Typography,
   type TableProps,
 } from 'antd';
-import { List, Network, Pencil, Plus, Search, Trash2 } from 'lucide-react';
+import { List, Network, Pencil, Play, Plus, Search, Trash2 } from 'lucide-react';
 import { CmsPageHeader } from '@/components/cms/CmsPageHeader';
 import { api, fetcher } from '@/lib/api';
 import { RemoteAthleteSelect } from '@/components/cms/RemoteAthleteSelect';
@@ -49,7 +49,7 @@ type DrawFormValues = {
   sportIds: string[];
   categoryIds: string[];
   athleteIdsByCategory: Record<string, string[]>;
-  type: 'MAIN_TREE' | 'DOUBLE_ELIMINATION';
+  type: 'MAIN_TREE' | 'REPECHAGE' | 'DOUBLE_ELIMINATION';
   seedingMode: string;
   name?: string;
   fops: string[];
@@ -59,6 +59,7 @@ export default function MatchesListPage() {
   const { data: currentUser } = useSWR<any>('/auth/profile', fetcher);
   const canGenerateDraw = ['ADMIN', 'CONTENT', 'GAMES_ADMIN', 'SPORT_MANAGER'].includes(currentUser?.role);
   const canManage = canGenerateDraw || currentUser?.role === 'VENUE_OPERATOR';
+  const canScore = ['ADMIN', 'GAMES_ADMIN', 'SPORT_MANAGER', 'SCOREKEEPER'].includes(currentUser?.role);
   const canDelete = ['ADMIN', 'GAMES_ADMIN'].includes(currentUser?.role);
   const [search, setSearch] = useState('');
   const deferredSearch = useDeferredValue(search);
@@ -144,7 +145,7 @@ export default function MatchesListPage() {
     return `/matches?${params}`;
   }, [categoryId, deferredSearch, eventId, page, sportId, status]);
 
-  const { data, error, isLoading, mutate } = useSWR<any>(query, fetcher);
+  const { data, error, isLoading, mutate } = useSWR<any>(query, fetcher, { refreshInterval: 5000 });
   const matches = data?.items || [];
   const drawQuery = viewMode === 'tree' && eventId && categoryId
     ? `/matches/event/${encodeURIComponent(eventId)}/category/${encodeURIComponent(categoryId)}/draws`
@@ -291,9 +292,10 @@ export default function MatchesListPage() {
       key: 'actions',
       align: 'right',
       fixed: 'right',
-      width: 112,
+      width: 148,
       render: (_, match) => (
         <Space size={4}>
+          {canScore && ['SCHEDULED', 'RUNNING'].includes(match.status) && <Tooltip title="Mở bảng điểm (dùng chung một tab)"><Button type="primary" target="sportdata-scoreboard" aria-label="Mở bảng điểm" href={`/cms/matches/${match.id}/scoreboard`} disabled={!match.athlete1Id || !match.athlete2Id || !match.fopId || !match.startTime || !match.endTime} icon={<Play className="h-4 w-4" />} /></Tooltip>}
           {canManage && <Tooltip title="Chỉnh sửa">
             <Button
               type="text"
@@ -454,7 +456,7 @@ export default function MatchesListPage() {
               <Divider className="my-4" titlePlacement="start">Vận động viên theo hạng</Divider>
               <div className="space-y-3">
                 {selectedCategories.map((category: any) => {
-                  const minimumAthletes = selectedDrawType === 'DOUBLE_ELIMINATION' ? 4 : 2;
+                  const minimumAthletes = selectedDrawType === 'REPECHAGE' ? 6 : selectedDrawType === 'DOUBLE_ELIMINATION' ? 4 : 2;
                   return (
                     <Card
                       key={category.id}
@@ -472,7 +474,9 @@ export default function MatchesListPage() {
                             athleteIds.length >= minimumAthletes
                               ? Promise.resolve()
                               : Promise.reject(new Error(
-                                selectedDrawType === 'DOUBLE_ELIMINATION'
+                                selectedDrawType === 'REPECHAGE'
+                                  ? 'Repechage cần ít nhất 6 VĐV; dưới 6 chọn đấu vòng tròn trong sự kiện'
+                                  : selectedDrawType === 'DOUBLE_ELIMINATION'
                                   ? 'Thể thức nhánh thắng/thua cần ít nhất 4 vận động viên'
                                   : 'Chọn ít nhất 2 vận động viên',
                               ))
@@ -502,7 +506,8 @@ export default function MatchesListPage() {
             <Form.Item className="min-w-64 flex-1" name="type" label="Thể thức">
               <Select options={[
                 { value: 'MAIN_TREE', label: 'Loại trực tiếp · Main tree' },
-                { value: 'DOUBLE_ELIMINATION', label: 'Loại kép · Nhánh thắng/thua' },
+                { value: 'REPECHAGE', label: 'Đấu vớt · Repechage tranh hai HCĐ' },
+                { value: 'DOUBLE_ELIMINATION', label: 'Loại kép · Chung kết tổng' },
               ]} />
             </Form.Item>
             <Form.Item className="min-w-64 flex-1" name="seedingMode" label="Chế độ seeding">
@@ -662,6 +667,7 @@ export default function MatchesListPage() {
               <SportdataBracket
                 key={draw.id}
                 draw={draw}
+                sourceMatches={draws.flatMap((item) => item.matches)}
                 matchHref={(match) => canManage ? `/cms/matches/${match.id}/edit` : undefined}
               />
             ))

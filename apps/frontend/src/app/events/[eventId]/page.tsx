@@ -183,6 +183,7 @@ export default function EventDetailPage() {
   const { data: scheduleSummary, isLoading: summaryLoading } = useSWR<ScheduleSummary>(
     eventId ? `/matches/event/${eventId}/schedule-summary` : null,
     fetcher,
+    { refreshInterval: 5000 },
   );
 
   const event = eventResponse || (eventId === demoEvent.id ? demoEvent : undefined);
@@ -258,7 +259,9 @@ export default function EventDetailPage() {
     setSize,
   } = useSWRInfinite<MatchPage>(getMatchesKey, fetcher, {
     persistSize: false,
-    revalidateFirstPage: false,
+    revalidateFirstPage: true,
+    revalidateAll: true,
+    refreshInterval: 5000,
   });
   const activeMatches = useMemo(() => {
     const uniqueMatches = new Map<string, Match>();

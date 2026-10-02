@@ -3208,7 +3208,16 @@ h3,
   text-transform: uppercase;
 }
 
+.sportdata-bracket-hint {
+  margin: 0;
+  padding: 0.4rem 1.4rem;
+  background: #111420;
+  color: #aeb5c1;
+  font-size: 0.75rem;
+}
+
 .sportdata-bracket-scroll {
+  height: clamp(280px, 65dvh, 760px);
   overflow: auto;
   background: #111420;
   padding: 0 1.4rem 1.4rem;
@@ -3220,14 +3229,13 @@ h3,
 .sportdata-bracket-stage {
   position: relative;
   min-width: 100%;
-  transition: width 180ms ease, height 180ms ease;
+  overflow: hidden;
 }
 
 .sportdata-bracket-board {
   position: relative;
   min-width: 0;
   transform-origin: left top;
-  transition: transform 180ms ease;
   will-change: transform;
 }
 
@@ -6264,5 +6272,61 @@ html[data-app-theme="light"] .registration-document-empty {
     break-inside: avoid;
     border: 1px solid #cbd5e1 !important;
     box-shadow: none !important;
+  }
+}
+
+@font-face {
+  font-family: 'Roboto';
+  src: url('/fonts/Roboto-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Roboto';
+  src: url('/fonts/Roboto-Medium.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+.ticket-editor-surface {
+  touch-action: none;
+  user-select: none;
+}
+
+.ticket-editor-region {
+  position: absolute;
+  border: 1px dashed rgba(2, 132, 199, 0.55);
+  background: transparent;
+  cursor: move;
+}
+
+.ticket-editor-region[data-selected="true"] {
+  outline: 2px solid #0284c7;
+  outline-offset: 1px;
+}
+
+.ticket-editor-region:focus-visible {
+  outline: 2px solid #0284c7;
+}
+
+.ticket-editor-label {
+  position: absolute;
+  left: 0;
+  bottom: 100%;
+  max-width: 100%;
+  padding: 1px 5px;
+  overflow: hidden;
+  background: #0284c7;
+  color: white;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+@media print {
+  .ticket-editor-region, .ticket-editor-draft {
+    display: none !important;
   }
 }

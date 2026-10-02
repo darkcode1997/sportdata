@@ -1,3 +1,5 @@
+import { ScoreboardService } from './scoreboard.service';
+import { ScoreboardCommandDto } from './dto/scoreboard.dto';
 import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -5,12 +7,41 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { UserRole } from '../common/enums/user-role.enum';
 import { EnterResultDto, ResultActionDto } from './dto/result-workflow.dto';
 import { ResultsService } from './results.service';
+import { ScoreboardLeaseDto } from './dto/scoreboard-lease.dto';
 
 @ApiTags('result-workflow')
 @Controller('results')
 @UseGuards(JwtAuthGuard)
 export class ResultsController {
-  constructor(private readonly results: ResultsService) {}
+  constructor(private readonly results: ResultsService, private readonly scoreboard: ScoreboardService) {}
+
+  @Get('matches/:matchId/scoreboard')
+  @Roles(UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER, UserRole.SCOREKEEPER)
+  getScoreboard(@Param('matchId') id: string) { return this.scoreboard.get(id); }
+
+  @Post('matches/:matchId/scoreboard/claim')
+  @Roles(UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER, UserRole.SCOREKEEPER)
+  claimScoreboard(@Param('matchId') id: string, @Req() req: { user: { id: string } }, @Body() dto: ScoreboardLeaseDto) {
+    return this.scoreboard.claim(id, req.user.id, dto.clientId);
+  }
+
+  @Post('matches/:matchId/scoreboard/heartbeat')
+  @Roles(UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER, UserRole.SCOREKEEPER)
+  heartbeatScoreboard(@Param('matchId') id: string, @Req() req: { user: { id: string } }, @Body() dto: ScoreboardLeaseDto) {
+    return this.scoreboard.heartbeat(id, req.user.id, dto.clientId);
+  }
+
+  @Post('matches/:matchId/scoreboard/release')
+  @Roles(UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER, UserRole.SCOREKEEPER)
+  releaseScoreboard(@Param('matchId') id: string, @Req() req: { user: { id: string } }, @Body() dto: ScoreboardLeaseDto) {
+    return this.scoreboard.release(id, req.user.id, dto.clientId);
+  }
+
+  @Post('matches/:matchId/scoreboard')
+  @Roles(UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER, UserRole.SCOREKEEPER)
+  scoreboardCommand(@Param('matchId') id: string, @Req() req: { user: { id: string; role: string } }, @Body() dto: ScoreboardCommandDto) {
+    return this.scoreboard.command(id, req.user.id, req.user.role, dto);
+  }
 
   @Get('matches/:matchId')
   @Roles(

@@ -320,6 +320,10 @@ export default function CmsLayout({ children }: { children: React.ReactNode }) {
     );
   }
 
+  if (/^\/cms\/matches\/[^/]+\/scoreboard$/.test(pathname)) {
+    return <ConfigProvider theme={cmsTheme}>{canAccessCmsPath(pathname, userRole) ? children : null}</ConfigProvider>;
+  }
+
   return (
     <ConfigProvider theme={cmsTheme}>
       <Layout

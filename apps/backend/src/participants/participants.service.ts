@@ -922,6 +922,7 @@ export class ParticipantsService {
         endDate: registration.event.endDate,
         location: registration.event.location,
         logoUrl: registration.event.logoUrl,
+        ticketDesign: registration.event.ticketDesign,
         ticketThemePreset: registration.event.ticketThemePreset,
         ticketLayout: registration.event.ticketLayout,
         ticketPrimaryColor: registration.event.ticketPrimaryColor,
@@ -934,7 +935,7 @@ export class ParticipantsService {
             ? ['BANK_QR']
             : [],
         ticketBackgroundUrl: registration.event.ticketBackgroundSize
-          ? `/api/events/${registration.event.id}/ticket-background`
+          ? `/api/events/${registration.event.id}/ticket-background?v=${new Date(registration.event.updatedAt).getTime()}`
           : null,
       },
       sport: {
@@ -1257,6 +1258,8 @@ export class ParticipantsService {
           location: true,
           logoUrl: true,
           ticketBackgroundSize: true,
+          updatedAt: true,
+          ticketDesign: true,
           ticketThemePreset: true,
           ticketLayout: true,
           ticketPrimaryColor: true,

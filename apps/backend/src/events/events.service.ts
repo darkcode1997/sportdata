@@ -1,3 +1,4 @@
+import { validateTicketDesign } from './ticket-design';
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateEventDto } from './dto/create-event.dto';
@@ -22,6 +23,7 @@ export class EventsService {
       participatingFederationIds,
       level = EventLevel.INTERNATIONAL,
       allowIndependentAthletes = true,
+      ticketDesign,
       ...data
     } = createEventDto;
     const selectedSportIds = Array.from(new Set(sportIds?.length ? sportIds : sportId ? [sportId] : []));
@@ -60,6 +62,7 @@ export class EventsService {
     const event = await this.prisma.event.create({
       data: {
         ...data,
+        ...(ticketDesign !== undefined ? { ticketDesign: this.designInput(ticketDesign) } : {}),
         level,
         allowIndependentAthletes,
         sport: { connect: { id: selectedSportIds[0] } },
@@ -348,6 +351,7 @@ export class EventsService {
       participatingFederationIds,
       level,
       allowIndependentAthletes,
+      ticketDesign,
       ...data
     } = updateEventDto;
     if (sportIds && !sportIds.length) {
@@ -416,6 +420,7 @@ export class EventsService {
       where: { id },
       data: {
         ...data,
+        ...(ticketDesign !== undefined ? { ticketDesign: this.designInput(ticketDesign) } : {}),
         ...(level !== undefined ? { level } : {}),
         ...(allowIndependentAthletes !== undefined ? { allowIndependentAthletes } : {}),
         ...(organizerId !== undefined
@@ -644,6 +649,7 @@ export class EventsService {
       logoSize: true,
       ticketBackgroundMimeType: true,
       ticketBackgroundSize: true,
+      ticketDesign: true,
       ticketThemePreset: true,
       ticketLayout: true,
       ticketPrimaryColor: true,
@@ -714,9 +720,15 @@ export class EventsService {
         ? `/api/events/${event.id}/logo-image${imageVersion ? `?v=${imageVersion}` : ''}`
         : event.logoUrl,
       ticketBackgroundUrl: event.ticketBackgroundSize
-        ? `/api/events/${event.id}/ticket-background`
+        ? `/api/events/${event.id}/ticket-background${imageVersion ? `?v=${imageVersion}` : ''}`
         : null,
     };
+  }
+
+  private designInput(value: unknown) {
+    if (value === null) return Prisma.DbNull;
+    try { return validateTicketDesign(value) as unknown as Prisma.InputJsonValue; }
+    catch (error) { throw new BadRequestException((error as Error).message); }
   }
 
   private async ensureEvent(id: string) {
