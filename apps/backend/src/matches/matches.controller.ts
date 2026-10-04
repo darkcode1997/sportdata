@@ -17,6 +17,7 @@ import { MatchesService } from './matches.service';
 import { CreateMatchDto } from './dto/create-match.dto';
 import { UpdateMatchDto } from './dto/update-match.dto';
 import { QueryMatchDto } from './dto/query-match.dto';
+import { RevertDrawDto } from './dto/revert-draw.dto';
 import { GenerateDrawDto } from './dto/generate-draw.dto';
 import { QueryDrawPreconfigurationDto, SaveDrawPreconfigurationDto, PreviewDrawDto } from './dto/draw-preconfiguration.dto';
 import { DrawPreconfigureGuard } from '../auth/draw-preconfigure.guard';
@@ -116,6 +117,23 @@ export class MatchesController {
   getPreconfigurationHistory(@Param('eventId') eventId: string, @Param('categoryId') categoryId: string,
     @Query() query: QueryDrawPreconfigurationDto) {
     return this.matchesService.getPreconfigurationHistory(eventId, categoryId, query.drawType);
+  }
+
+  @Get('event/:eventId/category/:categoryId/draw-state')
+  @UseGuards(JwtAuthGuard)
+  @Roles(UserRole.ADMIN, UserRole.CONTENT, UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER)
+  @ApiOperation({ summary: 'Check whether generated draws can be reverted before competition starts' })
+  getDrawState(@Param('eventId') eventId: string, @Param('categoryId') categoryId: string) {
+    return this.matchesService.getDrawState(eventId, categoryId);
+  }
+
+  @Post('event/:eventId/category/:categoryId/revert-draw')
+  @UseGuards(JwtAuthGuard)
+  @Roles(UserRole.ADMIN, UserRole.CONTENT, UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER)
+  @ApiOperation({ summary: 'Revert generated draws and fixtures of an unstarted category' })
+  revertDraw(@Param('eventId') eventId: string, @Param('categoryId') categoryId: string,
+    @Body() dto: RevertDrawDto, @Req() request: { user: { id: string } }) {
+    return this.matchesService.revertDraw(eventId, categoryId, dto.version, request.user.id);
   }
 
   @Post('event/:eventId/category/:categoryId/generate-draw')

@@ -33,7 +33,6 @@ import {
   Newspaper,
   Settings,
   Sun,
-  Swords,
   Trophy,
   User,
   UserCog,
@@ -69,7 +68,6 @@ type CmsNavGroup = {
 const navItems: Array<CmsNavLeaf | CmsNavGroup> = [
   { label: 'Dashboard', key: '/cms', icon: <LayoutDashboard className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms'] },
   { label: 'Sự kiện', key: '/cms/events', icon: <CalendarDays className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/events'] },
-  { label: 'Trận đấu', key: '/cms/matches', icon: <Swords className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/matches'] },
   { label: 'Bộ môn & hạng đấu', key: '/cms/sports', icon: <Trophy className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/sports'] },
   {
     label: 'Đơn vị & vận động viên',

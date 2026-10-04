@@ -24,7 +24,7 @@ export const seedingModes = [
 export type SeedingMode = (typeof seedingModes)[number];
 
 export class GenerateDrawDto {
-  @ApiProperty({ type: [String], description: 'Athlete IDs in seed order' })
+  @ApiProperty({ type: [String], description: 'All eligible athlete IDs; CompetitionEntry seeds take priority over input order' })
   @IsArray()
   @ArrayMinSize(2)
   @ArrayUnique()

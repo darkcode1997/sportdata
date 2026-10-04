@@ -51,7 +51,7 @@ const statusOptions = [
   { value: 'CANCELLED', label: 'Đã hủy' },
 ];
 
-export function MatchForm({ matchId, initialData, returnTo = '/cms/matches' }: { matchId?: string; initialData?: any; returnTo?: string }) {
+export function MatchForm({ matchId, initialData, returnTo = '/cms/events' }: { matchId?: string; initialData?: any; returnTo?: string }) {
   const router = useRouter();
   const toast = useSportDataToast();
   const { data: eventsResponse } = useSWR<any>('/events?limit=200', fetcher);
@@ -113,7 +113,7 @@ export function MatchForm({ matchId, initialData, returnTo = '/cms/matches' }: {
       if (matchId) await api.patch(`/matches/${matchId}`, payload);
       else await api.post('/matches', payload);
       toast.success(matchId ? 'Đã cập nhật trận đấu.' : 'Đã tạo trận đấu.');
-      router.push(matchId ? returnTo : '/cms/matches');
+      router.push(matchId ? returnTo : `/cms/events/${values.eventId}?tab=matches`);
       router.refresh();
     } catch (error: any) {
       const message = error.response?.data?.message || error.message || 'Không thể lưu trận đấu';
@@ -189,7 +189,7 @@ export function MatchForm({ matchId, initialData, returnTo = '/cms/matches' }: {
           </ControlledField>
         </Row>
       </Card>
-      <FormActions pending={isSubmitting} label={matchId ? 'Lưu thay đổi' : 'Tạo trận đấu'} cancelHref={matchId ? returnTo : '/cms/matches'} />
+      <FormActions pending={isSubmitting} label={matchId ? 'Lưu thay đổi' : 'Tạo trận đấu'} cancelHref={returnTo} />
     </Form>
   );
 }

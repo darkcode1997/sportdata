@@ -18,7 +18,32 @@ Phiên bản bao gồm toàn bộ danh sách CompetitionEntry của hạng, tr�
 
 Cấu hình và phương án không được đưa vào các API Draw/Match thông thường. Người không có quyền không thấy hoặc tải phần Pre-matches, Preview, lịch sử hoặc dấu hiệu cặp chỉ định. Lịch sử riêng ghi người thao tác, revision và snapshot khi cấu hình, preview hoặc sinh nhánh; không chỉnh sửa lịch sử qua API.
 
+## Phân bổ hạt giống
+
+Mọi chế độ giữ thứ tự hạt giống theo số seed tăng dần, kể cả RANDOM, ORDERED, tách quốc gia và tách CLB. Seed 1/2 thuộc hai nửa cây; bốn seed đầu thuộc bốn phần tư; tám seed đầu thuộc tám phần tám, tiếp tục tương tự. Số seed bị khuyết được xếp theo thứ tự tương đối của các seed thực tế. Với tám VĐV đều có seed, các cặp vòng đầu là `1–8, 4–5, 2–7, 3–6`. Các miễn đấu được ưu tiên cho seed cao nhất.
+
+VĐV không có seed được xếp sau các seed; RANDOM chỉ đảo các VĐV này. Tách quốc gia/CLB chỉ đổi chỗ VĐV không seed để giảm cặp cùng đơn vị/quốc gia ở vòng đầu, giữ vị trí seed và miễn đấu. Hệ thống chưa có dữ liệu sức mạnh để phân biệt VĐV không seed, nên không khẳng định ai yếu nhất trong nhóm này.
+
+Cặp Pre-matches là một khối không tách, được bố trí cùng các seed theo thứ tự ưu tiên. Các vị trí được chọn để trì hoãn lần gặp sớm nhất giữa các seed còn lại, ưu tiên vị trí chuẩn khi tương đương, đồng thời giữ đủ trận cho những cặp cố định và đủ VĐV cho các trận còn trống. Một cặp chỉ định giữa hai seed hoặc số lượng cặp chỉ định quá lớn có thể buộc các seed gặp sớm hơn. Thuật toán này dùng chung cho preview và sinh nhánh chính của loại trực tiếp, tuyệt đối, loại kép và đấu vớt; vòng tròn vẫn thi đấu đủ mọi đối thủ trong bảng.
+
+Phiên bản thuật toán đã tăng lên 2. Preview đã lưu bằng thuật toán cũ phải được preview lại trước khi sinh; cây đã sinh cần thu hồi rồi chia lại nếu chưa có trận bắt đầu.
+
 Mọi thao tác ghi được thực hiện trong transaction PostgreSQL Serializable, khóa event để phân bổ số trận và kiểm tra tồn tại trước khi ghi. Yêu cầu sinh đồng thời cho cùng phương án chỉ có một yêu cầu thành công; các yêu cầu còn lại trả 409. Cấu hình dùng revision để từ chối chỉnh sửa đè lên phiên bản của người khác.
+
+## Thu hồi nhánh trước khi thi đấu
+
+Trong phần chọn thể thức, người có quyền sinh nhánh thấy **Thu hồi nhánh đấu** khi hạng đang chọn đã có cây/bảng. Sau xác nhận, hệ thống xóa toàn bộ nhánh, bảng vòng tròn và trận thuộc các nhánh/bảng của hạng đó, gồm lịch trận đã xếp. Các lượt đăng ký, seed, FOP và trận nhập riêng ngoài nhánh/bảng được giữ. Thu hồi theo hạng, không ảnh hưởng các hạng khác.
+
+Chỉ cho thu hồi khi chưa có trận nào trong hạng bắt đầu hoặc ghi nhận kết quả. Trận miễn đấu tự động không được tính là đã thi đấu. Mở/giữ quyền điều khiển bảng điểm hoặc xếp lịch chưa được tính là bắt đầu. Trận đang chạy, tạm dừng, đã kết thúc, có kết quả, hoặc đã mở lại sau thi đấu đều chặn thu hồi. Nếu cây có liên kết với trận ngoài phạm vi xóa, hệ thống cũng từ chối để giữ nguyên cây liên quan.
+
+Thu hồi giữ cặp Pre-matches và cấu hình, vô hiệu hóa phương án preview cũ và tăng revision. Sau đó chỉnh seed, preview lại bằng tài khoản có quyền, rồi sinh nhánh. Hạng không có cấu hình riêng có thể sinh lại trực tiếp. Lịch sử riêng ghi `REVERT`; audit chung ghi người thu hồi và số nhánh/bảng/trận bị xóa.
+
+API vận hành (JWT và vai trò được phép sinh nhánh, không yêu cầu DRAW_PRECONFIGURE), với cùng tiền tố event/category:
+
+- `GET /draw-state`: `{ version, canRevert, drawCount, groupCount, matchCount, reason }`.
+- `POST /revert-draw`: `{ version }`, dùng version từ GET. Version cũ, hạng đã bắt đầu hoặc yêu cầu thu hồi trùng trả 409.
+
+Thu hồi, sinh cây và thao tác START/FINISH dùng chung khóa event. Thu hồi còn khóa các trận trong transaction để kiểm tra lại trạng thái trước khi xóa; bắt đầu trận và thu hồi đồng thời không thể xóa một trận đã bắt đầu.
 
 ## API riêng
 
@@ -37,15 +62,16 @@ Revision ban đầu là 0. Sau mỗi thao tác, dùng revision từ response cho
 npm run build
 npm run lint --workspace=@sportdata/frontend
 node apps/backend/scripts/smoke-bracket-byes.mjs
-node apps/backend/scripts/smoke-draw-preconfiguration.mjs
+node tests/regression/draw-seeding.mjs
+node tests/regression/draw-preconfiguration.mjs
 ```
 
-Smoke test mới dùng database URL từ môi trường hoặc `.env`, chỉ cho phép PostgreSQL localhost. Script tạo schema tạm, áp dụng migration, chạy HTTP API thật với tài khoản tạm rồi xóa schema trong `finally`; không thay đổi tài khoản và dữ liệu ứng dụng hiện có. Bao phủ 2–65 VĐV ở năm cách xếp seed, A–C → preview → đổi tài khoản → sinh đúng cây, quyền API và thu hồi quyền, miễn đấu, version thay đổi, revision cũ, dữ liệu riêng, loại kép, đấu vớt 6/16 VĐV, đấu vớt dưới 6, vòng tròn nhiều bảng, tuyệt đối và bốn yêu cầu sinh đồng thời.
+Smoke test mới dùng database URL từ môi trường hoặc `.env`, chỉ cho phép PostgreSQL localhost. Script tạo schema tạm, áp dụng migration, chạy HTTP API thật với tài khoản tạm rồi xóa schema trong `finally`; không thay đổi tài khoản và dữ liệu ứng dụng hiện có. Bao phủ 2–65 VĐV ở năm cách xếp seed, A–C → preview → đổi tài khoản → sinh đúng cây, quyền API và thu hồi quyền, miễn đấu, version thay đổi, revision cũ, dữ liệu riêng, loại kép, đấu vớt 6/16 VĐV, đấu vớt dưới 6, vòng tròn nhiều bảng, tuyệt đối và bốn yêu cầu sinh đồng thời. Kiểm thử thu hồi bao phủ cây có miễn đấu, giữ seed/cặp, chia lại, dọn bảng/thành viên/MatchParticipant, quyền vận hành, version cũ, thu hồi đồng thời và START đồng thời với thu hồi.
 
 Kiểm tra giao diện bằng Playwright với frontend đang chạy (toàn bộ API được mock, không ghi dữ liệu):
 
 ```sh
-node apps/frontend/scripts/smoke-draw-preconfiguration.mjs
+node tests/regression/draw-preconfiguration-ui.mjs
 ```
 
 Có thể đặt `DRAW_PLAYWRIGHT_MODULE` để trỏ đến Playwright cài sẵn, `DRAW_CHROME_PATH` cho executable Chrome, `DRAW_UI_URL` cho URL frontend và `DRAW_SCREENSHOT_PATH` để lưu ảnh chụp. Bài kiểm tra xác nhận chọn một VĐV chưa lưu, chọn đủ hai tự lưu đúng Entry ID, xóa cặp tự lưu, render preview và tài khoản thường không gọi API cấu hình riêng.

@@ -77,7 +77,7 @@ export function MatchScoreboard({ matchId }: { matchId: string }) {
   const terminal = board?.proposedWinMethod === 'SUBMISSION' || board?.proposedWinMethod === 'DISQUALIFICATION';
   const canConfirmResult = terminal || remaining === 0;
   const athletes = [details?.athlete1, details?.athlete2];
-  const returnTo = board ? `/cms/events/${board.eventId}?tab=matches` : '/cms/matches';
+  const returnTo = board ? `/cms/events/${board.eventId}?tab=matches` : '/cms/events';
 
   useEffect(() => {
     setClientId(typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}-${Math.random()}`);
@@ -157,7 +157,7 @@ export function MatchScoreboard({ matchId }: { matchId: string }) {
     } catch { setError('Trình duyệt không hỗ trợ toàn màn hình. Bạn có thể dùng phím F11.'); }
   }
 
-  if (!board) return <div className={styles.loading}><p>{loadError ? 'Không thể mở bảng điểm hoặc bạn chưa có quyền chấm điểm.' : 'Đang tải bảng điểm…'}</p><button onClick={() => mutate()}>Thử lại</button><Link href="/cms/matches">Quay lại</Link></div>;
+  if (!board) return <div className={styles.loading}><p>{loadError ? 'Không thể mở bảng điểm hoặc bạn chưa có quyền chấm điểm.' : 'Đang tải bảng điểm…'}</p><button onClick={() => mutate()}>Thử lại</button><Link href="/cms/events">Quay lại</Link></div>;
   const disabled = busy || Boolean(loadError) || leaseState !== 'owned';
   return (
     <div ref={root} className={styles.board}>

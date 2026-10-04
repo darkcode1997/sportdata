@@ -1094,9 +1094,14 @@ function BracketTab({ event, canOperate, preconfigureActorId }: { event: any; ca
   const [seedingMode, setSeedingMode] = useState('STANDARD');
   const [groupCount, setGroupCount] = useState(1);
   const [generating, setGenerating] = useState(false);
+  const [reverting, setReverting] = useState(false);
   const [preconfigurationBusy, setPreconfigurationBusy] = useState(false);
   const category = event.categories?.find((item: any) => item.id === categoryId);
   const { data: entries = [], isLoading, mutate: mutateEntries } = useSWR<any[]>(categoryId ? `/competitions/events/${event.id}/categories/${categoryId}/entries` : null, fetcher);
+  const { data: drawState, error: drawStateError, isLoading: drawStateLoading } = useSWR<{
+    version: string; canRevert: boolean; drawCount: number; groupCount: number; matchCount: number; reason?: string;
+  }>(canOperate && categoryId ? `/matches/event/${event.id}/category/${categoryId}/draw-state` : null, fetcher, { refreshInterval: 5000 });
+  const hasDraws = !!drawState && (drawState.drawCount > 0 || drawState.groupCount > 0);
   const activeEntries = entries.filter((entry) => entry.status === 'VERIFIED' && entry.type === 'INDIVIDUAL' && entry.athlete?.id);
   const usesRoundRobin = format === 'ROUND_ROBIN' || (format === 'REPECHAGE' && activeEntries.length < 6);
   const drawType = format === 'ROUND_ROBIN' ? 'ROUND_ROBIN_POOL' : format === 'DOUBLE' ? 'DOUBLE_ELIMINATION' : format === 'REPECHAGE' ? 'REPECHAGE' : 'MAIN_TREE';
@@ -1110,6 +1115,29 @@ function BracketTab({ event, canOperate, preconfigureActorId }: { event: any; ca
     } catch (error: any) {
       toast.error(error.response?.data?.message || 'Không thể cập nhật hạt giống.');
     }
+  };
+
+  const refreshDraws = async () => {
+    await Promise.all([
+      mutateGlobal((key) => {
+        const url = typeof key === 'string' ? key : Array.isArray(key) ? key[0] : null;
+        return typeof url === 'string' && (url.startsWith(`/matches/event/${event.id}/`) || url.startsWith('/matches?'));
+      }),
+      mutateEntries(),
+    ]);
+  };
+
+  const revert = async () => {
+    if (!drawState?.canRevert || reverting || generating) return;
+    setReverting(true);
+    try {
+      await api.post(`/matches/event/${event.id}/category/${categoryId}/revert-draw`, { version: drawState.version });
+      await refreshDraws();
+      toast.success('Đã thu hồi nhánh đấu. Bạn có thể chỉnh seed và chia lại các cặp trận.');
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Không thể thu hồi nhánh đấu.');
+      await refreshDraws();
+    } finally { setReverting(false); }
   };
 
   const generate = async () => {
@@ -1131,10 +1159,7 @@ function BracketTab({ event, canOperate, preconfigureActorId }: { event: any; ca
         name: format === 'ABSOLUTE' ? 'Hạng Tuyệt đối' : undefined,
         fops: event.fops?.length ? event.fops.map((fop: any) => fop.name) : undefined,
       });
-      await Promise.all([
-        mutateGlobal((key) => typeof key === 'string' && key.startsWith(`/matches/event/${event.id}/`)),
-        mutateGlobal((key) => typeof key === 'string' && key.startsWith('/matches?')),
-      ]);
+      await refreshDraws();
       toast.success('Đã sinh thể thức và danh sách trận đấu tự động. Mở tab Trận đấu để xem sơ đồ cây.');
     } catch (error: any) {
       toast.error(error.response?.data?.message || 'Không thể sinh nhánh đấu.');
@@ -1174,8 +1199,22 @@ function BracketTab({ event, canOperate, preconfigureActorId }: { event: any; ca
         {format === 'REPECHAGE' && usesRoundRobin && <Alert className="!mt-4" type="info" showIcon message="Dưới 6 VĐV: tự động dùng vòng tròn. Cặp đặt trước áp dụng ở lượt đấu đầu." />}
         <div className="mt-5 grid gap-4 md:grid-cols-2">
           {preconfigureActorId ? <span className="self-center text-sm text-slate-500">Cấu hình cặp và cách xếp trong Pre-matches phía trên.</span> : format === 'ROUND_ROBIN' ? <InputNumber className="w-full" min={1} max={Math.max(1, Math.min(16, Math.floor(activeEntries.length / 2)))} value={groupCount} onChange={(value) => setGroupCount(value || 1)} addonBefore="Số bảng" /> : usesRoundRobin ? <span className="self-center text-sm text-slate-500">Thi đấu vòng tròn trong một bảng.</span> : <Select value={seedingMode} onChange={setSeedingMode} options={[{ value: 'STANDARD', label: 'Xếp hạt giống chuẩn' }, { value: 'RANDOM', label: 'Ngẫu nhiên' }, { value: 'COUNTRY_SEPARATED', label: 'Tách quốc gia' }, { value: 'FEDERATION_SEPARATED', label: 'Tách đơn vị / CLB' }]} />}
-          <Button type="primary" disabled={!canOperate || isLoading || activeEntries.length < minimumEntries || (!!preconfigureActorId && preconfigurationBusy)} loading={generating} onClick={generate} icon={<Network className="h-4 w-4" />}>Sinh nhánh đấu tự động</Button>
+          <Space wrap>
+            <Button type="primary" disabled={!canOperate || isLoading || drawStateLoading || !!drawStateError || hasDraws || reverting || activeEntries.length < minimumEntries || (!!preconfigureActorId && preconfigurationBusy)} loading={generating} onClick={generate} icon={<Network className="h-4 w-4" />}>Sinh nhánh đấu tự động</Button>
+            {canOperate && hasDraws && <Popconfirm
+              title="Thu hồi nhánh đấu của hạng này?"
+              description="Xóa nhánh và các trận đã sinh, gồm lịch đã xếp. Danh sách VĐV và seed được giữ để chia lại."
+              okText="Thu hồi nhánh" cancelText="Hủy" okButtonProps={{ danger: true }}
+              disabled={!drawState.canRevert || reverting || generating} onConfirm={revert}
+            >
+              <Button danger disabled={!drawState.canRevert || reverting || generating} loading={reverting}>Thu hồi nhánh đấu</Button>
+            </Popconfirm>}
+          </Space>
         </div>
+        {!usesRoundRobin && <p className="mt-3 text-sm text-slate-500">Seed 1 và 2 ở hai nửa cây; các seed tiếp theo được phân đều để gặp nhau muộn. Ngẫu nhiên và tách quốc gia/CLB vẫn giữ vị trí seed.</p>}
+        {hasDraws && <Alert className="!mt-4" showIcon type={drawState.canRevert ? 'info' : 'warning'}
+          message={drawState.canRevert ? `Đã sinh ${drawState.matchCount} trận. Có thể thu hồi nhánh để chỉnh seed và chia lại trước khi bắt đầu thi đấu.` : drawState.reason} />}
+        {drawStateError && <Alert className="!mt-4" showIcon type="error" message="Không thể kiểm tra trạng thái nhánh đấu. Hãy tải lại trang." />}
       </Card>
       <Card title={`3. Danh sách đầu vào (${activeEntries.length} VĐV)`} loading={isLoading}>
         {activeEntries.length ? <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">{activeEntries.map((entry) => <div key={entry.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-300/15 px-3 py-2"><div className="min-w-0"><strong className="block truncate">{entry.athlete.fullName}</strong><div className="truncate text-xs text-slate-500">{entry.athlete.federation?.name || 'VĐV tự do'}</div></div><div className="w-24"><SeedInput value={entry.seed} disabled={!canOperate} onSave={(value) => void updateSeed(entry, value)} /></div></div>)}</div> : <Empty description="Chưa có lượt đăng ký đã xác nhận cho hạng đấu này." />}
