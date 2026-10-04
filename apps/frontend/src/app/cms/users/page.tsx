@@ -31,6 +31,7 @@ type CmsUser = {
   name: string;
   role: CmsRole;
   isActive: boolean;
+  permissions?: string[];
   createdAt: string;
 };
 
@@ -40,6 +41,7 @@ type UserForm = {
   email: string;
   role: CmsRole;
   isActive: boolean;
+  permissions?: string[];
   password?: string;
 };
 
@@ -61,7 +63,7 @@ export default function CmsUsersPage() {
   const create = () => {
     setEditing(null);
     form.resetFields();
-    form.setFieldsValue({ role: 'CONTENT', isActive: true });
+    form.setFieldsValue({ role: 'CONTENT', isActive: true, permissions: [] });
     setOpen(true);
   };
 
@@ -73,6 +75,7 @@ export default function CmsUsersPage() {
       email: user.email,
       role: user.role,
       isActive: user.isActive,
+      permissions: user.permissions || [],
       password: undefined,
     });
     setOpen(true);
@@ -250,6 +253,9 @@ export default function CmsUsersPage() {
           </div>
           <Form.Item name="email" label="Email" rules={[{ required: true, message: 'Nhập email' }, { type: 'email', message: 'Email không hợp lệ' }]}>
             <Input type="email" autoComplete="off" />
+          </Form.Item>
+          <Form.Item name="permissions" label="Quyền riêng">
+            <Select mode="multiple" options={[{ value: 'DRAW_PRECONFIGURE', label: 'Đặt trước cặp & preview cây đấu' }]} />
           </Form.Item>
           <Form.Item name="isActive" label="Cho phép đăng nhập" valuePropName="checked">
             <Switch disabled={editing?.id === profile?.id} />

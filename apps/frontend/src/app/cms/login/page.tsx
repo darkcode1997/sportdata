@@ -85,7 +85,7 @@ export default function LoginPage() {
   if (!isReady) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-sdark-950">
-        <Spin size="large" tip="Đang tải" />
+        <Spin size="large" description="Đang tải" />
       </div>
     );
   }

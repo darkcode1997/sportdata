@@ -6,10 +6,6 @@ export const metadata: Metadata = {
   referrer: 'no-referrer',
 };
 
-export default function ResetPasswordPage({
-  searchParams,
-}: {
-  searchParams?: { token?: string };
-}) {
-  return <ResetPasswordForm token={searchParams?.token || ''} />;
+export default function ResetPasswordPage() {
+  return <ResetPasswordForm />;
 }

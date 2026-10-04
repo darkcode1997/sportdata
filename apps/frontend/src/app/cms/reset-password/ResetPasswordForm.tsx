@@ -1,13 +1,15 @@
 'use client';
 
 import { useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import axios from 'axios';
 import { Alert, Button, Card, Form, Input } from 'antd';
 import { ArrowLeft, Eye, EyeOff, KeyRound, Lock, Trophy } from 'lucide-react';
 import { useSportDataToast } from '@/hooks/useSportDataToast';
 
-export function ResetPasswordForm({ token }: { token: string }) {
+export function ResetPasswordForm() {
+  const token = useSearchParams().get('token') || '';
   const [password, setPassword] = useState('');
   const [confirmation, setConfirmation] = useState('');
   const [showPassword, setShowPassword] = useState(false);

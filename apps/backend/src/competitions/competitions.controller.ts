@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -68,7 +68,8 @@ export class CompetitionsController {
     @Param('eventId') eventId: string,
     @Param('categoryId') categoryId: string,
     @Body() dto: GenerateRoundRobinDto,
+    @Req() request: { user: { id: string } },
   ) {
-    return this.competitions.generateRoundRobin(eventId, categoryId, dto);
+    return this.competitions.generateRoundRobin(eventId, categoryId, dto, request.user.id);
   }
 }

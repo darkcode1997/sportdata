@@ -1,10 +1,13 @@
+import { assertAthleteEligibility } from '../competitions/athlete-eligibility';
+import { resolveEventAgeLimits } from '../events/event-age-limits';
 import {
   BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
+import { PreconfiguredPairDto, SaveDrawPreconfigurationDto, PreviewDrawDto, preconfigurationDrawTypes } from './dto/draw-preconfiguration.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateMatchDto } from './dto/create-match.dto';
 import { UpdateMatchDto } from './dto/update-match.dto';
@@ -101,6 +104,12 @@ type ScheduledFop = {
   name: string;
 };
 
+type PlannedRoundRobinGroup = {
+  id: string;
+  name: string;
+  members: Array<{ entryId: string; seed: number | null }>;
+};
+
 type DateAssignableMatch = {
   id: string;
   matchNumber?: number | null;
@@ -151,16 +160,17 @@ export class MatchesService {
     if (live) throw new ConflictException('Sân hoặc VĐV đang thi đấu ở trận khác');
     await this.assertFopAvailability(db, match.eventId, match.fopId, match.startTime, match.endTime, match.id);
     await this.assertParticipantAvailability(db, match.eventId, match.categoryId, athletes, match.startTime, match.endTime, match.id);
-    const category = await db.category.findUnique({ where: { id: match.categoryId } });
-    const rule = await db.sportSchedulingRule.findUnique({ where: { eventId_sportId: { eventId: match.eventId, sportId: category.sportId } } });
-    const recent = await db.match.findMany({ where: { eventId: match.eventId, status: MatchStatus.FINISHED,
-      OR: [{ athlete1Id: { in: athletes } }, { athlete2Id: { in: athletes } }],
-    }, select: { resultData: true, resultEnteredAt: true } });
-    const restMs = (rule?.minRestMinutes ?? 60) * 60_000;
-    if (recent.some((item) => {
-      const finishedAt = (item.resultData as any)?.scoreboard?.finishedAt || item.resultEnteredAt?.toISOString();
-      return finishedAt && Date.now() - Date.parse(finishedAt) < restMs;
-    })) throw new ConflictException('VĐV chưa đủ thời gian nghỉ sau trận vừa kết thúc');
+    // Temporarily disabled: minimum rest time between completed matches.
+    // const category = await db.category.findUnique({ where: { id: match.categoryId } });
+    // const rule = await db.sportSchedulingRule.findUnique({ where: { eventId_sportId: { eventId: match.eventId, sportId: category.sportId } } });
+    // const recent = await db.match.findMany({ where: { eventId: match.eventId, status: MatchStatus.FINISHED,
+    //   OR: [{ athlete1Id: { in: athletes } }, { athlete2Id: { in: athletes } }],
+    // }, select: { resultData: true, resultEnteredAt: true } });
+    // const restMs = (rule?.minRestMinutes ?? 60) * 60_000;
+    // if (recent.some((item) => {
+    //   const finishedAt = (item.resultData as any)?.scoreboard?.finishedAt || item.resultEnteredAt?.toISOString();
+    //   return finishedAt && Date.now() - Date.parse(finishedAt) < restMs;
+    // })) throw new ConflictException('VĐV chưa đủ thời gian nghỉ sau trận vừa kết thúc');
   }
 
   async findAll(query: QueryMatchDto, includeUnpublishedResults = false) {
@@ -790,187 +800,389 @@ export class MatchesService {
     };
   }
 
-  async generateDraw(eventId: string, categoryId: string, dto: GenerateDrawDto) {
-    const drawType = dto.type || DrawType.MAIN_TREE;
-    const supportedTypes: DrawType[] = [DrawType.MAIN_TREE, DrawType.REPECHAGE, DrawType.DOUBLE_ELIMINATION];
-    if (!supportedTypes.includes(drawType)) {
-      throw new BadRequestException('Sinh cây tự động chỉ hỗ trợ nhánh chính, đấu vớt và loại kép');
-    }
-    if (drawType === DrawType.DOUBLE_ELIMINATION && dto.athleteIds.length < 4) {
-      throw new BadRequestException('Thể thức loại kép cần ít nhất 4 vận động viên');
-    }
+  private preconfigurationKey(eventId: string, categoryId: string, drawType: DrawType) {
+    return { eventId_categoryId_drawType: { eventId, categoryId, drawType } };
+  }
 
-    if (drawType === DrawType.REPECHAGE && dto.athleteIds.length < 6) {
-      throw new BadRequestException('Dưới 6 VĐV cần dùng đấu vòng tròn, không sinh nhánh Repechage');
+  private assertPreconfigurationType(drawType: DrawType) {
+    if (!preconfigurationDrawTypes.includes(drawType)) {
+      throw new BadRequestException('Thể thức cấu hình trận đấu không được hỗ trợ');
     }
+  }
 
-    const [event, category, athletes, entries] = await Promise.all([
-      this.prisma.event.findUnique({ where: { id: eventId }, select: { id: true, startDate: true, endDate: true } }),
-      this.prisma.category.findFirst({
-        where: { id: categoryId, events: { some: { id: eventId } } },
-        select: { id: true, name: true },
+  // Serialize draw operations per event, including allocation of match numbers.
+  private async drawTransaction<T>(eventId: string, work: (db: Prisma.TransactionClient) => Promise<T>) {
+    try {
+      return await this.prisma.$transaction(async (db) => {
+        await db.$queryRaw`SELECT "id" FROM "Event" WHERE "id" = ${eventId} FOR UPDATE`;
+        return work(db);
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 30000 });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && ['P2034', 'P2002'].includes(error.code)) {
+        throw new ConflictException('Dữ liệu vừa thay đổi hoặc nhánh đã được tạo. Hãy tải lại và thử lại');
+      }
+      throw error;
+    }
+  }
+
+  private async loadDrawInput(db: Prisma.TransactionClient | PrismaService, eventId: string, categoryId: string) {
+    const [event, category, entries, fops] = await Promise.all([
+      db.event.findUnique({ where: { id: eventId }, select: { id: true, startDate: true, endDate: true, ageLimitMode: true, minAge: true, maxAge: true } }),
+      db.category.findFirst({ where: { id: categoryId, events: { some: { id: eventId } } } }),
+      db.competitionEntry.findMany({
+        where: { eventId, categoryId }, orderBy: { id: 'asc' },
+        include: { athlete: { include: {
+          country: { select: { code: true, name: true, flagUrl: true } },
+          federation: { select: { id: true, name: true } },
+          events: { where: { id: eventId }, select: { id: true } },
+          categories: { where: { id: categoryId }, select: { id: true } },
+        } } },
       }),
-      this.prisma.athlete.findMany({
-        where: {
-          id: { in: dto.athleteIds },
-          events: { some: { id: eventId } },
-          categories: { some: { id: categoryId } },
-        },
-        select: { id: true, countryId: true, federationId: true },
-      }),
-      this.prisma.competitionEntry.findMany({
-        where: {
-          eventId,
-          categoryId,
-          athleteId: { in: dto.athleteIds },
-          status: EntryStatus.VERIFIED,
-        },
-        select: { athleteId: true, seed: true },
-      }),
+      db.fop.findMany({ where: { eventId }, orderBy: { id: 'asc' }, select: { id: true, name: true } }),
     ]);
+    if (!event) throw new NotFoundException('Không tìm thấy sự kiện');
+    if (!category) throw new BadRequestException('Hạng đấu không thuộc sự kiện');
+    const eligibleEntries = entries.filter((entry) => entry.status === EntryStatus.VERIFIED
+      && entry.type === 'INDIVIDUAL' && entry.athlete && entry.athlete.events.length && entry.athlete.categories.length);
+    return { event, category, entries, eligibleEntries, fops };
+  }
 
-    if (!event) throw new NotFoundException(`Không tìm thấy sự kiện có mã ${eventId}`);
-    if (!category) throw new NotFoundException(`Không tìm thấy hạng mục có mã ${categoryId}`);
-    if (athletes.length !== dto.athleteIds.length) {
-      throw new BadRequestException(
-        'Một hoặc nhiều vận động viên chưa đăng ký hạng đấu này trong sự kiện',
-      );
-    }
-    if (dto.divisionId) {
-      const division = await this.prisma.division.findFirst({
-        where: { id: dto.divisionId, categoryId },
-        select: { id: true },
-      });
-      if (!division) throw new BadRequestException('Phân hạng không thuộc hạng mục này');
-    }
+  private inputVersion(input: Awaited<ReturnType<MatchesService['loadDrawInput']>>, pairs: unknown, options: unknown) {
+    // Include the whole roster (also ineligible entries) to detect additions,
+    // withdrawals, eligibility edits, seed edits and restored values after edits.
+    const canonical = (value: any): any => {
+      if (value instanceof Date) return value.toISOString();
+      if (Array.isArray(value)) return value.map(canonical);
+      if (value && typeof value === 'object') return Object.fromEntries(Object.keys(value).sort().map((key) => [key, canonical(value[key])]));
+      return value;
+    };
+    return createHash('sha256').update(JSON.stringify(canonical({
+      algorithm: 1, event: input.event, category: input.category, entries: input.entries, fops: input.fops, pairs, options,
+    }))).digest('hex');
+  }
 
-    const seeds = new Map(entries.map((entry) => [entry.athleteId, entry.seed]));
-    const orderedAthletes = dto.athleteIds.map((id) => ({
-      ...(athletes.find((athlete) => athlete.id === id) as SeedAthlete),
-      seed: seeds.get(id) ?? null,
-    }));
-    const fopNames = Array.from(new Set(
-      (dto.fops?.length ? dto.fops : dto.fop ? [dto.fop] : [])
-        .map((name) => name.trim())
-        .filter(Boolean),
-    ));
-    const bracketSize = this.nextPowerOfTwo(orderedAthletes.length);
-    const seededSlots = this.seedAthletes(
-      orderedAthletes,
-      bracketSize,
-      dto.seedingMode || 'STANDARD',
-    );
-    const baseName = dto.name?.trim() || `${category.name} - MAIN TREE POOL 1`;
-    const conflictingDraw = await this.prisma.draw.findFirst({
-      where: {
-        eventId,
-        categoryId,
-        name: { in: [baseName, `${baseName} - REPECHAGE`, `${baseName} - DOUBLE-ELIMINATION TREE`] },
-      },
-      select: { name: true },
+  private validatePairs(input: Awaited<ReturnType<MatchesService['loadDrawInput']>>, pairs: PreconfiguredPairDto[],
+    drawType: DrawType, groupCount = 1) {
+    const eligible = new Set(input.eligibleEntries.map((entry) => entry.id));
+    const used = new Set<string>();
+    for (const pair of pairs) {
+      for (const id of [pair.entry1Id, pair.entry2Id]) {
+        if (!eligible.has(id)) throw new BadRequestException('Cặp đặt trước phải dùng lượt đăng ký đã xác minh đúng sự kiện và hạng đấu');
+        const entry = input.eligibleEntries.find((item) => item.id === id)!;
+        assertAthleteEligibility(entry.athlete!, { ...input.category, ...resolveEventAgeLimits(input.event, input.category) }, input.event.startDate);
+        if (used.has(id)) throw new BadRequestException('VĐV không được xuất hiện trong nhiều cặp hoặc đấu với chính mình');
+        used.add(id);
+      }
+    }
+    if (drawType === DrawType.ROUND_ROBIN_POOL || (drawType === DrawType.REPECHAGE && input.eligibleEntries.length < 6)) {
+      // Empty rosters can still have an empty configuration while registrations arrive.
+      if (!pairs.length && input.eligibleEntries.length < 2) return;
+      const sizes = this.roundRobinGroupSizes(input.eligibleEntries.length, drawType === DrawType.REPECHAGE ? 1 : groupCount);
+      if (pairs.length > sizes.reduce((sum, size) => sum + Math.floor(size / 2), 0)) {
+        throw new BadRequestException('Quá nhiều cặp đặt trước cho lượt đầu của các bảng; hãy giảm số cặp hoặc số bảng');
+      }
+      return;
+    }
+    const size = this.nextPowerOfTwo(input.eligibleEntries.length);
+    if (pairs.length > Math.max(0, input.eligibleEntries.length - size / 2)) {
+      throw new BadRequestException('Số cặp đặt trước không cho phép phân bổ miễn đấu hợp lệ; hãy giảm số cặp');
+    }
+  }
+
+  private placePreconfiguredPairs(athletes: SeedAthlete[], size: number, mode: SeedingMode, pairs: string[][]) {
+    const baseline = this.seedAthletes(athletes, size, mode);
+    if (!pairs.length && mode !== 'ORDERED') return baseline;
+    const slots = [...baseline];
+    const fixed = new Set<number>();
+    const pairedIds = new Set(pairs.flat());
+    for (let index = 0; index < slots.length; index += 1) {
+      if (slots[index] && pairedIds.has(slots[index]!.id)) slots[index] = null;
+    }
+    // Reserve whole matches before arranging remaining athletes.
+    pairs.forEach(([first, second], index) => {
+      fixed.add(index);
+      slots[index * 2] = athletes.find((athlete) => athlete.id === first)!;
+      slots[index * 2 + 1] = athletes.find((athlete) => athlete.id === second)!;
     });
-    if (conflictingDraw) {
-      throw new BadRequestException(`Draw "${conflictingDraw.name}" already exists`);
+    const remaining = baseline.filter((athlete): athlete is SeedAthlete => !!athlete && !pairedIds.has(athlete.id));
+    const occupied = new Set(slots.filter((athlete, index) => athlete && !fixed.has(Math.floor(index / 2))).map((athlete) => athlete!.id));
+    // Athletes displaced by a fixed pair are reinserted in free positions.
+    for (const athlete of remaining.filter((athlete) => !occupied.has(athlete.id))) {
+      const index = slots.findIndex((value, position) => !value && !fixed.has(Math.floor(position / 2)));
+      slots[index] = athlete;
     }
+    // Each first-round match must contain an athlete: exactly size-N byes,
+    // never an empty-vs-empty match. Fixed pairs cannot be split by this pass.
+    for (let index = 0; index < size; index += 2) {
+      if (slots[index] || slots[index + 1]) continue;
+      const donor = slots.findIndex((value, position) => value && !fixed.has(Math.floor(position / 2))
+        && slots[position ^ 1]);
+      if (donor < 0) throw new BadRequestException('Không thể bố trí miễn đấu với các cặp đã chọn');
+      slots[index] = slots[donor];
+      slots[donor] = null;
+    }
+    return slots;
+  }
 
-    const maximumMatch = await this.prisma.match.aggregate({
-      where: { eventId },
-      _max: { matchNumber: true },
+  private buildDrawPlan(input: Awaited<ReturnType<MatchesService['loadDrawInput']>>, dto: GenerateDrawDto,
+    pairs: PreconfiguredPairDto[]) {
+    if (dto.type === DrawType.ROUND_ROBIN_POOL) return this.buildRoundRobinPlan(input, dto, pairs);
+    if (dto.type === DrawType.REPECHAGE && input.eligibleEntries.length < 6) return this.buildRoundRobinPlan(input, { ...dto, groupCount: 1 }, pairs);
+    const type = dto.type || DrawType.MAIN_TREE;
+    const athletes = dto.athleteIds.map((id) => {
+      const entry = input.eligibleEntries.find((entry) => entry.athleteId === id)!;
+      return { id, countryId: entry.athlete!.countryId, federationId: entry.athlete!.federationId, seed: entry.seed };
     });
-    const number = { value: dto.startMatchNumber || (maximumMatch._max.matchNumber || 0) + 1 };
-    const mainDrawId = randomUUID();
+    const size = this.nextPowerOfTwo(athletes.length);
+    const pairAthletes = pairs.map((pair) => [pair.entry1Id, pair.entry2Id]
+      .map((id) => input.eligibleEntries.find((entry) => entry.id === id)!.athleteId!));
+    const slots = this.placePreconfiguredPairs(athletes, size, dto.seedingMode || 'STANDARD', pairAthletes);
+    const names = [...new Set((dto.fops?.length ? dto.fops : dto.fop ? [dto.fop] : []).map((name) => name.trim()).filter(Boolean))];
+    const fops = names.map((name) => {
+      const fop = input.fops.find((item) => item.name === name);
+      if (!fop) throw new BadRequestException('Sàn/FOP không thuộc sự kiện');
+      return fop;
+    });
+    const baseName = dto.name?.trim() || `${input.category.name} - MAIN TREE POOL 1`;
+    const mainId = randomUUID();
+    const number = { value: dto.startMatchNumber || 1 };
+    const common = { eventId: input.event.id, categoryId: input.category.id, divisionId: dto.divisionId,
+      matchDate: input.event.startDate, fops, fopCursor: { value: 0 }, number };
+    const rounds = this.buildWinnerBracket({ ...common, drawId: mainId, slots });
+    const matches = rounds.flat();
+    const draws = [{ id: mainId, name: baseName, type: DrawType.MAIN_TREE as DrawType, bracketSize: size, sortOrder: 10 }];
+    if (type === DrawType.DOUBLE_ELIMINATION || type === DrawType.REPECHAGE) {
+      const loserId = randomUUID();
+      const secondary = { ...common, drawId: loserId, winnersRounds: rounds };
+      matches.push(...(type === DrawType.DOUBLE_ELIMINATION
+        ? this.buildDoubleEliminationBracket(secondary) : this.buildRepechageBracket(secondary)));
+      draws.push({ id: loserId, name: `${baseName} - ${type === DrawType.REPECHAGE ? 'REPECHAGE' : 'DOUBLE-ELIMINATION TREE'}`,
+        type, bracketSize: Math.max(2, (type === DrawType.REPECHAGE ? Math.min(32, size) : size) / 2), sortOrder: 20 });
+    }
+    this.resolveGeneratedWalkovers(matches);
+    this.assignEvenMatchDates(matches as Array<GeneratedMatch & DateAssignableMatch>, input.event.startDate, input.event.endDate);
+    return { draws, matches, fops, groups: [] as PlannedRoundRobinGroup[], slots: slots.map((athlete) => athlete
+      ? input.eligibleEntries.find((entry) => entry.athleteId === athlete.id)!.id : null) };
+  }
 
-    await this.prisma.$transaction(async (transaction) => {
-      const fops: ScheduledFop[] = [];
-      for (const name of fopNames) {
-        fops.push(await transaction.fop.upsert({
-          where: { eventId_name: { eventId, name } },
-          update: {},
-          create: { name, eventId },
-          select: { id: true, name: true },
-        }));
-      }
+  private roundRobinGroupSizes(count: number, groupCount: number) {
+    if (groupCount > Math.floor(count / 2)) throw new BadRequestException('Mỗi bảng vòng tròn phải có ít nhất hai VĐV');
+    return Array.from({ length: groupCount }, (_, index) => Math.floor(count / groupCount) + (index < count % groupCount ? 1 : 0));
+  }
 
-      const fopCursor = { value: 0 };
-      const mainRounds = this.buildWinnerBracket({
-        drawId: mainDrawId,
-        eventId,
-        categoryId,
-        divisionId: dto.divisionId,
-        matchDate: event.startDate,
-        fops,
-        fopCursor,
-        slots: seededSlots,
-        number,
+  private buildRoundRobinPlan(input: Awaited<ReturnType<MatchesService['loadDrawInput']>>, dto: GenerateDrawDto,
+    pairs: PreconfiguredPairDto[]) {
+    const sizes = this.roundRobinGroupSizes(input.eligibleEntries.length, dto.groupCount || 1);
+    const entries = input.eligibleEntries;
+    const pairedIds = new Set(pairs.flatMap((pair) => [pair.entry1Id, pair.entry2Id]));
+    const athletes = dto.athleteIds.map((id) => {
+      const entry = entries.find((entry) => entry.athleteId === id)!;
+      return { id, countryId: entry.athlete!.countryId, federationId: entry.athlete!.federationId, seed: entry.seed };
+    });
+    const ordered = this.seedAthletes(athletes, this.nextPowerOfTwo(athletes.length), dto.seedingMode || 'STANDARD')
+      .filter((athlete): athlete is SeedAthlete => !!athlete).map((athlete) => entries.find((entry) => entry.athleteId === athlete.id)!);
+    const buckets: typeof entries[] = sizes.map(() => []);
+    const bucketPairs: PreconfiguredPairDto[][] = sizes.map(() => []);
+    const chooseBucket = (unitSize: number) => buckets.map((bucket, index) => ({ index, length: bucket.length }))
+      .filter(({ index, length }) => length + unitSize <= sizes[index])
+      .sort((left, right) => left.length - right.length || left.index - right.index)[0].index;
+    for (const pair of pairs) {
+      const index = chooseBucket(2);
+      buckets[index].push(entries.find((entry) => entry.id === pair.entry1Id)!, entries.find((entry) => entry.id === pair.entry2Id)!);
+      bucketPairs[index].push(pair);
+    }
+    for (const entry of ordered.filter((entry) => !pairedIds.has(entry.id))) buckets[chooseBucket(1)].push(entry);
+    const names = [...new Set((dto.fops?.length ? dto.fops : dto.fop ? [dto.fop] : []).map((name) => name.trim()).filter(Boolean))];
+    const fops = names.map((name) => {
+      const fop = input.fops.find((item) => item.name === name);
+      if (!fop) throw new BadRequestException('Sàn/FOP không thuộc sự kiện');
+      return fop;
+    });
+    const groups: PlannedRoundRobinGroup[] = [];
+    const draws: Array<{ id: string; name: string; type: DrawType; bracketSize: number; sortOrder: number }> = [];
+    const matches: GeneratedMatch[] = [];
+    let number = dto.startMatchNumber || 1;
+    buckets.forEach((members, index) => {
+      const name = `${dto.name?.trim() || 'Bảng'} ${String.fromCharCode(65 + index)}`;
+      const groupId = randomUUID();
+      const drawId = randomUUID();
+      groups.push({ id: groupId, name, members: members.map((entry) => ({ entryId: entry.id, seed: entry.seed })) });
+      draws.push({ id: drawId, name, type: DrawType.ROUND_ROBIN_POOL, bracketSize: members.length, sortOrder: index + 10 });
+      // Opposite positions meet in the first rotation. Reserve those positions for fixed pairs.
+      const rotation: Array<(typeof entries)[number] | null> = Array(members.length + members.length % 2).fill(null);
+      bucketPairs[index].forEach((pair, position) => {
+        rotation[position] = members.find((entry) => entry.id === pair.entry1Id)!;
+        rotation[rotation.length - 1 - position] = members.find((entry) => entry.id === pair.entry2Id)!;
       });
-      const generatedMatches = mainRounds.flat();
-      let loserDrawId: string | undefined;
-
-      if (drawType === DrawType.DOUBLE_ELIMINATION) {
-        loserDrawId = randomUUID();
-        generatedMatches.push(
-          ...this.buildDoubleEliminationBracket({
-            drawId: loserDrawId,
-            eventId,
-            categoryId,
-            divisionId: dto.divisionId,
-            matchDate: event.startDate,
-            fops,
-            fopCursor,
-            winnersRounds: mainRounds,
-            number,
-          }),
-        );
+      const remaining = members.filter((entry) => !pairedIds.has(entry.id));
+      for (let position = 0; position < rotation.length; position++) {
+        if (!rotation[position] && remaining.length) rotation[position] = remaining.shift()!;
       }
-      if (drawType === DrawType.REPECHAGE) {
-        loserDrawId = randomUUID();
-        generatedMatches.push(...this.buildRepechageBracket({
-          drawId: loserDrawId, eventId, categoryId, divisionId: dto.divisionId,
-          matchDate: event.startDate, fops, fopCursor, winnersRounds: mainRounds, number,
-        }));
+      for (let round = 1; round < rotation.length; round++) {
+        for (let position = 0; position < rotation.length / 2; position++) {
+          const first = rotation[position];
+          const second = rotation[rotation.length - 1 - position];
+          if (!first || !second) continue;
+          const fop = fops.length ? fops[matches.length % fops.length] : undefined;
+          matches.push({ id: randomUUID(), eventId: input.event.id, categoryId: input.category.id,
+            divisionId: dto.divisionId, drawId, roundRobinGroupId: groupId, pool: name,
+            matchNumber: number++, matchDate: input.event.startDate, matchType: MatchType.GROUP_STAGE,
+            status: MatchStatus.SCHEDULED, round, bracketPosition: position,
+            athlete1Id: first.athleteId, athlete2Id: second.athleteId, fop: fop?.name, fopId: fop?.id });
+        }
+        rotation.splice(1, 0, rotation.pop() || null);
       }
-      this.resolveGeneratedWalkovers(generatedMatches);
-      this.assignEvenMatchDates(
-        generatedMatches as Array<GeneratedMatch & DateAssignableMatch>,
-        event.startDate,
-        event.endDate,
-      );
+    });
+    this.assignEvenMatchDates(matches as Array<GeneratedMatch & DateAssignableMatch>, input.event.startDate, input.event.endDate);
+    return { draws, matches, fops, groups, slots: buckets.flat().map((entry) => entry.id) };
+  }
 
-      await transaction.draw.create({
-        data: {
-          id: mainDrawId,
-          name: baseName,
-          type: DrawType.MAIN_TREE,
-          eventId,
-          categoryId,
-          divisionId: dto.divisionId,
-          bracketSize,
-          sortOrder: 10,
-          fops: fops.length
-            ? { connect: fops.map(({ id }) => ({ id })) }
-            : undefined,
-        },
-      });
-      if (loserDrawId) {
-        await transaction.draw.create({
-          data: {
-            id: loserDrawId,
-            name: `${baseName} - ${drawType === DrawType.REPECHAGE ? 'REPECHAGE' : 'DOUBLE-ELIMINATION TREE'}`,
-            type: drawType,
-            eventId,
-            categoryId,
-            divisionId: dto.divisionId,
-            bracketSize: Math.max(2, (drawType === DrawType.REPECHAGE ? Math.min(32, bracketSize) : bracketSize) / 2),
-            sortOrder: 20,
-            fops: fops.length
-              ? { connect: fops.map(({ id }) => ({ id })) }
-              : undefined,
-          },
+  private renderPreview(plan: ReturnType<MatchesService['buildDrawPlan']>, input: Awaited<ReturnType<MatchesService['loadDrawInput']>>) {
+    const athlete = (id?: string | null) => {
+      const entry = input.entries.find((entry) => entry.athleteId === id);
+      const value = entry?.athlete;
+      return value ? { id: value.id, fullName: value.fullName, photoUrl: value.photoUrl, country: value.country, federation: value.federation } : null;
+    };
+    return plan.draws.map((draw) => ({ ...draw, matches: plan.matches.filter((match) => match.drawId === draw.id)
+      .map((match) => ({ ...match, athlete1Score: 0, athlete2Score: 0,
+        athlete1: athlete(match.athlete1Id), athlete2: athlete(match.athlete2Id) })) }));
+  }
+
+  private async assertDrawRequest(db: Prisma.TransactionClient, input: Awaited<ReturnType<MatchesService['loadDrawInput']>>, dto: GenerateDrawDto) {
+    const type = dto.type || DrawType.MAIN_TREE;
+    if (!preconfigurationDrawTypes.includes(type)) {
+      throw new BadRequestException('Thể thức sinh cây không được hỗ trợ');
+    }
+    for (const entry of input.eligibleEntries) {
+      assertAthleteEligibility(entry.athlete!, { ...input.category, ...resolveEventAgeLimits(input.event, input.category) }, input.event.startDate);
+    }
+    const ids = new Set(dto.athleteIds);
+    if (ids.size !== dto.athleteIds.length || ids.size !== input.eligibleEntries.length
+      || input.eligibleEntries.some((entry) => !entry.athleteId || !ids.has(entry.athleteId))) {
+      throw new ConflictException('Danh sách VĐV phải gồm toàn bộ lượt đăng ký cá nhân đã xác minh của hạng đấu. Hãy tải lại');
+    }
+    if (ids.size < (type === DrawType.DOUBLE_ELIMINATION ? 4 : 2)) {
+      throw new BadRequestException('Không đủ VĐV hợp lệ cho thể thức này');
+    }
+    if (type === DrawType.ROUND_ROBIN_POOL) this.roundRobinGroupSizes(ids.size, dto.groupCount || 1);
+    if (dto.divisionId && !await db.division.count({ where: { id: dto.divisionId, categoryId: input.category.id } })) {
+      throw new BadRequestException('Phân hạng không thuộc hạng đấu');
+    }
+  }
+
+  async getPreconfiguration(eventId: string, categoryId: string, drawType: DrawType) {
+    this.assertPreconfigurationType(drawType);
+    const input = await this.loadDrawInput(this.prisma, eventId, categoryId);
+    const config = await this.prisma.drawPreconfiguration.findUnique({ where: this.preconfigurationKey(eventId, categoryId, drawType) });
+    if (!config) return { pairs: [], revision: 0, seedingMode: 'STANDARD', groupCount: 1, preview: [], stale: true };
+    const stale = !config.plan || config.inputVersion !== this.inputVersion(input, config.pairs, config.options);
+    return { pairs: config.pairs, revision: config.revision, seedingMode: (config.options as any).seedingMode, groupCount: (config.options as any).groupCount || 1, name: (config.options as any).name,
+      inputVersion: config.inputVersion, previewedAt: config.previewedAt, stale,
+      preview: !stale ? this.renderPreview(config.plan as any, input) : [] };
+  }
+
+  async savePreconfiguration(eventId: string, categoryId: string, dto: SaveDrawPreconfigurationDto, actorUserId: string) {
+    this.assertPreconfigurationType(dto.drawType);
+    return this.drawTransaction(eventId, async (db) => {
+      const input = await this.loadDrawInput(db, eventId, categoryId);
+      this.validatePairs(input, dto.pairs, dto.drawType, dto.groupCount);
+      const where = this.preconfigurationKey(eventId, categoryId, dto.drawType);
+      const previous = await db.drawPreconfiguration.findUnique({ where });
+      if ((previous?.revision || 0) !== dto.revision) throw new ConflictException('Cấu hình đã được sửa bởi người khác; hãy tải lại');
+      const data = { pairs: this.json(dto.pairs), options: this.json({ type: dto.drawType, seedingMode: dto.seedingMode, groupCount: dto.groupCount || 1 }),
+        revision: dto.revision + 1, inputVersion: null, slots: Prisma.DbNull, plan: Prisma.DbNull, previewedAt: null };
+      const config = await db.drawPreconfiguration.upsert({ where, update: data,
+        create: { eventId, categoryId, drawType: dto.drawType, ...data } });
+      await db.drawPreconfigurationHistory.create({ data: { configurationId: config.id, actorUserId, action: 'CONFIGURE',
+        revision: config.revision, snapshot: this.json({ before: previous, after: config }) } });
+      return { pairs: config.pairs, revision: config.revision, seedingMode: dto.seedingMode, groupCount: dto.groupCount || 1, stale: true, preview: [] };
+    });
+  }
+
+  async previewDraw(eventId: string, categoryId: string, dto: PreviewDrawDto, actorUserId: string) {
+    const type = dto.type || DrawType.MAIN_TREE;
+    this.assertPreconfigurationType(type);
+    return this.drawTransaction(eventId, async (db) => {
+      const input = await this.loadDrawInput(db, eventId, categoryId);
+      await this.assertDrawRequest(db, input, dto);
+      const where = this.preconfigurationKey(eventId, categoryId, type);
+      const previous = await db.drawPreconfiguration.findUnique({ where });
+      if ((previous?.revision || 0) !== (dto.revision ?? 0)) throw new ConflictException('Cấu hình đã thay đổi; hãy tải lại trước khi preview');
+      const pairs = (previous?.pairs || []) as unknown as PreconfiguredPairDto[];
+      this.validatePairs(input, pairs, type, dto.groupCount);
+      const maximum = await db.match.aggregate({ where: { eventId }, _max: { matchNumber: true } });
+      const startMatchNumber = dto.startMatchNumber || (maximum._max.matchNumber || 0) + 1;
+      if (startMatchNumber <= (maximum._max.matchNumber || 0)) throw new ConflictException('Số trận bắt đầu đã được sử dụng');
+      const options = { type, seedingMode: dto.seedingMode || 'STANDARD', name: dto.name, divisionId: dto.divisionId,
+        fops: dto.fops, fop: dto.fop, startMatchNumber, groupCount: dto.groupCount || 1 };
+      const plan = this.buildDrawPlan(input, { ...dto, startMatchNumber }, pairs);
+      const inputVersion = this.inputVersion(input, pairs, this.json(options));
+      const data = { pairs: this.json(pairs), options: this.json(options), inputVersion,
+        slots: this.json(plan.slots), plan: this.json(plan), previewedAt: new Date(), revision: (previous?.revision || 0) + 1 };
+      const config = await db.drawPreconfiguration.upsert({ where, update: data, create: { eventId, categoryId, drawType: type, ...data } });
+      await db.drawPreconfigurationHistory.create({ data: { configurationId: config.id, actorUserId, action: 'PREVIEW',
+        revision: config.revision, snapshot: this.json({ inputVersion, pairs, options, plan }) } });
+      return { pairs, revision: config.revision, seedingMode: options.seedingMode, groupCount: options.groupCount, name: options.name, inputVersion,
+        previewedAt: config.previewedAt, stale: false, preview: this.renderPreview(plan, input) };
+    });
+  }
+
+  async getPreconfigurationHistory(eventId: string, categoryId: string, drawType: DrawType) {
+    this.assertPreconfigurationType(drawType);
+    return this.prisma.drawPreconfigurationHistory.findMany({
+      where: { configuration: { eventId, categoryId, drawType } }, orderBy: { createdAt: 'desc' }, take: 100,
+    });
+  }
+
+  private json(value: unknown): Prisma.InputJsonValue {
+    return JSON.parse(JSON.stringify(value));
+  }
+
+  async generateDraw(eventId: string, categoryId: string, dto: GenerateDrawDto, actorUserId?: string) {
+    await this.drawTransaction(eventId, async (db) => {
+      const type = dto.type || DrawType.MAIN_TREE;
+      const config = await db.drawPreconfiguration.findUnique({ where: this.preconfigurationKey(eventId, categoryId, type) });
+      if (!config) {
+        const names = [...new Set((dto.fops?.length ? dto.fops : dto.fop ? [dto.fop] : []).map((name) => name.trim()).filter(Boolean))];
+        for (const name of names) await db.fop.upsert({
+          where: { eventId_name: { eventId, name } }, update: {}, create: { eventId, name },
         });
       }
-      await transaction.match.createMany({ data: generatedMatches });
+      const input = await this.loadDrawInput(db, eventId, categoryId);
+      await this.assertDrawRequest(db, input, dto);
+      // An ordinary caller supplies the current roster, but cannot override the
+      // saved arrangement or its seeding/options. Private data stays server-side.
+      if (config && (!config.plan || config.inputVersion !== this.inputVersion(input, config.pairs, config.options))) {
+        throw new ConflictException('Dữ liệu đầu vào đã thay đổi hoặc chưa được preview. Cần người có quyền preview lại trước khi sinh nhánh');
+      }
+      const plan = config ? config.plan as unknown as ReturnType<MatchesService['buildDrawPlan']>
+        : this.buildDrawPlan(input, dto, []);
+      const conflict = await db.draw.findFirst({ where: { eventId, categoryId,
+        name: { in: plan.draws.map((draw) => draw.name) } } });
+      if (conflict) throw new ConflictException('Hạng đấu đã có nhánh; không thể tạo trùng');
+      const maximum = await db.match.aggregate({ where: { eventId }, _max: { matchNumber: true } });
+      let number = (config ? (config.options as any).startMatchNumber : dto.startMatchNumber) || (maximum._max.matchNumber || 0) + 1;
+      if (number <= (maximum._max.matchNumber || 0)) throw new ConflictException(config
+        ? 'Số trận trong phương án đã được sử dụng. Cần người có quyền preview lại trước khi sinh nhánh'
+        : 'Số trận bắt đầu đã được sử dụng');
+      for (const draw of plan.draws) {
+        await db.draw.create({ data: { ...draw, eventId, categoryId,
+          divisionId: config ? (config.options as any).divisionId : dto.divisionId,
+          fops: plan.fops.length ? { connect: plan.fops.map(({ id }) => ({ id })) } : undefined } });
+      }
+      for (const group of plan.groups || []) {
+        await db.roundRobinGroup.create({ data: { id: group.id, eventId, categoryId, name: group.name,
+          members: { create: group.members } } });
+      }
+      await db.match.createMany({ data: plan.matches.map((match) => ({ ...match,
+        matchNumber: number++, matchDate: new Date(match.matchDate) })) });
+      const groupMatches = plan.matches.filter((match) => match.roundRobinGroupId);
+      if (groupMatches.length) await db.matchParticipant.createMany({ data: groupMatches.flatMap((match) =>
+        [match.athlete1Id, match.athlete2Id].map((athleteId, index) => ({ matchId: match.id!, athleteId,
+          entryId: input.eligibleEntries.find((entry) => entry.athleteId === athleteId)!.id, position: index + 1 }))) });
+      if (config && actorUserId) await db.drawPreconfigurationHistory.create({ data: { configurationId: config.id, actorUserId,
+        action: 'GENERATE', revision: config.revision, snapshot: this.json({ inputVersion: config.inputVersion, draws: plan.draws }) } });
     });
-
     return this.findDraws(eventId, categoryId);
   }
 
@@ -1795,17 +2007,19 @@ export class MatchesService {
     excludeMatchId?: string,
   ) {
     if (!athleteIds.length) return;
-    const category = await (database as any).category.findUnique({
-      where: { id: categoryId },
-      select: { sportId: true },
-    });
-    const rule = category
-      ? await (database as any).sportSchedulingRule.findUnique({
-        where: { eventId_sportId: { eventId, sportId: category.sportId } },
-        select: { minRestMinutes: true },
-      })
-      : null;
-    const restMs = (rule?.minRestMinutes ?? 60) * 60_000;
+    // Temporarily disabled: retain overlap checks without a rest-time buffer.
+    // const category = await (database as any).category.findUnique({
+    //   where: { id: categoryId },
+    //   select: { sportId: true },
+    // });
+    // const rule = category
+    //   ? await (database as any).sportSchedulingRule.findUnique({
+    //     where: { eventId_sportId: { eventId, sportId: category.sportId } },
+    //     select: { minRestMinutes: true },
+    //   })
+    //   : null;
+    // const restMs = (rule?.minRestMinutes ?? 60) * 60_000;
+    const restMs = 0;
     const conflict = await (database as any).match.findFirst({
       where: {
         eventId,
@@ -1823,7 +2037,7 @@ export class MatchesService {
     });
     if (conflict) {
       throw new ConflictException(
-        `Vận động viên chưa đủ thời gian nghỉ so với trận #${conflict.matchNumber || conflict.id}`,
+        `Vận động viên bị trùng giờ thi đấu với trận #${conflict.matchNumber || conflict.id}`,
       );
     }
   }

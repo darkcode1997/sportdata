@@ -1,3 +1,4 @@
+import { resolveEventAgeLimits } from '../events/event-age-limits';
 import {
   BadRequestException,
   ConflictException,
@@ -577,7 +578,7 @@ export class ParticipantsService {
       if (weight !== null && (!Number.isFinite(weight) || weight <= 0 || weight > 500)) {
         throw new BadRequestException(`Vận động viên ${index + 1}: cân nặng không hợp lệ`);
       }
-      this.validateAthleteForCategory({ gender: athlete.gender, birthDate, weight }, category, event.startDate);
+      this.validateAthleteForCategory({ gender: athlete.gender, birthDate, weight }, { ...category, ...resolveEventAgeLimits(event, category) }, event.startDate);
 
       const cccdFront = fileMap.get(`athlete_${index}_cccdFront`);
       const cccdBack = fileMap.get(`athlete_${index}_cccdBack`);
@@ -722,7 +723,7 @@ export class ParticipantsService {
     const category = event.categories[0];
     if (!category) throw new BadRequestException('Hạng đấu không thuộc sự kiện này');
     this.validateRegistrationWindow(event);
-    this.validateAthleteForCategory(profile.athlete, category, event.startDate);
+    this.validateAthleteForCategory(profile.athlete, { ...category, ...resolveEventAgeLimits(event, category) }, event.startDate);
 
     const allowedFederations = event.participatingFederations.map((item) => item.id);
     if (profile.athlete.federationId) {

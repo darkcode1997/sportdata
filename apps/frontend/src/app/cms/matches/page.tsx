@@ -28,6 +28,7 @@ import { api, fetcher } from '@/lib/api';
 import { RemoteAthleteSelect } from '@/components/cms/RemoteAthleteSelect';
 import { SportdataBracket, type BracketDraw } from '@/components/brackets/SportdataBracket';
 import { useSportDataToast } from '@/hooks/useSportDataToast';
+import { openCmsScoreboard } from '@/lib/cms-navigation';
 import { AthleteQuickViewModal } from '@/components/cms/AthleteQuickViewModal';
 
 const dateTime = new Intl.DateTimeFormat('vi-VN', {
@@ -295,7 +296,7 @@ export default function MatchesListPage() {
       width: 148,
       render: (_, match) => (
         <Space size={4}>
-          {canScore && ['SCHEDULED', 'RUNNING'].includes(match.status) && <Tooltip title="Mở bảng điểm (dùng chung một tab)"><Button type="primary" target="sportdata-scoreboard" aria-label="Mở bảng điểm" href={`/cms/matches/${match.id}/scoreboard`} disabled={!match.athlete1Id || !match.athlete2Id || !match.fopId || !match.startTime || !match.endTime} icon={<Play className="h-4 w-4" />} /></Tooltip>}
+          {canScore && ['SCHEDULED', 'RUNNING'].includes(match.status) && <Tooltip title="Mở bảng điểm (dùng chung một tab)"><Button type="primary" target="sportdata-scoreboard" onClick={(event) => openCmsScoreboard(event, match.id)} aria-label="Mở bảng điểm" href={`/cms/matches/${match.id}/scoreboard`} disabled={!match.athlete1Id || !match.athlete2Id || !match.fopId || !match.startTime || !match.endTime} icon={<Play className="h-4 w-4" />} /></Tooltip>}
           {canManage && <Tooltip title="Chỉnh sửa">
             <Button
               type="text"

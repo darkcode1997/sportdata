@@ -72,9 +72,11 @@ export function SportdataBracket({ draw, sourceMatches = draw.matches, matchHref
   const roundNumbers = Array.from(new Set(matches.map((match) => match.round || 1))).sort((a, b) => a - b);
   const roundOrdinal = new Map(roundNumbers.map((round, index) => [round, index + 1]));
   const firstRound = matches.filter((match) => (match.round || 1) === roundNumbers[0]);
-  const bracketSize = Math.max(draw.bracketSize || 0, firstRound.length * 2, 2);
+  const isRoundRobin = draw.type === 'ROUND_ROBIN_POOL';
+  const bracketSize = Math.max(draw.bracketSize || 0, firstRound.length * 2, 2,
+    isRoundRobin ? Math.max(0, ...matches.map((match) => ((match.bracketPosition || 0) + 1) * 2)) : 0);
   const boardHeight = BRACKET_HEADER_HEIGHT + (bracketSize - 1) * BRACKET_SLOT_PITCH + BRACKET_NODE_HEIGHT + 30;
-  const boardWidth = roundNumbers.length * BRACKET_COLUMN_STEP + BRACKET_NODE_WIDTH + 40;
+  const boardWidth = Math.max(0, roundNumbers.length - (isRoundRobin ? 1 : 0)) * BRACKET_COLUMN_STEP + BRACKET_NODE_WIDTH + 40;
   const matchById = new Map(matches.map((match) => [match.id, match]));
   const finalMatch = matches.find((match) => (match.round || 1) === roundNumbers.at(-1));
 
@@ -91,7 +93,7 @@ export function SportdataBracket({ draw, sourceMatches = draw.matches, matchHref
   const nodeTop = (ordinal: number, slotIndex: number) => {
     const roundNumber = roundNumbers[ordinal - 1];
     const matchCount = matches.filter((match) => (match.round || 1) === roundNumber).length;
-    const factor = bracketSize / Math.max(matchCount * 2, 1);
+    const factor = isRoundRobin ? 1 : bracketSize / Math.max(matchCount * 2, 1);
     return BRACKET_HEADER_HEIGHT + (slotIndex * factor + (factor - 1) / 2) * BRACKET_SLOT_PITCH;
   };
 
@@ -211,15 +213,15 @@ export function SportdataBracket({ draw, sourceMatches = draw.matches, matchHref
                     key={round}
                     style={{ left: index * BRACKET_COLUMN_STEP, width: BRACKET_NODE_WIDTH }}
                   >
-                    {isRepechage ? (round === roundNumbers.at(-1) ? 'Tranh HCĐ A / B' : `Đấu vớt · Vòng ${index + 1}`) : draw.type === 'DOUBLE_ELIMINATION' ? (round === roundNumbers.at(-1) ? 'Chung kết tổng' : `Nhánh thua · Vòng ${index + 1}`) : `${draw.name} - Vòng ${index + 1}`}
+                    {isRoundRobin ? `${draw.name} · Lượt ${index + 1}` : isRepechage ? (round === roundNumbers.at(-1) ? 'Tranh HCĐ A / B' : `Đấu vớt · Vòng ${index + 1}`) : draw.type === 'DOUBLE_ELIMINATION' ? (round === roundNumbers.at(-1) ? 'Chung kết tổng' : `Nhánh thua · Vòng ${index + 1}`) : `${draw.name} - Vòng ${index + 1}`}
                   </div>
                 ))}
-                <div
+                {!isRoundRobin && <div
                   className="sportdata-round-title is-champion"
                   style={{ left: roundNumbers.length * BRACKET_COLUMN_STEP, width: BRACKET_NODE_WIDTH }}
                 >
                   {isRepechage ? 'Đồng hạng 3 · HCĐ' : finalMatch?.winnerToMatchId ? 'Thắng nhánh · Đi tiếp' : 'Vô địch'}
-                </div>
+                </div>}
                 <svg
                   aria-hidden="true"
                   className="sportdata-bracket-lines"
@@ -227,7 +229,7 @@ export function SportdataBracket({ draw, sourceMatches = draw.matches, matchHref
                   height={boardHeight}
                   viewBox={`0 0 ${boardWidth} ${boardHeight}`}
                 >
-                  {connectors}
+                  {!isRoundRobin && connectors}
                 </svg>
                 {matches.flatMap((match) => {
                   const ordinal = roundOrdinal.get(match.round || 1) || 1;
@@ -260,7 +262,7 @@ export function SportdataBracket({ draw, sourceMatches = draw.matches, matchHref
                     />,
                   ];
                 })}
-                {terminalMatches.map((match, index) => {
+                {!isRoundRobin && terminalMatches.map((match, index) => {
                   const winner = match.status === 'FINISHED' && match.winnerId
                     ? [match.athlete1, match.athlete2].find((athlete) => athlete?.id === match.winnerId)
                     : null;

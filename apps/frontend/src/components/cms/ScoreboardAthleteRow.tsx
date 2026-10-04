@@ -5,23 +5,32 @@ type Props = {
   athleteName: string;
   score: number;
   penalties: number;
-  submissions: number;
+  advantages: number;
+  submissionAwarded: boolean;
   disabled: boolean;
   onSubmission: () => void;
+  onAdvantage: () => void;
   onPenalty: (level: number) => void;
   onPoints: (points: number) => void;
 };
 
 /** Structural conversion of one athlete row in scoreboard.html. */
-export function ScoreboardAthleteRow({ side, athleteName, score, penalties, submissions, disabled, onSubmission, onPenalty, onPoints }: Props) {
+export function ScoreboardAthleteRow({ side, athleteName, score, penalties, advantages, submissionAwarded, disabled, onSubmission, onAdvantage, onPenalty, onPoints }: Props) {
   const corner = side === 1 ? 'Đỏ' : 'Xanh';
   return (
     <section className={`${styles.row} ${side === 1 ? styles.red : styles.cyan}`} aria-label={`Bảng điểm ${corner}: ${athleteName}`} title={`${corner}: ${athleteName}`}>
       <div className={styles.actionGroup}>
         <div className={styles.actionColumn}>
           <div className={styles.submissionRow}>
-            <button type="button" className={styles.submission} disabled={disabled} aria-label={`Submission cho ${corner}: ${athleteName}`} onClick={onSubmission}>Submission</button>
-            <span className={styles.submissionCount} aria-label={`Số submission ${corner}`}>{submissions}</span>
+            <button type="button" className={`${styles.submission} ${submissionAwarded ? styles.submissionLit : ''}`} disabled={disabled} aria-label={`Submission cho ${corner}: ${athleteName}`} aria-pressed={submissionAwarded} onClick={onSubmission}>Submission</button>
+            <button
+              type="button"
+              className={`${styles.advantageCount} ${advantages > 0 ? styles.advantageLit : ''}`}
+              disabled={disabled}
+              aria-label={`Cộng 1 lợi thế cho ${athleteName}`}
+              title={`Lợi thế: ${advantages}. Cộng 1 lợi thế cho ${athleteName}`}
+              onClick={onAdvantage}
+            ><span aria-label={`Số lợi thế ${corner}`} aria-live="polite" aria-atomic="true">{advantages}</span></button>
           </div>
           <div className={styles.penalties} role="group" aria-label={`Mốc phạt ${corner}: ${athleteName}`}>
             {[1, 2, 3, 4].map((level) => {

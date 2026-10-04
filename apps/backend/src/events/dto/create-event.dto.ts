@@ -1,7 +1,7 @@
 import type { TicketDesign } from '../ticket-design';
 import { IsObject, IsString, IsOptional, IsBoolean, IsDateString, IsArray, IsInt, Min, IsIn, Matches, MaxLength } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { EventLevel, PaymentMode, PaymentProvider } from '@prisma/client';
+import { EventAgeLimitMode, EventLevel, PaymentMode, PaymentProvider } from '@prisma/client';
 import { IsEnum } from 'class-validator';
 
 export class CreateEventDto {
@@ -85,6 +85,23 @@ export class CreateEventDto {
   @IsOptional()
   @IsBoolean()
   allowIndependentAthletes?: boolean;
+
+  @ApiPropertyOptional({ enum: EventAgeLimitMode })
+  @IsOptional()
+  @IsEnum(EventAgeLimitMode)
+  ageLimitMode?: EventAgeLimitMode;
+
+  @ApiPropertyOptional({ nullable: true, minimum: 0 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  minAge?: number | null;
+
+  @ApiPropertyOptional({ nullable: true, minimum: 0 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  maxAge?: number | null;
 
   @ApiPropertyOptional({ default: false })
   @IsOptional()

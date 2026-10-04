@@ -1,6 +1,9 @@
+import { assertAthleteEligibility } from './athlete-eligibility';
+import { resolveEventAgeLimits } from '../events/event-age-limits';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import {
   CompetitionFormat,
+  DrawType,
   EntryStatus,
   EntryType,
   MatchStatus,
@@ -8,6 +11,7 @@ import {
   Prisma,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { MatchesService } from '../matches/matches.service';
 import {
   CreateEntryDto,
   CreateTeamDto,
@@ -32,7 +36,7 @@ type EntryRow = Prisma.CompetitionEntryGetPayload<{ include: typeof ENTRY_INCLUD
 
 @Injectable()
 export class CompetitionsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly matches: MatchesService) {}
 
   listTeams(eventId: string) {
     return this.prisma.team.findMany({
@@ -139,7 +143,7 @@ export class CompetitionsService {
         sport: { select: { id: true } },
         events: {
           where: { id: eventId },
-          select: { startDate: true },
+          select: { startDate: true, ageLimitMode: true, minAge: true, maxAge: true },
           take: 1,
         },
       },
@@ -150,7 +154,7 @@ export class CompetitionsService {
     if (dto.athleteId) {
       const athlete = await this.prisma.athlete.findUnique({ where: { id: dto.athleteId } });
       if (!athlete) throw new NotFoundException('Không tìm thấy vận động viên');
-      this.assertAthleteEligibility(athlete, category, category.events[0].startDate);
+      assertAthleteEligibility(athlete, { ...category, ...resolveEventAgeLimits(category.events[0], category) }, category.events[0].startDate);
       countryId = athlete.countryId;
     } else {
       const team = await this.prisma.team.findFirst({
@@ -276,13 +280,29 @@ export class CompetitionsService {
     });
   }
 
-  async generateRoundRobin(eventId: string, categoryId: string, dto: GenerateRoundRobinDto) {
+  async generateRoundRobin(eventId: string, categoryId: string, dto: GenerateRoundRobinDto, actorUserId?: string) {
     const [event, category, entries] = await Promise.all([
       this.prisma.event.findUnique({ where: { id: eventId }, select: { startDate: true, endDate: true } }),
       this.prisma.category.findFirst({ where: { id: categoryId, events: { some: { id: eventId } } }, select: { id: true } }),
       this.loadEntries(eventId, categoryId, dto.entryIds),
     ]);
     if (!event || !category) throw new NotFoundException('Không tìm thấy sự kiện hoặc hạng mục');
+    const configuration = await this.prisma.drawPreconfiguration.findUnique({
+      where: { eventId_categoryId_drawType: { eventId, categoryId, drawType: DrawType.ROUND_ROBIN_POOL } },
+    });
+    if (configuration) {
+      if (entries.some((entry) => !entry.athleteId || entry.teamId)) {
+        throw new BadRequestException('Cấu hình cặp vòng tròn chỉ áp dụng cho VĐV cá nhân');
+      }
+      const result = await this.matches.generateDraw(eventId, categoryId, {
+        type: DrawType.ROUND_ROBIN_POOL, athleteIds: entries.map((entry) => entry.athleteId!),
+        groupCount: dto.groupCount, name: dto.namePrefix,
+      }, actorUserId);
+      const groups = await this.prisma.roundRobinGroup.findMany({ where: { eventId, categoryId }, include: { _count: { select: { members: true } } } });
+      return { groups: groups.map((group) => ({ groupId: group.id, name: group.name, entries: group._count.members,
+        rounds: group._count.members % 2 ? group._count.members : group._count.members - 1 })),
+        matches: result.draws.reduce((sum, draw) => sum + draw.matches.length, 0) };
+    }
     const groupCount = dto.groupCount || 1;
     if (groupCount > Math.floor(entries.length / 2)) throw new BadRequestException('Mỗi bảng vòng tròn phải có ít nhất hai lượt đăng ký');
     const groups = this.distributeEntries(entries, groupCount, 'bảng đấu');
@@ -428,30 +448,6 @@ export class CompetitionsService {
     });
 
     return buckets;
-  }
-
-  private assertAthleteEligibility(
-    athlete: { gender: string; birthDate: Date | null; weight: number | null },
-    category: { gender: string; minAge: number | null; maxAge: number | null; minWeight: number | null; maxWeight: number | null },
-    referenceDate: Date,
-  ) {
-    if (category.gender !== 'MIXED' && athlete.gender !== category.gender) {
-      throw new BadRequestException('Giới tính vận động viên không đáp ứng điều kiện hạng mục');
-    }
-    if ((category.minWeight !== null || category.maxWeight !== null) && athlete.weight === null) {
-      throw new BadRequestException('Hạng mục này bắt buộc có cân nặng vận động viên');
-    }
-    if (category.minWeight !== null && athlete.weight! < category.minWeight) throw new BadRequestException('Vận động viên chưa đạt cân nặng tối thiểu');
-    if (category.maxWeight !== null && athlete.weight! > category.maxWeight) throw new BadRequestException('Vận động viên vượt quá cân nặng tối đa');
-    if (category.minAge !== null || category.maxAge !== null) {
-      if (!athlete.birthDate) throw new BadRequestException('Hạng mục này bắt buộc có ngày sinh vận động viên');
-      let age = referenceDate.getUTCFullYear() - athlete.birthDate.getUTCFullYear();
-      const birthdayPassed = referenceDate.getUTCMonth() > athlete.birthDate.getUTCMonth()
-        || (referenceDate.getUTCMonth() === athlete.birthDate.getUTCMonth() && referenceDate.getUTCDate() >= athlete.birthDate.getUTCDate());
-      if (!birthdayPassed) age -= 1;
-      if (category.minAge !== null && age < category.minAge) throw new BadRequestException('Vận động viên chưa đạt độ tuổi tối thiểu');
-      if (category.maxAge !== null && age > category.maxAge) throw new BadRequestException('Vận động viên vượt quá độ tuổi tối đa');
-    }
   }
 
   private laneOrder(laneCount: number) {

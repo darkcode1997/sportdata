@@ -12,11 +12,11 @@
 .actionColumn { display: flex; flex-direction: column; justify-content: space-between; }
 .submissionRow { display: flex; align-items: center; justify-content: space-between; gap: 1.5vw; }
 .submission { min-width: calc(10 * var(--unit)); aspect-ratio: 4 / 1; background: #1901ca; flex-grow: 1; border: 1px solid gray; display: flex; justify-content: center; align-items: center; font-size: calc(2 * var(--unit)); color: #0339e9; }
-.submissionCount { aspect-ratio: 1; width: calc(4.5 * var(--unit)); font-size: calc(4 * var(--unit)); background: #1901ca; border: 1px solid gray; display: flex; justify-content: center; align-items: center; color: #0339e9; }
+.advantageCount { aspect-ratio: 1; width: calc(4.5 * var(--unit)); font-size: calc(4 * var(--unit)); background: #1901ca; border: 1px solid gray; display: flex; justify-content: center; align-items: center; color: #0339e9; }
 .penalties { display: flex; border: 1px solid gray; }
 .penalty { aspect-ratio: 16 / 9; width: calc(5 * var(--unit)); background: #1901ca; display: flex; justify-content: center; align-items: center; font-size: calc(2 * var(--unit)); border: 0; border-right: 1px solid gray; color: #0339e9; }
 .penalty:last-child { border-right: 0; }
-.penaltyLit { background: #ffe600; color: #191900; box-shadow: inset 0 0 0 1px #fff9a8, 0 0 calc(.6 * var(--unit)) #ffe60088; }
+.penaltyLit, .advantageLit, .submissionLit { background: #ffe600; color: #191900; box-shadow: inset 0 0 0 1px #fff9a8, 0 0 calc(.6 * var(--unit)) #ffe60088; }
 .point { aspect-ratio: 2 / 3; width: calc(2 * var(--unit)); background: #1901ca; font-size: calc(2 * var(--unit)); display: flex; justify-content: center; align-items: center; color: #7440ff; border: 0; }
 .score { color: var(--score-color); font-size: calc(18 * var(--unit)); min-width: calc(21 * var(--unit)); }
 .footer { background: blue; width: 100%; height: 20vh; display: flex; justify-content: center; align-items: center; }

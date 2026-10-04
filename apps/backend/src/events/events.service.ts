@@ -1,3 +1,4 @@
+import { validateEventAgeLimits } from './event-age-limits';
 import { validateTicketDesign } from './ticket-design';
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
@@ -6,7 +7,7 @@ import { UpdateEventDto } from './dto/update-event.dto';
 import { QueryEventsDto } from './dto/query-events.dto';
 import { QueryEligibleAthletesDto } from './dto/query-eligible-athletes.dto';
 import { CreateEventFopDto, UpdateEventFopDto } from './dto/event-fop.dto';
-import { EventLevel, PaymentMode, PaymentProvider, Prisma } from '@prisma/client';
+import { EventAgeLimitMode, EventLevel, PaymentMode, PaymentProvider, Prisma } from '@prisma/client';
 import { createHash } from 'crypto';
 
 @Injectable()
@@ -47,6 +48,11 @@ export class EventsService {
       selectedFederationIds,
       allowIndependentAthletes,
     );
+    validateEventAgeLimits({
+      ageLimitMode: data.ageLimitMode ?? EventAgeLimitMode.UNRESTRICTED,
+      minAge: data.minAge ?? null,
+      maxAge: data.maxAge ?? null,
+    });
     this.validateRegistrationConfig(
       data.registrationEnabled ?? false,
       data.registrationOpenAt,
@@ -404,6 +410,11 @@ export class EventsService {
         resultingAllowIndependent,
       );
     }
+    validateEventAgeLimits({
+      ageLimitMode: data.ageLimitMode ?? existingEvent.ageLimitMode,
+      minAge: data.minAge === undefined ? existingEvent.minAge : data.minAge,
+      maxAge: data.maxAge === undefined ? existingEvent.maxAge : data.maxAge,
+    });
     this.validateRegistrationConfig(
       data.registrationEnabled ?? existingEvent.registrationEnabled,
       data.registrationOpenAt === undefined ? existingEvent.registrationOpenAt : data.registrationOpenAt,
@@ -658,6 +669,9 @@ export class EventsService {
       isPublished: true,
       level: true,
       allowIndependentAthletes: true,
+      ageLimitMode: true,
+      minAge: true,
+      maxAge: true,
       registrationEnabled: true,
       registrationOpenAt: true,
       registrationCloseAt: true,

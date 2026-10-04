@@ -9,6 +9,7 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  Max,
   Min,
 } from 'class-validator';
 
@@ -30,7 +31,7 @@ export class GenerateDrawDto {
   @IsString({ each: true })
   athleteIds: string[];
 
-  @ApiPropertyOptional({ enum: [DrawType.MAIN_TREE, DrawType.REPECHAGE, DrawType.DOUBLE_ELIMINATION] })
+  @ApiPropertyOptional({ enum: [DrawType.MAIN_TREE, DrawType.REPECHAGE, DrawType.DOUBLE_ELIMINATION, DrawType.ROUND_ROBIN_POOL] })
   @IsEnum(DrawType)
   @IsOptional()
   type?: DrawType = DrawType.MAIN_TREE;
@@ -72,4 +73,11 @@ export class GenerateDrawDto {
   @Min(1)
   @IsOptional()
   startMatchNumber?: number;
+
+  @ApiPropertyOptional({ minimum: 1, maximum: 16, default: 1 })
+  @IsInt()
+  @Min(1)
+  @Max(16)
+  @IsOptional()
+  groupCount?: number;
 }

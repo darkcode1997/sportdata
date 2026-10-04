@@ -75,6 +75,7 @@ export function MatchScoreboard({ matchId }: { matchId: string }) {
   const live = board?.status === 'RUNNING' && board?.resultStatus === 'DRAFT';
   const actions = clock?.actions || [];
   const terminal = board?.proposedWinMethod === 'SUBMISSION' || board?.proposedWinMethod === 'DISQUALIFICATION';
+  const canConfirmResult = terminal || remaining === 0;
   const athletes = [details?.athlete1, details?.athlete2];
   const returnTo = board ? `/cms/events/${board.eventId}?tab=matches` : '/cms/matches';
 
@@ -169,9 +170,11 @@ export function MatchScoreboard({ matchId }: { matchId: string }) {
           athleteName={athletes[side - 1]?.fullName || 'Chờ xác định'}
           score={board[`athlete${side}Score`]}
           penalties={board[`athlete${side}Penalties`]}
-          submissions={actions.filter((action) => action.side === side && action.award === 'SUBMISSION' && !action.undone).length}
+          advantages={board[`athlete${side}Advantages`]}
+          submissionAwarded={actions.some((action) => action.side === side && action.award === 'SUBMISSION' && !action.undone)}
           disabled={disabled || !live || terminal}
           onSubmission={() => command({ action: 'AWARD', side, award: 'SUBMISSION' })}
+          onAdvantage={() => command({ action: 'AWARD', side, award: 'ADVANTAGE' })}
           onPenalty={(penaltyLevel) => command({ action: 'AWARD', side, award: 'PENALTY', penaltyLevel })}
           onPoints={(points) => command({ action: 'AWARD', side, award: 'POINTS', points })}
         />)}
@@ -195,8 +198,8 @@ export function MatchScoreboard({ matchId }: { matchId: string }) {
         <div className={styles.tools}><button disabled={disabled || !live || !actions.some((action) => !action.undone)} onClick={() => command({ action: 'UNDO' })}><Undo2 size={18} /> Hoàn tác</button><button onClick={() => setShowHistory(true)}><History size={18} /> Lịch sử ({actions.length})</button><button aria-label="Toàn màn hình" onClick={fullscreen}><Expand size={18} /> Toàn màn hình</button></div>
         <div className={styles.controls}>
           {board.status === 'SCHEDULED' && <button className={styles.primary} disabled={disabled || Boolean(board.blockedReason)} onClick={async () => { if (await command({ action: 'START' })) setShowControls(false); }}><Play size={20} /> Bắt đầu trận</button>}
-          {live && <><button className={styles.primary} disabled={disabled || terminal && !clock?.runningSince || remaining === 0 && !clock?.runningSince} onClick={() => command({ action: clock?.runningSince ? 'PAUSE' : 'RESUME' })}>{running ? <Pause size={20} /> : <Play size={20} />}{clock?.runningSince ? 'Tạm dừng' : 'Tiếp tục'}</button><button disabled={disabled || running} onClick={() => { setWinnerId(board.proposedWinnerId || ''); setWinMethod(board.proposedWinMethod || 'DECISION'); setConfirming(true); }}><Check size={20} /> Xác nhận kết quả{board.proposedWinnerId ? ` · ${athletes[board.proposedWinnerId === board.athlete1Id ? 0 : 1]?.fullName || 'VĐV thắng'}` : ''}</button></>}
-          {live && board.proposedWinnerId && <small>{board.outcomeReason}. Kiểm tra rồi xác nhận để lưu kết quả.</small>}
+          {live && <><button className={styles.primary} disabled={disabled || terminal && !clock?.runningSince || remaining === 0 && !clock?.runningSince} onClick={() => command({ action: clock?.runningSince ? 'PAUSE' : 'RESUME' })}>{running ? <Pause size={20} /> : <Play size={20} />}{clock?.runningSince ? 'Tạm dừng' : 'Tiếp tục'}</button>{canConfirmResult && <button disabled={disabled || running} onClick={() => { setWinnerId(board.proposedWinnerId || ''); setWinMethod(board.proposedWinMethod || 'DECISION'); setConfirming(true); }}><Check size={20} /> Xác nhận kết quả{board.proposedWinnerId ? ` · ${athletes[board.proposedWinnerId === board.athlete1Id ? 0 : 1]?.fullName || 'VĐV thắng'}` : ''}</button>}</>}
+          {live && canConfirmResult && board.proposedWinnerId && <small>{board.outcomeReason}. Kiểm tra rồi xác nhận để lưu kết quả.</small>}
           <small>{busy ? 'Đang lưu…' : `Đã đồng bộ · v${board.resultVersion}`}</small>
           <small>{finished ? board.resultStatus === 'ENTERED' ? 'Đã lưu · Chờ trọng tài xác nhận' : 'Kết quả đã lưu' : remaining === 0 ? 'HẾT GIỜ · Chờ xác nhận kết quả' : running ? 'Đồng hồ đang chạy' : 'Đồng hồ đã dừng'}</small>
         </div>

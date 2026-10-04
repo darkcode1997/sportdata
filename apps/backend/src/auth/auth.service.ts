@@ -71,6 +71,7 @@ export class AuthService {
         username: true,
         name: true,
         role: true,
+        permissions: true,
         createdAt: true,
       },
     });
@@ -208,6 +209,7 @@ export class AuthService {
         username: true,
         name: true,
         role: true,
+        permissions: true,
         isActive: true,
         createdAt: true,
         updatedAt: true,

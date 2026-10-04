@@ -18,6 +18,8 @@ import { CreateMatchDto } from './dto/create-match.dto';
 import { UpdateMatchDto } from './dto/update-match.dto';
 import { QueryMatchDto } from './dto/query-match.dto';
 import { GenerateDrawDto } from './dto/generate-draw.dto';
+import { QueryDrawPreconfigurationDto, SaveDrawPreconfigurationDto, PreviewDrawDto } from './dto/draw-preconfiguration.dto';
+import { DrawPreconfigureGuard } from '../auth/draw-preconfigure.guard';
 import { MatchStatus } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../auth/optional-jwt-auth.guard';
@@ -84,6 +86,34 @@ export class MatchesController {
     return this.matchesService.findDraws(eventId, categoryId, Boolean(request.user));
   }
 
+  @Get('event/:eventId/category/:categoryId/preconfiguration')
+  @UseGuards(JwtAuthGuard, DrawPreconfigureGuard)
+  getPreconfiguration(@Param('eventId') eventId: string, @Param('categoryId') categoryId: string,
+    @Query() query: QueryDrawPreconfigurationDto) {
+    return this.matchesService.getPreconfiguration(eventId, categoryId, query.drawType);
+  }
+
+  @Patch('event/:eventId/category/:categoryId/preconfiguration')
+  @UseGuards(JwtAuthGuard, DrawPreconfigureGuard)
+  savePreconfiguration(@Param('eventId') eventId: string, @Param('categoryId') categoryId: string,
+    @Body() dto: SaveDrawPreconfigurationDto, @Req() request: { user: { id: string } }) {
+    return this.matchesService.savePreconfiguration(eventId, categoryId, dto, request.user.id);
+  }
+
+  @Post('event/:eventId/category/:categoryId/preview-draw')
+  @UseGuards(JwtAuthGuard, DrawPreconfigureGuard)
+  previewDraw(@Param('eventId') eventId: string, @Param('categoryId') categoryId: string,
+    @Body() dto: PreviewDrawDto, @Req() request: { user: { id: string } }) {
+    return this.matchesService.previewDraw(eventId, categoryId, dto, request.user.id);
+  }
+
+  @Get('event/:eventId/category/:categoryId/preconfiguration/history')
+  @UseGuards(JwtAuthGuard, DrawPreconfigureGuard)
+  getPreconfigurationHistory(@Param('eventId') eventId: string, @Param('categoryId') categoryId: string,
+    @Query() query: QueryDrawPreconfigurationDto) {
+    return this.matchesService.getPreconfigurationHistory(eventId, categoryId, query.drawType);
+  }
+
   @Post('event/:eventId/category/:categoryId/generate-draw')
   @UseGuards(JwtAuthGuard)
   @Roles(UserRole.ADMIN, UserRole.CONTENT, UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER)
@@ -98,8 +128,9 @@ export class MatchesController {
     @Param('eventId') eventId: string,
     @Param('categoryId') categoryId: string,
     @Body() dto: GenerateDrawDto,
+    @Req() request: { user: { id: string } },
   ) {
-    return this.matchesService.generateDraw(eventId, categoryId, dto);
+    return this.matchesService.generateDraw(eventId, categoryId, dto, request.user.id);
   }
 
   @Post('event/:eventId/distribute-dates')
