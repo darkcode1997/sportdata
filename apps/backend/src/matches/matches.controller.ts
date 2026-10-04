@@ -38,6 +38,10 @@ export class MatchesController {
       'Query matches by eventId, categoryId, date, status with pagination support.',
   })
   @ApiQuery({ name: 'search', required: false, type: String })
+  @ApiQuery({ name: 'athleteName', required: false, type: String })
+  @ApiQuery({ name: 'opponentName', required: false, type: String })
+  @ApiQuery({ name: 'matchNumber', required: false, type: Number })
+  @ApiQuery({ name: 'round', required: false, type: Number })
   @ApiQuery({ name: 'eventId', required: false, type: String })
   @ApiQuery({ name: 'categoryId', required: false, type: String })
   @ApiQuery({ name: 'sportId', required: false, type: String })

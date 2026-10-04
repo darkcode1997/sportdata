@@ -176,6 +176,10 @@ export class MatchesService {
   async findAll(query: QueryMatchDto, includeUnpublishedResults = false) {
     const {
       search,
+      athleteName,
+      opponentName,
+      matchNumber,
+      round,
       eventId,
       categoryId,
       sportId,
@@ -197,6 +201,31 @@ export class MatchesService {
     if (sportId) where.category = { sportId };
     if (fopId) where.fopId = fopId;
     const additionalFilters: Prisma.MatchWhereInput[] = [];
+    const name = athleteName?.trim();
+    const opponent = opponentName?.trim();
+    if (name && opponent) {
+      additionalFilters.push({
+        OR: [
+          {
+            athlete1: { fullName: { contains: name, mode: 'insensitive' } },
+            athlete2: { fullName: { contains: opponent, mode: 'insensitive' } },
+          },
+          {
+            athlete1: { fullName: { contains: opponent, mode: 'insensitive' } },
+            athlete2: { fullName: { contains: name, mode: 'insensitive' } },
+          },
+        ],
+      });
+    } else if (name || opponent) {
+      additionalFilters.push({
+        OR: [
+          { athlete1: { fullName: { contains: name || opponent, mode: 'insensitive' } } },
+          { athlete2: { fullName: { contains: name || opponent, mode: 'insensitive' } } },
+        ],
+      });
+    }
+    if (matchNumber !== undefined) where.matchNumber = matchNumber;
+    if (round !== undefined) where.round = round;
     if (search?.trim()) {
       const keyword = search.trim();
       additionalFilters.push({

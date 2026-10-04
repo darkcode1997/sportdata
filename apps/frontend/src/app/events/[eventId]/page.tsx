@@ -5,9 +5,10 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import useSWR from 'swr';
 import useSWRInfinite from 'swr/infinite';
-import { Button, Card, Empty, Select, Skeleton, Spin, Tag } from 'antd';
+import { Alert, Button, Card, Empty, Form, Input, InputNumber, Select, Skeleton, Spin, Tag } from 'antd';
 import { ArrowRight, Building2, LogIn, Radio, ShieldCheck, TicketCheck, Trophy, UserRound, Users } from 'lucide-react';
 import { MatchCard } from '@/components/MatchCard';
+import { MATCH_STATUS_META } from '@/lib/vi-labels';
 import { useSportDataToast } from '@/hooks/useSportDataToast';
 import { fetcher } from '@/lib/api';
 import { getParticipantAccount, getParticipantToken, participantApi, participantError, type SportDataAccount } from '@/lib/participant-auth';
@@ -74,6 +75,14 @@ interface ScheduleSummary {
     categoryId: string;
     sportId: string;
   } | null;
+}
+
+interface ScheduleFilters {
+  athleteName?: string;
+  opponentName?: string;
+  matchNumber?: number;
+  round?: number;
+  status?: string;
 }
 
 interface MatchPage {
@@ -193,6 +202,9 @@ export default function EventDetailPage() {
   const [selectedSportId, setSelectedSportId] = useState<string>();
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>();
   const [selectedFopId, setSelectedFopId] = useState<string>();
+  const [filterForm] = Form.useForm<ScheduleFilters>();
+  const [matchFilters, setMatchFilters] = useState<ScheduleFilters>({});
+  const hasMatchFilters = Object.values(matchFilters).some((value) => value !== undefined && value !== null && String(value).trim());
   const [registrationCategoryId, setRegistrationCategoryId] = useState<string>();
   const [registrationSubmitting, setRegistrationSubmitting] = useState(false);
   const [participantAccount, setParticipantAccount] = useState<SportDataAccount | null>(null);
@@ -229,7 +241,7 @@ export default function EventDetailPage() {
 
   useEffect(() => {
     if (!dateGroups.length) return;
-    if (!selectedDate || !dateGroups.some((group) => group.date === selectedDate)) {
+    if (!selectedDate || (selectedDate !== 'all' && !dateGroups.some((group) => group.date === selectedDate))) {
       setSelectedDate(dateGroups[0].date);
     }
   }, [dateGroups, selectedDate]);
@@ -240,21 +252,25 @@ export default function EventDetailPage() {
 
     const query = new URLSearchParams({
       eventId,
-      date: selectedDate,
       pagination: 'cursor',
       limit: '50',
     });
     if (pageIndex > 0 && previousPage?.meta.nextCursor) {
       query.set('cursor', previousPage.meta.nextCursor);
     }
+    if (selectedDate !== 'all') query.set('date', selectedDate);
+    Object.entries(matchFilters).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && String(value).trim()) query.set(key, String(value).trim());
+    });
     if (selectedSportId) query.set('sportId', selectedSportId);
     if (selectedCategoryId) query.set('categoryId', selectedCategoryId);
     if (selectedFopId) query.set('fopId', selectedFopId);
     return `/matches?${query}`;
-  }, [eventId, selectedCategoryId, selectedDate, selectedFopId, selectedSportId]);
+  }, [eventId, matchFilters, selectedCategoryId, selectedDate, selectedFopId, selectedSportId]);
 
   const {
     data: matchPages,
+    error: matchesError,
     isLoading: matchesLoading,
     isValidating: matchesValidating,
     setSize,
@@ -340,6 +356,8 @@ export default function EventDetailPage() {
     const targetIsVisible = activeMatches.some((match) => match.id === liveMatchTarget.id);
 
     if (!targetIsVisible) {
+      filterForm.resetFields();
+      setMatchFilters({});
       setSelectedDate(liveMatchTarget.date);
       setSelectedSportId(undefined);
       setSelectedCategoryId(undefined);
@@ -532,6 +550,11 @@ export default function EventDetailPage() {
         )}
 
         <div className="schedule-day-tabs mt-7 flex flex-wrap justify-center gap-2">
+          <Button
+            type={selectedDate === 'all' ? 'primary' : 'default'}
+            shape="round"
+            onClick={() => { setPendingLiveMatchId(undefined); setSize(1); setSelectedDate('all'); }}
+          >Tất cả ngày ({totalMatches.toLocaleString()})</Button>
           {dateGroups.map((group) => {
             const active = group.date === (selectedDate || dateGroups[0]?.date);
             return (
@@ -599,8 +622,53 @@ export default function EventDetailPage() {
           />
         </div>
 
+        <Card className="mt-4">
+          <Form
+            form={filterForm}
+            layout="vertical"
+            onFinish={(values: ScheduleFilters) => {
+              setPendingLiveMatchId(undefined);
+              setSize(1);
+              setMatchFilters(values);
+            }}
+          >
+            <div className="grid gap-x-3 sm:grid-cols-2 lg:grid-cols-5">
+              <Form.Item name="athleteName" label="Tên VĐV">
+                <Input allowClear placeholder="Nhập tên hoặc một phần tên" />
+              </Form.Item>
+              <Form.Item name="opponentName" label="Tên đối thủ">
+                <Input allowClear placeholder="Nhập thêm tên để tìm cặp đấu" />
+              </Form.Item>
+              <Form.Item name="matchNumber" label="Số trận">
+                <InputNumber className="!w-full" min={1} max={2147483647} precision={0} placeholder="Ví dụ: 12" />
+              </Form.Item>
+              <Form.Item name="round" label="Vòng đấu">
+                <InputNumber className="!w-full" min={1} max={2147483647} precision={0} placeholder="Tất cả vòng" />
+              </Form.Item>
+              <Form.Item name="status" label="Trạng thái">
+                <Select allowClear placeholder="Tất cả trạng thái" options={Object.entries(MATCH_STATUS_META).map(([value, meta]) => ({ value, label: meta.label }))} />
+              </Form.Item>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <Button type="primary" htmlType="submit">Tìm trận đấu</Button>
+              <Button onClick={() => {
+                filterForm.resetFields();
+                setMatchFilters({});
+                setSelectedSportId(undefined);
+                setSelectedCategoryId(undefined);
+                setSelectedFopId(undefined);
+                setPendingLiveMatchId(undefined);
+                setSize(1);
+              }}>Xóa bộ lọc</Button>
+              <span className="text-sm text-slate-500">Tìm cặp đấu theo bất kỳ thứ tự nào. Chọn “Tất cả ngày” để tìm trong toàn sự kiện.</span>
+            </div>
+          </Form>
+        </Card>
+
         <main className="mt-5 space-y-5">
-          {loading ? (
+          {matchesError ? (
+            <Alert type="error" showIcon message="Không thể tải danh sách trận đấu. Vui lòng thử lại." />
+          ) : loading ? (
             <ScheduleSkeleton />
           ) : activeMatches.length ? (
             <>
@@ -644,7 +712,9 @@ export default function EventDetailPage() {
             <Card className="schedule-empty-card">
               <Empty
                 image={<Trophy className="mx-auto h-12 w-12 text-slate-600" />}
-                description="Chưa có trận đấu trong ngày này."
+                description={hasMatchFilters || selectedSportId || selectedCategoryId || selectedFopId
+                  ? 'Không tìm thấy trận đấu phù hợp. Thử đổi bộ lọc hoặc chọn tất cả ngày.'
+                  : selectedDate === 'all' ? 'Chưa có trận đấu trong sự kiện này.' : 'Chưa có trận đấu trong ngày này.'}
               />
             </Card>
           )}
