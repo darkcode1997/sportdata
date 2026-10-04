@@ -187,7 +187,7 @@ export default function HiddenBackupPage() {
   if (authState === 'checking') {
     return (
       <div className="grid min-h-screen place-items-center bg-sdark-950">
-        <Spin size="large" tip="Đang xác thực quyền quản trị" />
+        <Spin size="large" description="Đang xác thực quyền quản trị" />
       </div>
     );
   }

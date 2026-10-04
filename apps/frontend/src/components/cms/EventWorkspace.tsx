@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import dynamic from 'next/dynamic';
 import useSWR, { useSWRConfig } from 'swr';
 import {
   Alert,
@@ -23,8 +24,10 @@ import {
   Tabs,
   Tag,
   Upload,
+  Tooltip,
 } from 'antd';
 import type { UploadProps } from 'antd';
+import type { ColumnType } from 'antd/es/table';
 import {
   BadgeDollarSign,
   CalendarRange,
@@ -34,13 +37,13 @@ import {
   Eye,
   Images,
   List,
-  LayoutTemplate,
   MapPin,
   Network,
-  Palette,
   Pencil,
   Plus,
+  Play,
   RefreshCw,
+  Search,
   Settings2,
   TicketCheck,
   Trash2,
@@ -49,11 +52,16 @@ import {
 } from 'lucide-react';
 import { api, fetcher } from '@/lib/api';
 import { useSportDataToast } from '@/hooks/useSportDataToast';
-import { EventParticipationCard } from '@/components/EventParticipationCard';
-import { SportdataBracket, type BracketDraw } from '@/components/brackets/SportdataBracket';
+import { ticketDesign, validateTicketDesign, type TicketDesign } from '@/lib/ticket-design';
+import type { BracketDraw } from '@/components/brackets/SportdataBracket';
 import type { ParticipationTicket } from '@/lib/ticket-types';
+import { DrawPreconfiguration } from '@/components/cms/DrawPreconfiguration';
 import { AthleteQuickViewModal } from '@/components/cms/AthleteQuickViewModal';
-import { withCmsReturnTo } from '@/lib/cms-navigation';
+import { openCmsScoreboard, withCmsReturnTo } from '@/lib/cms-navigation';
+import { MATCH_STATUS_META } from '@/lib/vi-labels';
+
+const TicketDesignEditor = dynamic(() => import('@/components/cms/TicketDesignEditor').then((module) => module.TicketDesignEditor), { ssr: false });
+const SportdataBracket = dynamic(() => import('@/components/brackets/SportdataBracket').then((module) => module.SportdataBracket), { ssr: false });
 
 type EventWorkspaceProps = {
   event: any;
@@ -111,13 +119,6 @@ const paymentProviderOptions = [
   { value: 'BANK_QR', label: 'Chuyển khoản VietQR' },
 ];
 
-const ticketThemePresets = [
-  { value: 'OCEAN', label: 'Ocean', description: 'Xanh thể thao, bố cục cổ điển', layout: 'CLASSIC', primary: '#0284C7', secondary: '#075985', accent: '#059669' },
-  { value: 'CRIMSON', label: 'Crimson', description: 'Đỏ mạnh, đầu vé dạng dải', layout: 'STRIPE', primary: '#DC2626', secondary: '#7F1D1D', accent: '#F59E0B' },
-  { value: 'EMERALD', label: 'Emerald', description: 'Xanh lá, bố cục tối giản', layout: 'MINIMAL', primary: '#059669', secondary: '#064E3B', accent: '#0EA5E9' },
-  { value: 'ROYAL', label: 'Royal', description: 'Tím hoàng gia và vàng', layout: 'STRIPE', primary: '#4F46E5', secondary: '#1E1B4B', accent: '#D97706' },
-] as const;
-
 const eventTabKeys = ['overview', 'registrations', 'fops', 'matches', 'payment', 'ticket', 'bracket'] as const;
 type EventTabKey = typeof eventTabKeys[number];
 
@@ -154,7 +155,8 @@ export function EventWorkspace({ event, onRefresh }: EventWorkspaceProps) {
   const searchParams = useSearchParams();
   const { data: currentUser } = useSWR<any>('/auth/profile', fetcher);
   const canEditEvent = ['ADMIN', 'CONTENT', 'GAMES_ADMIN'].includes(currentUser?.role);
-  const canOperate = ['ADMIN', 'GAMES_ADMIN', 'SPORT_MANAGER'].includes(currentUser?.role);
+  const canScore = ['ADMIN', 'GAMES_ADMIN'].includes(currentUser?.role);
+  const canOperate = ['ADMIN', 'GAMES_ADMIN'].includes(currentUser?.role);
   const canConfirmPayment = ['ADMIN', 'GAMES_ADMIN'].includes(currentUser?.role);
   const requestedTab = searchParams.get('tab');
   const activeTab: EventTabKey = eventTabKeys.includes(requestedTab as EventTabKey)
@@ -194,7 +196,7 @@ export function EventWorkspace({ event, onRefresh }: EventWorkspaceProps) {
         {
           key: 'matches',
           label: <span className="flex items-center gap-2"><List className="h-4 w-4" />Trận đấu</span>,
-          children: <MatchesTab event={event} returnTo={workspaceHref('matches')} canOperate={canOperate} />,
+          children: <MatchesTab event={event} returnTo={workspaceHref('matches')} canOperate={canOperate} canScore={canScore} canEditMatch={canEditEvent || canOperate} canEditBracket={canOperate} />,
         },
         {
           key: 'payment',
@@ -209,7 +211,7 @@ export function EventWorkspace({ event, onRefresh }: EventWorkspaceProps) {
         {
           key: 'bracket',
           label: <span className="flex items-center gap-2"><Network className="h-4 w-4" />Thể thức & nhánh đấu</span>,
-          children: <BracketTab event={event} canOperate={canOperate} />,
+          children: <BracketTab event={event} canOperate={canOperate} preconfigureActorId={canOperate ? currentUser?.id : undefined} />,
         },
       ]}
     />
@@ -225,6 +227,13 @@ function EventOverview({ event, canEdit, returnTo }: { event: any; canEdit: bool
           <Descriptions.Item label="Địa điểm">{event.location || 'Chưa cập nhật'}</Descriptions.Item>
           <Descriptions.Item label="Bắt đầu">{new Date(event.startDate).toLocaleString('vi-VN')}</Descriptions.Item>
           <Descriptions.Item label="Kết thúc">{new Date(event.endDate).toLocaleString('vi-VN')}</Descriptions.Item>
+          <Descriptions.Item label="Giới hạn tuổi" span={2}>
+            {event.ageLimitMode === 'UNRESTRICTED'
+              ? 'Không giới hạn tuổi'
+              : event.ageLimitMode === 'CUSTOM'
+                ? [event.minAge != null ? `Từ ${event.minAge} tuổi` : null, event.maxAge != null ? `Tối đa ${event.maxAge} tuổi` : null].filter(Boolean).join(' · ')
+                : 'Theo độ tuổi của từng hạng đấu'}
+          </Descriptions.Item>
           <Descriptions.Item label="Bộ môn" span={2}>
             <Space wrap>{(event.sports?.length ? event.sports : [event.sport]).filter(Boolean).map((sport: any) => <Tag color="blue" key={sport.id}>{sport.name}</Tag>)}</Space>
           </Descriptions.Item>
@@ -661,19 +670,71 @@ function RegistrationsTab({ eventId, canOperate, canConfirmPayment }: { eventId:
   );
 }
 
-function MatchesTab({ event, returnTo, canOperate }: { event: any; returnTo: string; canOperate: boolean }) {
+type MatchFilters = {
+  athleteName?: string;
+  opponentName?: string;
+  matchNumber?: number;
+  round?: number;
+  status?: string;
+  date?: string;
+  venue?: string;
+};
+
+function MatchesTab({ event, returnTo, canOperate, canScore, canEditMatch, canEditBracket }: { event: any; returnTo: string; canOperate: boolean; canScore: boolean; canEditMatch: boolean; canEditBracket: boolean }) {
   const toast = useSportDataToast();
   const { mutate: mutateGlobal } = useSWRConfig();
   const [categoryId, setCategoryId] = useState<string>(event.categories?.[0]?.id || '');
-  const [view, setView] = useState<'tree' | 'list'>('tree');
+  const [view, setView] = useState<'tree' | 'list'>('list');
   const [page, setPage] = useState(1);
+  const [filters, setFilters] = useState<MatchFilters>({});
   const [selectedAthleteId, setSelectedAthleteId] = useState<string>();
   const [distributingDates, setDistributingDates] = useState(false);
   const pageSize = 50;
   const query = new URLSearchParams({ eventId: event.id, limit: String(pageSize), page: String(page) });
   if (categoryId) query.set('categoryId', categoryId);
-  const { data, error, isLoading, mutate } = useSWR<any>(`/matches?${query}`, fetcher);
-  const { data: drawData, isLoading: drawsLoading, mutate: mutateDraws } = useSWR<{ draws: BracketDraw[] }>(categoryId ? `/matches/event/${event.id}/category/${categoryId}/draws` : null, fetcher);
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && String(value).trim()) query.set(key, String(value).trim());
+  });
+  const hasFilters = Object.values(filters).some((value) => value !== undefined && value !== null && String(value).trim());
+  const columnFilter = (key: keyof MatchFilters, label: string, kind: 'text' | 'number' | 'date' = 'text'): ColumnType<any> => ({
+    key,
+    filteredValue: filters[key] !== undefined ? [String(filters[key])] : null,
+    filterIcon: (filtered) => <Search className={`h-4 w-4 ${filtered ? 'text-blue-600' : ''}`} />,
+    filterDropdown: ({ selectedKeys, setSelectedKeys, confirm, clearFilters }) => (
+      <div className="space-y-3 p-3" style={{ width: 270 }} onKeyDown={(event) => event.stopPropagation()}>
+        <div className="text-sm font-medium">{label}</div>
+        {kind === 'number' ? (
+          <InputNumber
+            className="!w-full"
+            min={1}
+            max={2147483647}
+            precision={0}
+            aria-label={label}
+            value={selectedKeys[0] ? Number(selectedKeys[0]) : null}
+            onChange={(value) => setSelectedKeys(value === null ? [] : [String(value)])}
+            onPressEnter={() => confirm()}
+          />
+        ) : (
+          <Input
+            autoFocus
+            allowClear
+            type={kind === 'date' ? 'date' : 'text'}
+            aria-label={label}
+            placeholder={label}
+            value={String(selectedKeys[0] || '')}
+            onChange={(event) => setSelectedKeys(event.target.value ? [event.target.value] : [])}
+            onPressEnter={() => confirm()}
+          />
+        )}
+        <Space>
+          <Button type="primary" size="small" onClick={() => confirm()}>Áp dụng</Button>
+          <Button size="small" onClick={() => clearFilters?.({ confirm: true, closeDropdown: true })}>Xóa</Button>
+        </Space>
+      </div>
+    ),
+  });
+  const { data, error, isLoading, mutate } = useSWR<any>(`/matches?${query}`, fetcher, { refreshInterval: 5000 });
+  const { data: drawData, isLoading: drawsLoading, mutate: mutateDraws } = useSWR<{ draws: BracketDraw[] }>(categoryId ? `/matches/event/${event.id}/category/${categoryId}/draws` : null, fetcher, { refreshInterval: 5000 });
   const draws = [...(drawData?.draws || [])].sort((a, b) => a.sortOrder - b.sortOrder);
   const loadError = Array.isArray(error?.response?.data?.message)
     ? error.response.data.message.join(', ')
@@ -733,10 +794,14 @@ function MatchesTab({ event, returnTo, canOperate }: { event: any; returnTo: str
       </Card>
       {view === 'tree' ? (
         <div className="space-y-5">
-          {drawsLoading ? <Card loading /> : draws.length ? draws.map((draw) => <SportdataBracket key={draw.id} draw={draw} matchHref={(match) => withCmsReturnTo(`/cms/matches/${match.id}/edit`, returnTo)} />) : <Card><Empty description="Chưa sinh sơ đồ cây cho hạng đấu này." /></Card>}
+          {drawsLoading ? <Card loading /> : draws.length ? draws.map((draw) => <SportdataBracket key={draw.id} draw={draw} sourceMatches={draws.flatMap((item) => item.matches)} readOnly={!canEditBracket} matchHref={(match) => withCmsReturnTo(`/cms/matches/${match.id}/edit`, returnTo)} />) : <Card><Empty description="Chưa sinh sơ đồ cây cho hạng đấu này." /></Card>}
         </div>
       ) : (
         <Card styles={{ body: { padding: 0 } }}>
+          <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 p-4">
+            <span className="text-sm text-slate-500">Bấm biểu tượng lọc trên tiêu đề cột để tìm trận. Lọc cả hai cột VĐV để tìm cặp đấu theo bất kỳ thứ tự nào.</span>
+            {hasFilters && <Button onClick={() => { setFilters({}); setPage(1); }}>Xóa bộ lọc</Button>}
+          </div>
           {error ? (
             <Alert
               className="m-4"
@@ -750,21 +815,36 @@ function MatchesTab({ event, returnTo, canOperate }: { event: any; returnTo: str
             rowKey="id"
             loading={isLoading}
             dataSource={data?.items || []}
-            locale={{ emptyText: <Empty description="Chưa có trận đấu trong hạng đấu này." /> }}
+            locale={{ emptyText: <Empty description={hasFilters ? 'Không tìm thấy trận đấu phù hợp. Thử đổi hoặc xóa bộ lọc.' : 'Chưa có trận đấu trong hạng đấu này.'} /> }}
+            scroll={{ x: 1100 }}
+            onChange={(pagination, tableFilters, _sorter, extra) => {
+              if (extra.action === 'filter') {
+                const nextFilters: MatchFilters = {};
+                Object.entries(tableFilters).forEach(([key, values]) => {
+                  if (values?.[0] !== undefined && String(values[0]).trim()) {
+                    Object.assign(nextFilters, { [key]: key === 'matchNumber' || key === 'round' ? Number(values[0]) : String(values[0]).trim() });
+                  }
+                });
+                setFilters(nextFilters);
+                setPage(1);
+              } else if (extra.action === 'paginate') {
+                setPage(pagination.current || 1);
+              }
+            }}
             pagination={{
               current: data?.meta?.page || page,
               pageSize,
               total: data?.meta?.total || 0,
               showSizeChanger: false,
               hideOnSinglePage: true,
-              onChange: setPage,
               showTotal: (total) => `${total} trận đấu`,
             }}
             columns={[
-              { title: '#', dataIndex: 'matchNumber', width: 70 },
-              { title: 'Vòng', dataIndex: 'round', width: 90 },
+              { title: '#', dataIndex: 'matchNumber', width: 90, ...columnFilter('matchNumber', 'Số trận', 'number') },
+              { title: 'Vòng', dataIndex: 'round', width: 90, ...columnFilter('round', 'Vòng đấu', 'number') },
               {
                 title: 'Ngày / giờ',
+                ...columnFilter('date', 'Ngày thi đấu', 'date'),
                 width: 185,
                 render: (_: unknown, match: any) => match.startTime
                   ? new Date(match.startTime).toLocaleString('vi-VN', {
@@ -776,11 +856,16 @@ function MatchesTab({ event, returnTo, canOperate }: { event: any; returnTo: str
                   })
                   : `${new Date(match.matchDate).toLocaleDateString('vi-VN')} · Chưa xếp giờ`,
               },
-              { title: 'VĐV 1', render: (_: unknown, match: any) => match.athlete1 ? <Button type="link" className="h-auto !p-0" onClick={() => setSelectedAthleteId(match.athlete1.id)}>{match.athlete1.fullName}</Button> : 'Chờ xác định' },
-              { title: 'VĐV 2', render: (_: unknown, match: any) => match.athlete2 ? <Button type="link" className="h-auto !p-0" onClick={() => setSelectedAthleteId(match.athlete2.id)}>{match.athlete2.fullName}</Button> : 'Chờ xác định' },
-              { title: 'Sân', dataIndex: 'fop', width: 120 },
-              { title: 'Trạng thái', dataIndex: 'status', width: 130, render: (value) => <Tag>{value}</Tag> },
-              { title: '', width: 60, render: (_: unknown, match: any) => <Button type="text" href={withCmsReturnTo(`/cms/matches/${match.id}/edit`, returnTo)} icon={<Eye className="h-4 w-4" />} /> },
+              { title: 'VĐV 1', ...columnFilter('athleteName', 'Tên VĐV (ở bất kỳ bên nào)'), render: (_: unknown, match: any) => match.athlete1 ? <Button type="link" className="h-auto !p-0" onClick={() => setSelectedAthleteId(match.athlete1.id)}>{match.athlete1.fullName}</Button> : 'Chờ xác định' },
+              { title: 'VĐV 2', ...columnFilter('opponentName', 'Tên đối thủ (ở bất kỳ bên nào)'), render: (_: unknown, match: any) => match.athlete2 ? <Button type="link" className="h-auto !p-0" onClick={() => setSelectedAthleteId(match.athlete2.id)}>{match.athlete2.fullName}</Button> : 'Chờ xác định' },
+              { title: 'Sân', dataIndex: 'fop', width: 120, ...columnFilter('venue', 'Tên sân / sàn') },
+              { title: 'Trạng thái', key: 'status', dataIndex: 'status', width: 150, filters: Object.entries(MATCH_STATUS_META).map(([value, meta]) => ({ value, text: meta.label })), filterMultiple: false, filteredValue: filters.status ? [filters.status] : null, render: (value: string) => <Tag color={MATCH_STATUS_META[value]?.color}>{MATCH_STATUS_META[value]?.label || value}</Tag> },
+              { title: 'Điều hành', width: 190, render: (_: unknown, match: any) => {
+                const ready = match.athlete1Id && match.athlete2Id && match.fopId && match.startTime && match.endTime;
+                const playable = ['SCHEDULED', 'RUNNING'].includes(match.status);
+                const reason = !canScore ? 'Bạn không có quyền chấm điểm' : !playable ? 'Trận đã kết thúc hoặc bị hủy' : !ready ? 'Cần đủ hai VĐV, sân và giờ thi đấu' : 'Mở bảng điểm; kiểm tra điều kiện trước khi bắt đầu';
+                return <Space><Tooltip title={reason}><span><Button aria-label={`Mở bảng điểm trận ${match.matchNumber || match.id}`} type="primary" target="sportdata-scoreboard" onClick={(event) => openCmsScoreboard(event, match.id)} disabled={!canScore || !playable || !ready} href={canScore && playable && ready ? `/cms/matches/${match.id}/scoreboard` : undefined} icon={<Play className="h-4 w-4" />}>Bảng điểm</Button></span></Tooltip>{canEditMatch && <Button aria-label="Chỉnh sửa trận" type="text" href={withCmsReturnTo(`/cms/matches/${match.id}/edit`, returnTo)} icon={<Eye className="h-4 w-4" />} />}</Space>;
+              } },
             ]}
           />
         </Card>
@@ -911,67 +996,35 @@ function PaymentTab({ event, canEdit, onRefresh }: EventWorkspaceProps & { canEd
 
 function TicketDesignTab({ event, canEdit, onRefresh }: EventWorkspaceProps & { canEdit: boolean }) {
   const toast = useSportDataToast();
-  const [form] = Form.useForm();
   const [uploading, setUploading] = useState(false);
-  const [savingTheme, setSavingTheme] = useState(false);
-  const selectedPreset = Form.useWatch('ticketThemePreset', form) || event.ticketThemePreset || 'OCEAN';
-  const selectedLayout = Form.useWatch('ticketLayout', form) || event.ticketLayout || 'CLASSIC';
-  const primaryColor = Form.useWatch('ticketPrimaryColor', form) || event.ticketPrimaryColor || '#0284C7';
-  const secondaryColor = Form.useWatch('ticketSecondaryColor', form) || event.ticketSecondaryColor || '#075985';
-  const accentColor = Form.useWatch('ticketAccentColor', form) || event.ticketAccentColor || '#059669';
-
+  const [saving, setSaving] = useState(false);
+  const savedDesign = JSON.stringify(event.ticketDesign || null);
+  const [design, setDesign] = useState<TicketDesign>(() => ticketDesign(event.ticketDesign));
+  const [savedSnapshot, setSavedSnapshot] = useState(() => JSON.stringify(ticketDesign(event.ticketDesign)));
   useEffect(() => {
-    form.setFieldsValue({
-      ticketThemePreset: event.ticketThemePreset || 'OCEAN',
-      ticketLayout: event.ticketLayout || 'CLASSIC',
-      ticketPrimaryColor: event.ticketPrimaryColor || '#0284C7',
-      ticketSecondaryColor: event.ticketSecondaryColor || '#075985',
-      ticketAccentColor: event.ticketAccentColor || '#059669',
-    });
-  }, [event, form]);
-
+    const next = ticketDesign(JSON.parse(savedDesign));
+    setDesign(next);
+    setSavedSnapshot(JSON.stringify(next));
+  }, [event.id, savedDesign]);
+  const dirty = JSON.stringify(design) !== savedSnapshot;
   const sampleTicket: ParticipationTicket = {
-    ticketCode: 'SD-A6-PREVIEW',
-    status: 'CONFIRMED',
-    event: {
-      id: event.id,
-      name: event.name,
-      startDate: event.startDate,
-      endDate: event.endDate,
-      location: event.location,
-      ticketBackgroundUrl: event.ticketBackgroundUrl,
-      ticketThemePreset: selectedPreset,
-      ticketLayout: selectedLayout,
-      ticketPrimaryColor: primaryColor,
-      ticketSecondaryColor: secondaryColor,
-      ticketAccentColor: accentColor,
-    },
+    ticketCode: 'SD-A6-PREVIEW', status: 'CONFIRMED',
+    event: { id: event.id, name: event.name, startDate: event.startDate, endDate: event.endDate, location: event.location, ticketBackgroundUrl: event.ticketBackgroundUrl },
     sport: event.sports?.[0] || event.sport,
     category: { name: event.categories?.[0]?.name || 'Hạng đấu / nội dung' },
     athlete: { fullName: 'NGUYỄN VĂN ĐỘNG VIÊN', country: { name: 'Việt Nam' }, federation: { name: 'Đơn vị / CLB' } },
   };
-
-  const applyPreset = (preset: (typeof ticketThemePresets)[number]) => {
-    form.setFieldsValue({
-      ticketThemePreset: preset.value,
-      ticketLayout: preset.layout,
-      ticketPrimaryColor: preset.primary,
-      ticketSecondaryColor: preset.secondary,
-      ticketAccentColor: preset.accent,
-    });
-  };
-
-  const saveTheme = async (values: any) => {
-    setSavingTheme(true);
+  const save = async () => {
+    setSaving(true);
     try {
-      await api.patch(`/events/${event.id}`, values);
+      const layout = validateTicketDesign(design);
+      await api.patch(`/events/${event.id}`, { ticketDesign: layout });
+      setDesign(layout); setSavedSnapshot(JSON.stringify(layout));
       await onRefresh();
-      toast.success('Đã lưu theme vé A6 cho sự kiện. Vé PDF mới sẽ dùng cấu hình này.');
+      toast.success('Đã lưu bố cục. Vé tải xuống và gửi email sẽ dùng vị trí này.');
     } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Không thể lưu theme vé.');
-    } finally {
-      setSavingTheme(false);
-    }
+      toast.error(error.response?.data?.message || error.message || 'Không thể lưu bố cục vé.');
+    } finally { setSaving(false); }
   };
 
   const uploadProps: UploadProps = {
@@ -1018,80 +1071,41 @@ function TicketDesignTab({ event, canEdit, onRefresh }: EventWorkspaceProps & { 
   };
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[430px_1fr]">
-      <Card title={<span className="flex items-center gap-2"><Palette className="h-5 w-5 text-sky-500" />Theme & nền vé</span>}>
-        <Form
-          form={form}
-          layout="vertical"
-          disabled={!canEdit}
-          onFinish={saveTheme}
-          onValuesChange={(changed) => {
-            if ('ticketLayout' in changed || 'ticketPrimaryColor' in changed || 'ticketSecondaryColor' in changed || 'ticketAccentColor' in changed) {
-              form.setFieldValue('ticketThemePreset', 'CUSTOM');
-            }
-          }}
-        >
-          <Form.Item name="ticketThemePreset" hidden><Input /></Form.Item>
-          <Form.Item label="Bộ theme dựng sẵn">
-            <div className="grid grid-cols-2 gap-3">
-              {ticketThemePresets.map((preset) => (
-                <button
-                  key={preset.value}
-                  type="button"
-                  onClick={() => applyPreset(preset)}
-                  className={`rounded-xl border p-3 text-left transition ${selectedPreset === preset.value ? 'border-sky-500 bg-sky-500/10 ring-1 ring-sky-500' : 'border-slate-200/15 hover:border-sky-500/60'}`}
-                >
-                  <span className="mb-2 flex gap-1.5">
-                    {[preset.primary, preset.secondary, preset.accent].map((item) => <i key={item} className="h-4 w-4 rounded-full border border-white/30" style={{ backgroundColor: item }} />)}
-                  </span>
-                  <strong className="block">{preset.label}</strong>
-                  <span className="mt-1 block text-xs text-slate-500">{preset.description}</span>
-                </button>
-              ))}
-            </div>
-          </Form.Item>
-
-          <Form.Item name="ticketLayout" label={<span className="flex items-center gap-2"><LayoutTemplate className="h-4 w-4" />Bố cục vé</span>}>
-            <Segmented block options={[{ value: 'CLASSIC', label: 'Cổ điển' }, { value: 'STRIPE', label: 'Dải màu' }, { value: 'MINIMAL', label: 'Tối giản' }]} />
-          </Form.Item>
-
-          <div className="grid grid-cols-3 gap-3">
-            <Form.Item name="ticketPrimaryColor" label="Màu chính"><Input type="color" className="h-10 p-1" /></Form.Item>
-            <Form.Item name="ticketSecondaryColor" label="Màu đậm"><Input type="color" className="h-10 p-1" /></Form.Item>
-            <Form.Item name="ticketAccentColor" label="Điểm nhấn"><Input type="color" className="h-10 p-1" /></Form.Item>
-          </div>
-
-          {canEdit && <Button htmlType="submit" type="primary" block loading={savingTheme}>Lưu theme vé</Button>}
-        </Form>
-
-        <div className="mt-6 border-t border-slate-200/10 pt-6">
-          <h3 className="font-bold">Ảnh nền riêng của sự kiện</h3>
-          <p className="mb-4 mt-2 text-sm text-slate-500">Ảnh dọc đúng tỉ lệ A6 (105 × 148 mm), JPG/PNG tối đa 6 MB. Mỗi sự kiện có thể dùng nền riêng kết hợp với theme đã chọn.</p>
-          <Space wrap>
-            <Upload {...uploadProps}><Button loading={uploading} icon={<UploadCloud className="h-4 w-4" />}>{event.ticketBackgroundUrl ? 'Thay ảnh nền' : 'Tải ảnh nền'}</Button></Upload>
-            {event.ticketBackgroundUrl && canEdit && <Popconfirm title="Xóa ảnh nền vé?" onConfirm={remove} okText="Xóa" cancelText="Hủy"><Button danger icon={<Trash2 className="h-4 w-4" />}>Xóa nền</Button></Popconfirm>}
-          </Space>
-        </div>
-        <div className="mt-6 rounded-xl border border-sky-500/20 bg-sky-500/5 p-4 text-sm text-slate-500">PDF xuất đúng A6. Bản xem trước, PDF tải xuống và vé gửi email đều dùng cùng theme của sự kiện.</div>
-      </Card>
-      <Card title="Xem trước vùng in A6" extra={<Tag color="blue">105 × 148 mm</Tag>}>
-        <EventParticipationCard ticket={sampleTicket} />
-      </Card>
-    </div>
+    <Card title="Xem trước vùng in A6" extra={<Tag color="blue">105 × 148 mm</Tag>}>
+      <div className="mb-5 flex flex-wrap items-center gap-3">
+        {canEdit && <>
+          <Upload {...uploadProps}><Button loading={uploading} disabled={saving} icon={<UploadCloud className="h-4 w-4" />}>{event.ticketBackgroundUrl ? 'Thay ảnh nền' : 'Tải ảnh nền'}</Button></Upload>
+          {event.ticketBackgroundUrl && <Popconfirm title="Xóa ảnh nền vé?" onConfirm={remove} okText="Xóa" cancelText="Hủy"><Button danger disabled={uploading || saving} icon={<Trash2 className="h-4 w-4" />}>Xóa nền</Button></Popconfirm>}
+          <Button type="primary" loading={saving} disabled={uploading || !dirty} onClick={save}>Lưu bố cục vé</Button>
+          {dirty && <Tag color="orange">Chưa lưu bố cục</Tag>}
+        </>}
+        <span className="text-sm text-slate-500">Nền JPG/PNG tối đa 6 MB, giữ nguyên màu. Nên dùng ảnh đúng tỉ lệ A6.</span>
+      </div>
+      <TicketDesignEditor key={event.id} ticket={sampleTicket} design={design} onChange={setDesign} disabled={!canEdit || saving} />
+    </Card>
   );
 }
 
-function BracketTab({ event, canOperate }: { event: any; canOperate: boolean }) {
+function BracketTab({ event, canOperate, preconfigureActorId }: { event: any; canOperate: boolean; preconfigureActorId?: string }) {
   const toast = useSportDataToast();
   const { mutate: mutateGlobal } = useSWRConfig();
   const [categoryId, setCategoryId] = useState<string>(event.categories?.[0]?.id || '');
-  const [format, setFormat] = useState<'SINGLE' | 'DOUBLE' | 'ROUND_ROBIN' | 'ABSOLUTE'>('SINGLE');
+  const [format, setFormat] = useState<'SINGLE' | 'DOUBLE' | 'REPECHAGE' | 'ROUND_ROBIN' | 'ABSOLUTE'>('SINGLE');
   const [seedingMode, setSeedingMode] = useState('STANDARD');
   const [groupCount, setGroupCount] = useState(1);
   const [generating, setGenerating] = useState(false);
+  const [reverting, setReverting] = useState(false);
+  const [preconfigurationBusy, setPreconfigurationBusy] = useState(false);
   const category = event.categories?.find((item: any) => item.id === categoryId);
   const { data: entries = [], isLoading, mutate: mutateEntries } = useSWR<any[]>(categoryId ? `/competitions/events/${event.id}/categories/${categoryId}/entries` : null, fetcher);
-  const activeEntries = entries.filter((entry) => entry.status !== 'WITHDRAWN' && entry.athlete?.id);
+  const { data: drawState, error: drawStateError, isLoading: drawStateLoading } = useSWR<{
+    version: string; canRevert: boolean; drawCount: number; groupCount: number; matchCount: number; reason?: string;
+  }>(canOperate && categoryId ? `/matches/event/${event.id}/category/${categoryId}/draw-state` : null, fetcher, { refreshInterval: 5000 });
+  const hasDraws = !!drawState && (drawState.drawCount > 0 || drawState.groupCount > 0);
+  const activeEntries = entries.filter((entry) => entry.status === 'VERIFIED' && entry.type === 'INDIVIDUAL' && entry.athlete?.id);
+  const usesRoundRobin = format === 'ROUND_ROBIN' || (format === 'REPECHAGE' && activeEntries.length < 6);
+  const drawType = format === 'ROUND_ROBIN' ? 'ROUND_ROBIN_POOL' : format === 'DOUBLE' ? 'DOUBLE_ELIMINATION' : format === 'REPECHAGE' ? 'REPECHAGE' : 'MAIN_TREE';
+  const minimumEntries = format === 'DOUBLE' ? 4 : 2;
 
   const updateSeed = async (entry: any, seed: number | null) => {
     try {
@@ -1103,13 +1117,32 @@ function BracketTab({ event, canOperate }: { event: any; canOperate: boolean }) 
     }
   };
 
+  const refreshDraws = async () => {
+    await Promise.all([
+      mutateGlobal((key) => {
+        const url = typeof key === 'string' ? key : Array.isArray(key) ? key[0] : null;
+        return typeof url === 'string' && (url.startsWith(`/matches/event/${event.id}/`) || url.startsWith('/matches?'));
+      }),
+      mutateEntries(),
+    ]);
+  };
+
+  const revert = async () => {
+    if (!drawState?.canRevert || reverting || generating) return;
+    setReverting(true);
+    try {
+      await api.post(`/matches/event/${event.id}/category/${categoryId}/revert-draw`, { version: drawState.version });
+      await refreshDraws();
+      toast.success('Đã thu hồi nhánh đấu. Bạn có thể chỉnh seed và chia lại các cặp trận.');
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Không thể thu hồi nhánh đấu.');
+      await refreshDraws();
+    } finally { setReverting(false); }
+  };
+
   const generate = async () => {
-    if (!categoryId || activeEntries.length < 2) {
-      toast.error('Cần ít nhất 2 lượt đăng ký hợp lệ để sinh nhánh đấu.');
-      return;
-    }
-    if (format === 'DOUBLE' && activeEntries.length < 4) {
-      toast.error('Thể thức hai nhánh cần ít nhất 4 vận động viên.');
+    if (!categoryId || activeEntries.length < minimumEntries) {
+      toast.error(`Cần ít nhất ${minimumEntries} lượt đăng ký hợp lệ để sinh nhánh đấu.`);
       return;
     }
     if (format === 'ABSOLUTE' && (category?.minWeight != null || category?.maxWeight != null)) {
@@ -1118,25 +1151,15 @@ function BracketTab({ event, canOperate }: { event: any; canOperate: boolean }) 
     }
     setGenerating(true);
     try {
-      if (format === 'ROUND_ROBIN') {
-        await api.post(`/competitions/events/${event.id}/categories/${categoryId}/round-robin/generate`, {
-          entryIds: activeEntries.map((entry) => entry.id),
-          groupCount,
-          namePrefix: 'Bảng',
-        });
-      } else {
-        await api.post(`/matches/event/${event.id}/category/${categoryId}/generate-draw`, {
-          athleteIds: activeEntries.map((entry) => entry.athlete.id),
-          type: format === 'DOUBLE' ? 'DOUBLE_ELIMINATION' : 'MAIN_TREE',
-          seedingMode,
-          name: format === 'ABSOLUTE' ? 'Hạng Tuyệt đối' : undefined,
-          fops: event.fops?.length ? event.fops.map((fop: any) => fop.name) : undefined,
-        });
-      }
-      await Promise.all([
-        mutateGlobal((key) => typeof key === 'string' && key.startsWith(`/matches/event/${event.id}/`)),
-        mutateGlobal((key) => typeof key === 'string' && key.startsWith('/matches?')),
-      ]);
+      await api.post(`/matches/event/${event.id}/category/${categoryId}/generate-draw`, {
+        athleteIds: activeEntries.map((entry) => entry.athlete.id),
+        type: drawType,
+        seedingMode,
+        groupCount: format === 'REPECHAGE' ? 1 : usesRoundRobin ? groupCount : undefined,
+        name: format === 'ABSOLUTE' ? 'Hạng Tuyệt đối' : undefined,
+        fops: event.fops?.length ? event.fops.map((fop: any) => fop.name) : undefined,
+      });
+      await refreshDraws();
       toast.success('Đã sinh thể thức và danh sách trận đấu tự động. Mở tab Trận đấu để xem sơ đồ cây.');
     } catch (error: any) {
       toast.error(error.response?.data?.message || 'Không thể sinh nhánh đấu.');
@@ -1147,14 +1170,24 @@ function BracketTab({ event, canOperate }: { event: any; canOperate: boolean }) 
 
   const formatCards = [
     { value: 'SINGLE', title: 'Loại trực tiếp', description: 'Thua một trận bị loại. Phù hợp phần lớn giải đấu.' },
-    { value: 'DOUBLE', title: 'Hai nhánh / Repechage', description: 'Có nhánh thắng và nhánh thua, cho cơ hội tranh hạng.' },
+    { value: 'DOUBLE', title: 'Loại kép', description: 'Thi đấu theo nhánh thắng, nhánh thua và trận chung kết.' },
+    { value: 'REPECHAGE', title: 'Đấu vớt / Repechage', description: 'Nhánh chính tranh vàng/bạc, hai nhánh vớt tranh HCĐ. Dưới 6 VĐV tự động đấu vòng tròn.' },
     { value: 'ROUND_ROBIN', title: 'Đấu vòng tròn', description: 'Mọi VĐV trong bảng thi đấu với nhau, phù hợp bảng nhỏ.' },
     { value: 'ABSOLUTE', title: 'Tuyệt đối / Open Weight', description: 'Không giới hạn hạng cân; dùng cây loại trực tiếp.' },
   ] as const;
 
   return (
     <div className="space-y-5">
-      <Card title="1. Chọn hạng đấu và thể thức">
+      <Card title="1. Chọn hạng đấu">
+        <Select className="w-full" aria-label="Hạng đấu" value={categoryId || undefined} placeholder="Chọn hạng đấu" onChange={setCategoryId} options={(event.categories || []).map((item: any) => ({ value: item.id, label: `${item.sport?.name || ''} · ${item.name}` }))} />
+      </Card>
+      {preconfigureActorId && categoryId && !isLoading && <DrawPreconfiguration
+        key={`${event.id}:${categoryId}:${drawType}:${format}:${preconfigureActorId}`}
+        event={event} categoryId={categoryId} drawType={drawType} actorId={preconfigureActorId}
+        entries={activeEntries} name={format === 'ABSOLUTE' ? 'Hạng Tuyệt đối' : undefined}
+        onSeedingMode={setSeedingMode} onGroupCount={setGroupCount} onBusy={setPreconfigurationBusy}
+      />}
+      <Card title="2. Chọn thể thức">
         <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
           {formatCards.map((item) => (
             <button key={item.value} type="button" onClick={() => setFormat(item.value)} className={`rounded-2xl border p-4 text-left transition ${format === item.value ? 'border-sky-500 bg-sky-500/10 ring-1 ring-sky-500' : 'border-slate-300/20 hover:border-sky-500/50'}`}>
@@ -1163,13 +1196,27 @@ function BracketTab({ event, canOperate }: { event: any; canOperate: boolean }) 
             </button>
           ))}
         </div>
-        <div className="mt-5 grid gap-4 md:grid-cols-3">
-          <Select value={categoryId || undefined} placeholder="Chọn hạng đấu" onChange={setCategoryId} options={(event.categories || []).map((item: any) => ({ value: item.id, label: `${item.sport?.name || ''} · ${item.name}` }))} />
-          {format === 'ROUND_ROBIN' ? <InputNumber className="w-full" min={1} max={16} value={groupCount} onChange={(value) => setGroupCount(value || 1)} addonBefore="Số bảng" /> : <Select value={seedingMode} onChange={setSeedingMode} options={[{ value: 'STANDARD', label: 'Xếp hạt giống chuẩn' }, { value: 'RANDOM', label: 'Ngẫu nhiên' }, { value: 'COUNTRY_SEPARATED', label: 'Tách quốc gia' }, { value: 'FEDERATION_SEPARATED', label: 'Tách đơn vị / CLB' }]} />}
-          <Button type="primary" disabled={!canOperate || activeEntries.length < 2} loading={generating} onClick={generate} icon={<Network className="h-4 w-4" />}>Sinh nhánh đấu tự động</Button>
+        {format === 'REPECHAGE' && usesRoundRobin && <Alert className="!mt-4" type="info" showIcon message="Dưới 6 VĐV: tự động dùng vòng tròn. Cặp đặt trước áp dụng ở lượt đấu đầu." />}
+        <div className="mt-5 grid gap-4 md:grid-cols-2">
+          {preconfigureActorId ? <span className="self-center text-sm text-slate-500">Cấu hình cặp và cách xếp trong Pre-matches phía trên.</span> : format === 'ROUND_ROBIN' ? <InputNumber className="w-full" min={1} max={Math.max(1, Math.min(16, Math.floor(activeEntries.length / 2)))} value={groupCount} onChange={(value) => setGroupCount(value || 1)} addonBefore="Số bảng" /> : usesRoundRobin ? <span className="self-center text-sm text-slate-500">Thi đấu vòng tròn trong một bảng.</span> : <Select value={seedingMode} onChange={setSeedingMode} options={[{ value: 'STANDARD', label: 'Xếp hạt giống chuẩn' }, { value: 'RANDOM', label: 'Ngẫu nhiên' }, { value: 'COUNTRY_SEPARATED', label: 'Tách quốc gia' }, { value: 'FEDERATION_SEPARATED', label: 'Tách đơn vị / CLB' }]} />}
+          <Space wrap>
+            <Button type="primary" disabled={!canOperate || isLoading || drawStateLoading || !!drawStateError || hasDraws || reverting || activeEntries.length < minimumEntries || (!!preconfigureActorId && preconfigurationBusy)} loading={generating} onClick={generate} icon={<Network className="h-4 w-4" />}>Sinh nhánh đấu tự động</Button>
+            {canOperate && hasDraws && <Popconfirm
+              title="Thu hồi nhánh đấu của hạng này?"
+              description="Xóa nhánh và các trận đã sinh, gồm lịch đã xếp. Danh sách VĐV và seed được giữ để chia lại."
+              okText="Thu hồi nhánh" cancelText="Hủy" okButtonProps={{ danger: true }}
+              disabled={!drawState.canRevert || reverting || generating} onConfirm={revert}
+            >
+              <Button danger disabled={!drawState.canRevert || reverting || generating} loading={reverting}>Thu hồi nhánh đấu</Button>
+            </Popconfirm>}
+          </Space>
         </div>
+        {!usesRoundRobin && <p className="mt-3 text-sm text-slate-500">Seed 1 và 2 ở hai nửa cây; các seed tiếp theo được phân đều để gặp nhau muộn. Ngẫu nhiên và tách quốc gia/CLB vẫn giữ vị trí seed.</p>}
+        {hasDraws && <Alert className="!mt-4" showIcon type={drawState.canRevert ? 'info' : 'warning'}
+          message={drawState.canRevert ? `Đã sinh ${drawState.matchCount} trận. Có thể thu hồi nhánh để chỉnh seed và chia lại trước khi bắt đầu thi đấu.` : drawState.reason} />}
+        {drawStateError && <Alert className="!mt-4" showIcon type="error" message="Không thể kiểm tra trạng thái nhánh đấu. Hãy tải lại trang." />}
       </Card>
-      <Card title={`2. Danh sách đầu vào (${activeEntries.length} VĐV)`} loading={isLoading}>
+      <Card title={`3. Danh sách đầu vào (${activeEntries.length} VĐV)`} loading={isLoading}>
         {activeEntries.length ? <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">{activeEntries.map((entry) => <div key={entry.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-300/15 px-3 py-2"><div className="min-w-0"><strong className="block truncate">{entry.athlete.fullName}</strong><div className="truncate text-xs text-slate-500">{entry.athlete.federation?.name || 'VĐV tự do'}</div></div><div className="w-24"><SeedInput value={entry.seed} disabled={!canOperate} onSave={(value) => void updateSeed(entry, value)} /></div></div>)}</div> : <Empty description="Chưa có lượt đăng ký đã xác nhận cho hạng đấu này." />}
       </Card>
     </div>

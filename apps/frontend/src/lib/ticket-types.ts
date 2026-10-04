@@ -1,3 +1,5 @@
+import type { TicketDesign } from './ticket-design';
+
 export type TicketStatus = 'SUBMITTED' | 'CONFIRMED' | 'REJECTED' | 'CANCELLED';
 
 export type TicketStatistics = {
@@ -27,6 +29,7 @@ export type ParticipationTicket = {
     location?: string | null;
     logoUrl?: string | null;
     ticketBackgroundUrl?: string | null;
+    ticketDesign?: TicketDesign | null;
     ticketThemePreset?: string | null;
     ticketLayout?: string | null;
     ticketPrimaryColor?: string | null;

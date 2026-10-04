@@ -425,7 +425,7 @@ export function AthleteForm({ athleteId, initialData }: { athleteId?: string; in
           });
         }}
         onChanged={() => mutateFederations()}
-        canDelete={currentUser?.role === 'ADMIN'}
+        canDelete={['ADMIN', 'GAMES_ADMIN'].includes(currentUser?.role)}
       />
     </>
   );

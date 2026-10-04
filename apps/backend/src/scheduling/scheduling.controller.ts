@@ -22,10 +22,6 @@ export class SchedulingController {
   @Get('events/:eventId/overview')
   @Roles(
     UserRole.GAMES_ADMIN,
-    UserRole.SPORT_MANAGER,
-    UserRole.VENUE_OPERATOR,
-    UserRole.SCOREKEEPER,
-    UserRole.RESULT_APPROVER,
     UserRole.READ_ONLY,
   )
   getEventOverview(@Param('eventId') eventId: string) {
@@ -35,10 +31,6 @@ export class SchedulingController {
   @Get('events/:eventId/readiness')
   @Roles(
     UserRole.GAMES_ADMIN,
-    UserRole.SPORT_MANAGER,
-    UserRole.VENUE_OPERATOR,
-    UserRole.SCOREKEEPER,
-    UserRole.RESULT_APPROVER,
     UserRole.READ_ONLY,
   )
   @ApiOperation({ summary: 'Run the event go-live readiness gate' })
@@ -47,7 +39,7 @@ export class SchedulingController {
   }
 
   @Get('venues')
-  @Roles(UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER, UserRole.VENUE_OPERATOR, UserRole.READ_ONLY)
+  @Roles(UserRole.GAMES_ADMIN, UserRole.READ_ONLY)
   listVenues(@Query('eventId') eventId?: string) {
     return this.scheduling.listVenues(eventId);
   }
@@ -66,31 +58,31 @@ export class SchedulingController {
   }
 
   @Get('events/:eventId/sessions')
-  @Roles(UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER, UserRole.VENUE_OPERATOR, UserRole.READ_ONLY)
+  @Roles(UserRole.GAMES_ADMIN, UserRole.READ_ONLY)
   listSessions(@Param('eventId') eventId: string) {
     return this.scheduling.listSessions(eventId);
   }
 
   @Post('events/:eventId/sessions')
-  @Roles(UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER, UserRole.VENUE_OPERATOR)
+  @Roles(UserRole.GAMES_ADMIN)
   createSession(@Param('eventId') eventId: string, @Body() dto: CreateSessionDto) {
     return this.scheduling.createSession(eventId, dto);
   }
 
   @Post('sessions/:sessionId/time-slots/generate')
-  @Roles(UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER, UserRole.VENUE_OPERATOR)
+  @Roles(UserRole.GAMES_ADMIN)
   generateTimeSlots(@Param('sessionId') sessionId: string, @Body() dto: GenerateTimeSlotsDto) {
     return this.scheduling.generateTimeSlots(sessionId, dto);
   }
 
   @Get('events/:eventId/rules')
-  @Roles(UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER, UserRole.VENUE_OPERATOR, UserRole.READ_ONLY)
+  @Roles(UserRole.GAMES_ADMIN, UserRole.READ_ONLY)
   listRules(@Param('eventId') eventId: string) {
     return this.scheduling.listRules(eventId);
   }
 
   @Patch('events/:eventId/rules/:sportId')
-  @Roles(UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER)
+  @Roles(UserRole.GAMES_ADMIN)
   upsertRule(
     @Param('eventId') eventId: string,
     @Param('sportId') sportId: string,
@@ -100,20 +92,20 @@ export class SchedulingController {
   }
 
   @Post('events/:eventId/auto-schedule')
-  @Roles(UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER)
+  @Roles(UserRole.GAMES_ADMIN)
   @ApiOperation({ summary: 'Dry-run or apply the constraint-aware event scheduler' })
   autoSchedule(@Param('eventId') eventId: string, @Body() dto: AutoScheduleDto) {
     return this.scheduling.autoSchedule(eventId, dto);
   }
 
   @Get('events/:eventId/conflicts')
-  @Roles(UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER, UserRole.VENUE_OPERATOR, UserRole.READ_ONLY)
+  @Roles(UserRole.GAMES_ADMIN, UserRole.READ_ONLY)
   reportConflicts(@Param('eventId') eventId: string) {
     return this.scheduling.reportConflicts(eventId);
   }
 
   @Patch('matches/:matchId/lock')
-  @Roles(UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER, UserRole.VENUE_OPERATOR)
+  @Roles(UserRole.GAMES_ADMIN)
   lockMatch(
     @Param('matchId') matchId: string,
     @Req() request: { user: { id: string } },

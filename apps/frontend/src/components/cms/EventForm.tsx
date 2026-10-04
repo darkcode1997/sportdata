@@ -29,6 +29,9 @@ const eventSchema = z.object({
   organizerId: z.string().optional(),
   participatingFederationIds: z.array(z.string()),
   allowIndependentAthletes: z.boolean(),
+  ageLimitMode: z.enum(['CATEGORY', 'UNRESTRICTED', 'CUSTOM']),
+  minAge: z.number().int('Tuổi phải là số nguyên').min(0, 'Tuổi không được âm').nullable(),
+  maxAge: z.number().int('Tuổi phải là số nguyên').min(0, 'Tuổi không được âm').nullable(),
   registrationEnabled: z.boolean(),
   registrationOpenAt: z.string().optional(),
   registrationCloseAt: z.string().optional(),
@@ -42,6 +45,12 @@ const eventSchema = z.object({
   bannerUrl: eventImageUrlSchema,
   logoUrl: eventImageUrlSchema,
   isPublished: z.boolean(),
+}).refine((values) => values.ageLimitMode !== 'CUSTOM' || values.minAge !== null || values.maxAge !== null, {
+  message: 'Vui lòng nhập tuổi tối thiểu hoặc tuổi tối đa',
+  path: ['minAge'],
+}).refine((values) => values.ageLimitMode !== 'CUSTOM' || values.minAge === null || values.maxAge === null || values.maxAge >= values.minAge, {
+  message: 'Tuổi tối đa phải lớn hơn hoặc bằng tuổi tối thiểu',
+  path: ['maxAge'],
 }).refine((values) => new Date(values.endDate) >= new Date(values.startDate), {
   message: 'Thời gian kết thúc phải sau thời gian bắt đầu',
   path: ['endDate'],
@@ -110,6 +119,9 @@ export function EventForm({ eventId, initialData, returnTo = '/cms/events' }: { 
       organizerId: initialData?.organizerId || '',
       participatingFederationIds: initialData?.participatingFederations?.map((item: any) => item.id) || [],
       allowIndependentAthletes: initialData?.allowIndependentAthletes ?? true,
+      ageLimitMode: initialData?.ageLimitMode || (eventId ? 'CATEGORY' : 'UNRESTRICTED'),
+      minAge: initialData?.minAge ?? null,
+      maxAge: initialData?.maxAge ?? null,
       registrationEnabled: initialData?.registrationEnabled ?? false,
       registrationOpenAt: toLocalInput(initialData?.registrationOpenAt) || initialRegistrationWindow.open,
       registrationCloseAt: toLocalInput(initialData?.registrationCloseAt) || initialRegistrationWindow.close,
@@ -130,6 +142,7 @@ export function EventForm({ eventId, initialData, returnTo = '/cms/events' }: { 
   const selectedLevel = watch('level');
   const selectedFederationIds = watch('participatingFederationIds') || [];
   const allowIndependentAthletes = watch('allowIndependentAthletes');
+  const ageLimitMode = watch('ageLimitMode');
   const registrationEnabled = watch('registrationEnabled');
   const paymentMode = watch('paymentMode');
   const selectedCategoryIdsKey = selectedCategoryIds.join(',');
@@ -178,6 +191,8 @@ export function EventForm({ eventId, initialData, returnTo = '/cms/events' }: { 
     );
     const payload = {
       ...values,
+      minAge: values.ageLimitMode === 'CUSTOM' ? values.minAge : null,
+      maxAge: values.ageLimitMode === 'CUSTOM' ? values.maxAge : null,
       sportId: values.sportIds[0],
       categoryIds: validCategoryIds,
       athleteIds: values.athleteIds,
@@ -357,7 +372,41 @@ export function EventForm({ eventId, initialData, returnTo = '/cms/events' }: { 
               />
             )}
           </ControlledField>
-          <ControlledField name="athleteIds" control={control} label="Vận động viên tham gia" error={errors.athleteIds?.message} wide>
+          <ControlledField name="ageLimitMode" control={control} label="Giới hạn tuổi" error={errors.ageLimitMode?.message} wide>
+            {(field) => (
+              <Select
+                size="large"
+                className="w-full"
+                value={field.value}
+                onChange={field.onChange}
+                options={[
+                  { value: 'UNRESTRICTED', label: 'Không giới hạn tuổi' },
+                  { value: 'CATEGORY', label: 'Theo độ tuổi của từng hạng đấu' },
+                  { value: 'CUSTOM', label: 'Tự cấu hình cho sự kiện' },
+                ]}
+              />
+            )}
+          </ControlledField>
+          {ageLimitMode === 'CUSTOM' && (
+            <>
+              <ControlledField name="minAge" control={control} label="Tuổi tối thiểu" error={errors.minAge?.message}>
+                {(field) => <InputNumber size="large" className="w-full" min={0} precision={0} value={field.value} onChange={field.onChange} placeholder="Không giới hạn" />}
+              </ControlledField>
+              <ControlledField name="maxAge" control={control} label="Tuổi tối đa" error={errors.maxAge?.message}>
+                {(field) => <InputNumber size="large" className="w-full" min={0} precision={0} value={field.value} onChange={field.onChange} placeholder="Không giới hạn" />}
+              </ControlledField>
+            </>
+          )}
+          <Col span={24}>
+            <p className="mb-5 text-sm text-slate-500">
+              {ageLimitMode === 'CATEGORY'
+                ? 'Áp dụng tuổi tối thiểu và tối đa đã cấu hình trong từng hạng đấu.'
+                : ageLimitMode === 'CUSTOM'
+                  ? 'Tuổi được tính vào ngày bắt đầu sự kiện. Để trống một ô nếu không giới hạn phía đó. Cấu hình này thay thế giới hạn tuổi của hạng đấu.'
+                  : 'VĐV ở mọi độ tuổi đều có thể tham gia; không áp dụng giới hạn tuổi của hạng đấu.'}
+            </p>
+          </Col>
+          {/* <ControlledField name="athleteIds" control={control} label="Vận động viên tham gia" error={errors.athleteIds?.message} wide>
             {(field) => (
               <div className="event-athlete-picker">
                 <div className="event-picker-heading">
@@ -432,7 +481,7 @@ export function EventForm({ eventId, initialData, returnTo = '/cms/events' }: { 
                 </div>
               </div>
             )}
-          </ControlledField>
+          </ControlledField> */}
           <ControlledField name="location" control={control} label="Địa điểm" error={errors.location?.message}>
             {(field) => <Input {...field} size="large" placeholder="Nhà thi đấu, thành phố" />}
           </ControlledField>

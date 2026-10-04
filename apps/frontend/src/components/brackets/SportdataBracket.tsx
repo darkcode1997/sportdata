@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
+import { useBracketViewport } from './useBracketViewport';
 import Link from 'next/link';
 import { Avatar, Button, Card, Tag, Tooltip } from 'antd';
 import { ChevronDown, ChevronUp, Maximize2, Minus, Plus, RotateCcw, UserRound } from 'lucide-react';
@@ -36,6 +37,8 @@ export interface BracketMatch {
   bracketPosition?: number | null;
   winnerToMatchId?: string | null;
   winnerToSide?: 'ATHLETE1' | 'ATHLETE2' | null;
+  loserToMatchId?: string | null;
+  loserToSide?: 'ATHLETE1' | 'ATHLETE2' | null;
   notes?: string | null;
 }
 
@@ -50,6 +53,8 @@ export interface BracketDraw {
 
 type SportdataBracketProps = {
   draw: BracketDraw;
+  sourceMatches?: BracketMatch[];
+  readOnly?: boolean;
   matchHref?: (match: BracketMatch, athlete?: BracketAthlete | null) => string | undefined;
 };
 
@@ -58,17 +63,8 @@ const BRACKET_NODE_HEIGHT = 80;
 const BRACKET_SLOT_PITCH = 116;
 const BRACKET_COLUMN_STEP = 470;
 const BRACKET_HEADER_HEIGHT = 64;
-const BRACKET_MIN_SCALE = 0.35;
-const BRACKET_MAX_SCALE = 1.5;
 
-function clampBracketScale(scale: number) {
-  return Math.min(BRACKET_MAX_SCALE, Math.max(BRACKET_MIN_SCALE, scale));
-}
-
-export function SportdataBracket({ draw, matchHref }: SportdataBracketProps) {
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const [scale, setScale] = useState(1);
-  const [autoFit, setAutoFit] = useState(true);
+export function SportdataBracket({ draw, sourceMatches = draw.matches, readOnly = false, matchHref }: SportdataBracketProps) {
   const [collapsed, setCollapsed] = useState(false);
   const matches = [...draw.matches].sort((left, right) => {
     if ((left.round || 0) !== (right.round || 0)) return (left.round || 0) - (right.round || 0);
@@ -77,58 +73,30 @@ export function SportdataBracket({ draw, matchHref }: SportdataBracketProps) {
   const roundNumbers = Array.from(new Set(matches.map((match) => match.round || 1))).sort((a, b) => a - b);
   const roundOrdinal = new Map(roundNumbers.map((round, index) => [round, index + 1]));
   const firstRound = matches.filter((match) => (match.round || 1) === roundNumbers[0]);
-  const bracketSize = Math.max(draw.bracketSize || 0, firstRound.length * 2, 2);
+  const isRoundRobin = draw.type === 'ROUND_ROBIN_POOL';
+  const bracketSize = Math.max(draw.bracketSize || 0, firstRound.length * 2, 2,
+    isRoundRobin ? Math.max(0, ...matches.map((match) => ((match.bracketPosition || 0) + 1) * 2)) : 0);
   const boardHeight = BRACKET_HEADER_HEIGHT + (bracketSize - 1) * BRACKET_SLOT_PITCH + BRACKET_NODE_HEIGHT + 30;
-  const boardWidth = roundNumbers.length * BRACKET_COLUMN_STEP + BRACKET_NODE_WIDTH + 40;
+  const boardWidth = Math.max(0, roundNumbers.length - (isRoundRobin ? 1 : 0)) * BRACKET_COLUMN_STEP + BRACKET_NODE_WIDTH + 40;
   const matchById = new Map(matches.map((match) => [match.id, match]));
   const finalMatch = matches.find((match) => (match.round || 1) === roundNumbers.at(-1));
 
-  const fitToContainer = useCallback(() => {
-    const scrollElement = scrollRef.current;
-    if (!scrollElement) return;
-
-    const styles = window.getComputedStyle(scrollElement);
-    const horizontalPadding = Number.parseFloat(styles.paddingLeft) + Number.parseFloat(styles.paddingRight);
-    const availableWidth = Math.max(scrollElement.clientWidth - horizontalPadding, 1);
-    setScale(clampBracketScale(Math.min(1, availableWidth / boardWidth)));
-    scrollElement.scrollTo({ left: 0, top: 0, behavior: 'smooth' });
-  }, [boardWidth]);
-
-  useEffect(() => {
-    if (!autoFit || collapsed) return;
-
-    const scrollElement = scrollRef.current;
-    if (!scrollElement) return;
-
-    fitToContainer();
-    const resizeObserver = new ResizeObserver(fitToContainer);
-    resizeObserver.observe(scrollElement);
-    return () => resizeObserver.disconnect();
-  }, [autoFit, collapsed, fitToContainer]);
-
-  const changeScale = (difference: number) => {
-    setAutoFit(false);
-    setScale((currentScale) => clampBracketScale(currentScale + difference));
-  };
-
-  const enableAutoFit = () => {
-    setAutoFit(true);
-    requestAnimationFrame(fitToContainer);
-  };
-
-  const resetScale = () => {
-    setAutoFit(false);
-    setScale(1);
-    scrollRef.current?.scrollTo({ left: 0, top: 0, behavior: 'smooth' });
-  };
+  const { viewportRef, scale, autoFit, minScale, maxScale, changeScale, enableAutoFit, resetScale } = useBracketViewport(boardWidth, boardHeight, collapsed);
+  const terminalMatches = matches.filter((match) => (match.round || 1) === roundNumbers.at(-1));
+  const isRepechage = draw.type === 'REPECHAGE';
+  const feederLabels = new Map<string, string>();
+  sourceMatches.forEach((source) => {
+    const label = source.matchNumber ? `trận #${source.matchNumber}` : `vòng ${source.round || 1}, trận ${(source.bracketPosition || 0) + 1}`;
+    if (source.winnerToMatchId && source.winnerToSide) feederLabels.set(`${source.winnerToMatchId}-${source.winnerToSide}`, `Thắng ${label}`);
+    if (source.loserToMatchId && source.loserToSide) feederLabels.set(`${source.loserToMatchId}-${source.loserToSide}`, `Thua ${label}`);
+  });
 
   const nodeTop = (ordinal: number, slotIndex: number) => {
     const roundNumber = roundNumbers[ordinal - 1];
     const matchCount = matches.filter((match) => (match.round || 1) === roundNumber).length;
-    const factor = bracketSize / Math.max(matchCount * 2, 1);
+    const factor = isRoundRobin ? 1 : bracketSize / Math.max(matchCount * 2, 1);
     return BRACKET_HEADER_HEIGHT + (slotIndex * factor + (factor - 1) / 2) * BRACKET_SLOT_PITCH;
   };
-  const championTop = BRACKET_HEADER_HEIGHT + ((bracketSize - 1) / 2) * BRACKET_SLOT_PITCH;
 
   const connectors = matches.map((match) => {
     const ordinal = roundOrdinal.get(match.round || 1) || 1;
@@ -177,7 +145,7 @@ export function SportdataBracket({ draw, matchHref }: SportdataBracketProps) {
             <Button
               aria-label="Thu nhỏ cây"
               className="sportdata-draw-control"
-              disabled={collapsed || scale <= BRACKET_MIN_SCALE}
+              disabled={collapsed || scale <= minScale}
               icon={<Minus className="h-4 w-4" />}
               onClick={() => changeScale(-0.1)}
               size="small"
@@ -189,7 +157,7 @@ export function SportdataBracket({ draw, matchHref }: SportdataBracketProps) {
             <Button
               aria-label="Phóng to cây"
               className="sportdata-draw-control"
-              disabled={collapsed || scale >= BRACKET_MAX_SCALE}
+              disabled={collapsed || scale >= maxScale}
               icon={<Plus className="h-4 w-4" />}
               onClick={() => changeScale(0.1)}
               size="small"
@@ -197,7 +165,7 @@ export function SportdataBracket({ draw, matchHref }: SportdataBracketProps) {
             />
           </Tooltip>
           <Button
-            aria-label="Tự động thu cây vừa chiều rộng khung"
+            aria-label="Tự động thu cây vừa khung"
             className={cn('sportdata-draw-control', autoFit && 'is-active')}
             disabled={collapsed}
             icon={<Maximize2 className="h-4 w-4" />}
@@ -232,79 +200,96 @@ export function SportdataBracket({ draw, matchHref }: SportdataBracketProps) {
         </div>
       </div>
       {!collapsed && (
-        <div className="sportdata-bracket-scroll" ref={scrollRef}>
-          <div className="sportdata-bracket-stage" style={{ width: boardWidth * scale, height: boardHeight * scale }}>
-            <div
-              className="sportdata-bracket-board"
-              style={{ width: boardWidth, height: boardHeight, transform: `scale(${scale})` }}
-            >
-              {roundNumbers.map((round, index) => (
-                <div
-                  className="sportdata-round-title"
-                  key={round}
-                  style={{ left: index * BRACKET_COLUMN_STEP, width: BRACKET_NODE_WIDTH }}
-                >
-                  {draw.name} - Vòng {index + 1}
-                </div>
-              ))}
+        <>
+          <p className="sportdata-bracket-hint">Chụm/tách hai ngón để zoom · Vuốt hai ngón để di chuyển trong khung</p>
+          <div className="sportdata-bracket-scroll" ref={viewportRef} role="region" aria-label={`Cây thi đấu ${draw.name}`} tabIndex={0}>
+            <div className="sportdata-bracket-stage" style={{ width: boardWidth * scale, height: boardHeight * scale }}>
               <div
-                className="sportdata-round-title is-champion"
-                style={{ left: roundNumbers.length * BRACKET_COLUMN_STEP, width: BRACKET_NODE_WIDTH }}
+                className="sportdata-bracket-board"
+                style={{ width: boardWidth, height: boardHeight, transform: `scale(${scale})` }}
               >
-                Vô địch
+                {roundNumbers.map((round, index) => (
+                  <div
+                    className="sportdata-round-title"
+                    key={round}
+                    style={{ left: index * BRACKET_COLUMN_STEP, width: BRACKET_NODE_WIDTH }}
+                  >
+                    {isRoundRobin ? `${draw.name} · Lượt ${index + 1}` : isRepechage ? (round === roundNumbers.at(-1) ? 'Tranh HCĐ A / B' : `Đấu vớt · Vòng ${index + 1}`) : draw.type === 'DOUBLE_ELIMINATION' ? (round === roundNumbers.at(-1) ? 'Chung kết tổng' : `Nhánh thua · Vòng ${index + 1}`) : `${draw.name} - Vòng ${index + 1}`}
+                  </div>
+                ))}
+                {!isRoundRobin && <div
+                  className="sportdata-round-title is-champion"
+                  style={{ left: roundNumbers.length * BRACKET_COLUMN_STEP, width: BRACKET_NODE_WIDTH }}
+                >
+                  {isRepechage ? 'Đồng hạng 3 · HCĐ' : finalMatch?.winnerToMatchId ? 'Thắng nhánh · Đi tiếp' : 'Vô địch'}
+                </div>}
+                <svg
+                  aria-hidden="true"
+                  className="sportdata-bracket-lines"
+                  width={boardWidth}
+                  height={boardHeight}
+                  viewBox={`0 0 ${boardWidth} ${boardHeight}`}
+                >
+                  {!isRoundRobin && connectors}
+                </svg>
+                {matches.flatMap((match) => {
+                  const ordinal = roundOrdinal.get(match.round || 1) || 1;
+                  const position = match.bracketPosition || 0;
+                  const left = (ordinal - 1) * BRACKET_COLUMN_STEP;
+                  return [
+                    <BracketParticipantNode
+                      key={`${match.id}-athlete1`}
+                      match={match}
+                      athlete={match.athlete1}
+                      placeholder={feederLabels.get(`${match.id}-ATHLETE1`)}
+                      score={match.athlete1Score}
+                      side="red"
+                      winner={match.winnerId === match.athlete1?.id}
+                      left={left}
+                      top={nodeTop(ordinal, position * 2)}
+                      matchHref={matchHref}
+                      readOnly={readOnly}
+                    />,
+                    <BracketParticipantNode
+                      key={`${match.id}-athlete2`}
+                      match={match}
+                      athlete={match.athlete2}
+                      placeholder={feederLabels.get(`${match.id}-ATHLETE2`)}
+                      score={match.athlete2Score}
+                      side="blue"
+                      winner={match.winnerId === match.athlete2?.id}
+                      left={left}
+                      top={nodeTop(ordinal, position * 2 + 1)}
+                      matchHref={matchHref}
+                      readOnly={readOnly}
+                    />,
+                  ];
+                })}
+                {!isRoundRobin && terminalMatches.map((match, index) => {
+                  const winner = match.status === 'FINISHED' && match.winnerId
+                    ? [match.athlete1, match.athlete2].find((athlete) => athlete?.id === match.winnerId)
+                    : null;
+                  const position = match.bracketPosition || 0;
+                  const ordinal = roundOrdinal.get(match.round || 1) || 1;
+                  return (
+                    <BracketParticipantNode
+                      key={`terminal-${match.id}`}
+                      match={match}
+                      athlete={winner}
+                      placeholder={isRepechage ? `HCĐ ${index === 0 ? 'A' : 'B'} — CHỜ KẾT QUẢ` : 'CHỜ KẾT QUẢ'}
+                      side="champion"
+                      winner={Boolean(winner)}
+                      left={roundNumbers.length * BRACKET_COLUMN_STEP}
+                      top={(nodeTop(ordinal, position * 2) + nodeTop(ordinal, position * 2 + 1)) / 2}
+                      matchHref={matchHref}
+                      readOnly={readOnly}
+                    />
+                  );
+                })}
               </div>
-              <svg
-                aria-hidden="true"
-                className="sportdata-bracket-lines"
-                width={boardWidth}
-                height={boardHeight}
-                viewBox={`0 0 ${boardWidth} ${boardHeight}`}
-              >
-                {connectors}
-              </svg>
-              {matches.flatMap((match) => {
-                const ordinal = roundOrdinal.get(match.round || 1) || 1;
-                const position = match.bracketPosition || 0;
-                const left = (ordinal - 1) * BRACKET_COLUMN_STEP;
-                return [
-                  <BracketParticipantNode
-                    key={`${match.id}-athlete1`}
-                    match={match}
-                    athlete={match.athlete1}
-                    score={match.athlete1Score}
-                    side="red"
-                    winner={match.winnerId === match.athlete1?.id}
-                    left={left}
-                    top={nodeTop(ordinal, position * 2)}
-                    matchHref={matchHref}
-                  />,
-                  <BracketParticipantNode
-                    key={`${match.id}-athlete2`}
-                    match={match}
-                    athlete={match.athlete2}
-                    score={match.athlete2Score}
-                    side="blue"
-                    winner={match.winnerId === match.athlete2?.id}
-                    left={left}
-                    top={nodeTop(ordinal, position * 2 + 1)}
-                    matchHref={matchHref}
-                  />,
-                ];
-              })}
-              {finalMatch && (
-                <BracketParticipantNode
-                  match={finalMatch}
-                  athlete={finalMatch.winnerId === finalMatch.athlete1?.id ? finalMatch.athlete1 : finalMatch.athlete2}
-                  side="champion"
-                  winner
-                  left={roundNumbers.length * BRACKET_COLUMN_STEP}
-                  top={championTop}
-                  matchHref={matchHref}
-                />
-              )}
             </div>
           </div>
-        </div>
+        </>
       )}
     </Card>
   );
@@ -314,20 +299,24 @@ function BracketParticipantNode({
   match,
   athlete,
   score,
+  placeholder,
   side,
   winner,
   left,
   top,
   matchHref,
+  readOnly,
 }: {
   match: BracketMatch;
   athlete?: BracketAthlete | null;
   score?: number;
+  placeholder?: string;
   side: 'red' | 'blue' | 'champion';
   winner: boolean;
   left: number;
   top: number;
   matchHref?: SportdataBracketProps['matchHref'];
+  readOnly: boolean;
 }) {
   const content = (
     <>
@@ -344,11 +333,11 @@ function BracketParticipantNode({
         <span>{athlete?.country?.code || '—'}</span>
       </div>
       {side !== 'champion' && (
-        <span className="sportdata-node-score">
+        <span className={cn('sportdata-node-score', readOnly && 'is-readonly')}>
           {athlete && ['FINISHED', 'RUNNING'].includes(match.status) ? score ?? 0 : '—'}
         </span>
       )}
-      <strong>{athlete?.fullName || 'CHỜ XÁC ĐỊNH'}</strong>
+      <strong>{athlete?.fullName || placeholder || 'CHỜ XÁC ĐỊNH'}</strong>
       <small>{athlete?.federation?.name || athlete?.country?.name || '—'}</small>
       {side !== 'champion' && (
         <span className="sportdata-node-match">
@@ -368,9 +357,10 @@ function BracketParticipantNode({
     `is-${side}`,
     winner && 'is-winner',
     !athlete && 'is-empty',
+    readOnly && 'is-readonly',
   );
   const style = { left, top, width: BRACKET_NODE_WIDTH, height: BRACKET_NODE_HEIGHT };
-  const href = matchHref
+  const href = readOnly ? undefined : matchHref
     ? matchHref(match, athlete)
     : athlete
       ? `/athletes/${athlete.id}`

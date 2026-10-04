@@ -31,7 +31,7 @@ const genderLabels: Record<string, string> = {
 
 export default function AthletesListPage() {
   const { data: currentUser } = useSWR<any>('/auth/profile', fetcher);
-  const canManage = ['ADMIN', 'CONTENT', 'GAMES_ADMIN', 'SPORT_MANAGER'].includes(currentUser?.role);
+  const canManage = ['ADMIN', 'CONTENT', 'GAMES_ADMIN'].includes(currentUser?.role);
   const canDelete = ['ADMIN', 'GAMES_ADMIN'].includes(currentUser?.role);
   const [search, setSearch] = useState('');
   const [gender, setGender] = useState('');

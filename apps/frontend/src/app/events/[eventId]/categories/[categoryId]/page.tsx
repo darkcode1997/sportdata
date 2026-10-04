@@ -1,26 +1,20 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import useSWR from 'swr';
 import useSWRInfinite from 'swr/infinite';
-import { Avatar, Button, Card, Empty, Skeleton, Table, Tag, Tooltip, type TableProps } from 'antd';
+import { Avatar, Button, Card, Empty, Skeleton, Table, Tag, type TableProps } from 'antd';
 import {
   ArrowLeft,
-  ChevronDown,
-  ChevronUp,
   Crown,
-  Maximize2,
   Medal,
-  Minus,
-  Plus,
   RefreshCw,
-  RotateCcw,
   Swords,
   Trophy,
-  UserRound,
 } from 'lucide-react';
+import { SportdataBracket } from '@/components/brackets/SportdataBracket';
 import { fetcher } from '@/lib/api';
 import { cn, formatTime } from '@/lib/utils';
 import { MATCH_STATUS_META, MATCH_TYPE_LABELS, WIN_METHOD_LABELS, labelOf, statusMeta } from '@/lib/vi-labels';
@@ -70,6 +64,9 @@ interface CategoryData {
 interface EventData {
   id: string;
   name: string;
+  ageLimitMode?: 'CATEGORY' | 'UNRESTRICTED' | 'CUSTOM';
+  minAge?: number | null;
+  maxAge?: number | null;
 }
 
 interface Standing {
@@ -209,7 +206,9 @@ export default function CategoryDetailPage() {
     setSize: setMatchPageCount,
   } = useSWRInfinite<MatchesResponse>(getMatchesKey, fetcher, {
     persistSize: false,
-    revalidateFirstPage: false,
+    revalidateFirstPage: true,
+    revalidateAll: true,
+    refreshInterval: 5000,
   });
   const {
     data: drawsResponse,
@@ -220,6 +219,7 @@ export default function CategoryDetailPage() {
       ? `/matches/event/${encodeURIComponent(eventId)}/category/${encodeURIComponent(categoryId)}/draws`
       : null,
     fetcher,
+    { refreshInterval: 5000 },
   );
 
   const standings = standingsResponse?.standings || [];
@@ -288,7 +288,14 @@ export default function CategoryDetailPage() {
             {category?.beltLevel && <Tag color="gold">{beltLabels[category.beltLevel] || category.beltLevel}</Tag>}
             {category?.gender && <Tag>{category.gender}</Tag>}
             {category?.maxWeight && <Tag>Đến {category.maxWeight} kg</Tag>}
-            {category?.maxAge && <Tag>U{category.maxAge}</Tag>}
+            {event?.ageLimitMode === 'UNRESTRICTED' ? (
+              <Tag>Không giới hạn tuổi</Tag>
+            ) : event?.ageLimitMode === 'CUSTOM' ? (
+              <>
+                {event.minAge != null && <Tag>Từ {event.minAge} tuổi</Tag>}
+                {event.maxAge != null && <Tag>Tối đa {event.maxAge} tuổi</Tag>}
+              </>
+            ) : category?.maxAge != null && <Tag>Tối đa {category.maxAge} tuổi</Tag>}
             {category?.matchDurationSeconds && <Tag>{Math.round(category.matchDurationSeconds / 60)} phút</Tag>}
           </div>
         </header>
@@ -330,7 +337,7 @@ export default function CategoryDetailPage() {
                 <MatchProtocolTable matches={matches} />
               ) : draws.length ? (
                 <div className="space-y-6">
-                  {draws.map((draw) => <SportdataBracket key={draw.id} draw={draw} />)}
+                  {draws.map((draw) => <SportdataBracket key={draw.id} draw={draw} sourceMatches={draws.flatMap((item) => item.matches)} />)}
                   {poolMatches.length > 0 && (
                     <div className="category-pool-protocols">
                       <div className="category-subsection-heading">
@@ -596,343 +603,6 @@ function RankBadge({ rank }: { rank: number }) {
       {rank === 1 ? <Crown className="h-4 w-4" /> : rank}
     </span>
   );
-}
-
-const BRACKET_NODE_WIDTH = 390;
-const BRACKET_NODE_HEIGHT = 80;
-const BRACKET_SLOT_PITCH = 116;
-const BRACKET_COLUMN_STEP = 470;
-const BRACKET_HEADER_HEIGHT = 64;
-const BRACKET_MIN_SCALE = 0.35;
-const BRACKET_MAX_SCALE = 1.5;
-
-function clampBracketScale(scale: number) {
-  return Math.min(BRACKET_MAX_SCALE, Math.max(BRACKET_MIN_SCALE, scale));
-}
-
-function SportdataBracket({ draw }: { draw: DrawData }) {
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const [scale, setScale] = useState(1);
-  const [autoFit, setAutoFit] = useState(true);
-  const [collapsed, setCollapsed] = useState(false);
-  const matches = [...draw.matches].sort((left, right) => {
-    if ((left.round || 0) !== (right.round || 0)) return (left.round || 0) - (right.round || 0);
-    return (left.bracketPosition || 0) - (right.bracketPosition || 0);
-  });
-  const roundNumbers = Array.from(new Set(matches.map((match) => match.round || 1))).sort((a, b) => a - b);
-  const roundOrdinal = new Map(roundNumbers.map((round, index) => [round, index + 1]));
-  const firstRound = matches.filter((match) => (match.round || 1) === roundNumbers[0]);
-  const bracketSize = Math.max(draw.bracketSize || 0, firstRound.length * 2, 2);
-  const boardHeight = BRACKET_HEADER_HEIGHT + (bracketSize - 1) * BRACKET_SLOT_PITCH + BRACKET_NODE_HEIGHT + 30;
-  const boardWidth = roundNumbers.length * BRACKET_COLUMN_STEP + BRACKET_NODE_WIDTH + 40;
-  const matchById = new Map(matches.map((match) => [match.id, match]));
-  const finalMatch = matches.find((match) => (match.round || 1) === roundNumbers.at(-1));
-
-  const fitToContainer = useCallback(() => {
-    const scrollElement = scrollRef.current;
-    if (!scrollElement) return;
-
-    const styles = window.getComputedStyle(scrollElement);
-    const horizontalPadding = Number.parseFloat(styles.paddingLeft)
-      + Number.parseFloat(styles.paddingRight);
-    const availableWidth = Math.max(scrollElement.clientWidth - horizontalPadding, 1);
-    setScale(clampBracketScale(Math.min(1, availableWidth / boardWidth)));
-    scrollElement.scrollTo({ left: 0, top: 0, behavior: 'smooth' });
-  }, [boardWidth]);
-
-  useEffect(() => {
-    if (!autoFit || collapsed) return;
-
-    const scrollElement = scrollRef.current;
-    if (!scrollElement) return;
-
-    fitToContainer();
-    const resizeObserver = new ResizeObserver(fitToContainer);
-    resizeObserver.observe(scrollElement);
-    return () => resizeObserver.disconnect();
-  }, [autoFit, collapsed, fitToContainer]);
-
-  const changeScale = (difference: number) => {
-    setAutoFit(false);
-    setScale((currentScale) => clampBracketScale(currentScale + difference));
-  };
-
-  const enableAutoFit = () => {
-    setAutoFit(true);
-    requestAnimationFrame(fitToContainer);
-  };
-
-  const resetScale = () => {
-    setAutoFit(false);
-    setScale(1);
-    scrollRef.current?.scrollTo({ left: 0, top: 0, behavior: 'smooth' });
-  };
-
-  const nodeTop = (ordinal: number, slotIndex: number) => {
-    const roundNumber = roundNumbers[ordinal - 1];
-    const matchCount = matches.filter((match) => (match.round || 1) === roundNumber).length;
-    const factor = bracketSize / Math.max(matchCount * 2, 1);
-    return BRACKET_HEADER_HEIGHT + (slotIndex * factor + (factor - 1) / 2) * BRACKET_SLOT_PITCH;
-  };
-  const championTop = BRACKET_HEADER_HEIGHT + ((bracketSize - 1) / 2) * BRACKET_SLOT_PITCH;
-
-  const connectors = matches.map((match) => {
-    const ordinal = roundOrdinal.get(match.round || 1) || 1;
-    const position = match.bracketPosition || 0;
-    const firstY = nodeTop(ordinal, position * 2) + BRACKET_NODE_HEIGHT / 2;
-    const secondY = nodeTop(ordinal, position * 2 + 1) + BRACKET_NODE_HEIGHT / 2;
-    const sourceX = (ordinal - 1) * BRACKET_COLUMN_STEP + BRACKET_NODE_WIDTH;
-    const elbowX = sourceX + (BRACKET_COLUMN_STEP - BRACKET_NODE_WIDTH) / 2;
-    let targetX = ordinal * BRACKET_COLUMN_STEP;
-    let targetY = (firstY + secondY) / 2;
-
-    if (match.winnerToMatchId) {
-      const target = matchById.get(match.winnerToMatchId);
-      if (target) {
-        const targetOrdinal = roundOrdinal.get(target.round || 1) || ordinal + 1;
-        const targetPosition = target.bracketPosition || 0;
-        const targetSideIndex = match.winnerToSide === 'ATHLETE2' ? 1 : 0;
-        targetX = (targetOrdinal - 1) * BRACKET_COLUMN_STEP;
-        targetY = nodeTop(targetOrdinal, targetPosition * 2 + targetSideIndex) + BRACKET_NODE_HEIGHT / 2;
-      } else if (ordinal !== roundNumbers.length) {
-        return null;
-      }
-    } else if (ordinal !== roundNumbers.length) {
-      return null;
-    }
-
-    return (
-      <g key={`connector-${match.id}`}>
-        <path d={`M ${sourceX} ${firstY} H ${elbowX}`} />
-        <path d={`M ${sourceX} ${secondY} H ${elbowX}`} />
-        <path d={`M ${elbowX} ${firstY} V ${secondY}`} />
-        <path d={`M ${elbowX} ${(firstY + secondY) / 2} H ${targetX} V ${targetY}`} />
-      </g>
-    );
-  });
-
-  return (
-    <Card className="category-bracket-card sportdata-draw" styles={{ body: { padding: 0 } }}>
-      <div className="sportdata-draw-title">
-        <div className="sportdata-draw-heading">
-          <span>{draw.name}</span>
-          <Tag bordered={false}>{drawTypeLabel(draw.type)}</Tag>
-        </div>
-        <div className="sportdata-draw-controls" role="toolbar" aria-label={`Điều khiển ${draw.name}`}>
-          <Tooltip title="Thu nhỏ cây">
-            <Button
-              aria-label="Thu nhỏ cây"
-              className="sportdata-draw-control"
-              disabled={collapsed || scale <= BRACKET_MIN_SCALE}
-              icon={<Minus className="h-4 w-4" />}
-              onClick={() => changeScale(-0.1)}
-              size="small"
-              type="text"
-            />
-          </Tooltip>
-          <span className="sportdata-zoom-value" aria-live="polite">
-            {Math.round(scale * 100)}%
-          </span>
-          <Tooltip title="Phóng to cây">
-            <Button
-              aria-label="Phóng to cây"
-              className="sportdata-draw-control"
-              disabled={collapsed || scale >= BRACKET_MAX_SCALE}
-              icon={<Plus className="h-4 w-4" />}
-              onClick={() => changeScale(0.1)}
-              size="small"
-              type="text"
-            />
-          </Tooltip>
-          <Button
-            aria-label="Tự động thu cây vừa chiều rộng khung"
-            className={cn('sportdata-draw-control', autoFit && 'is-active')}
-            disabled={collapsed}
-            icon={<Maximize2 className="h-4 w-4" />}
-            onClick={enableAutoFit}
-            size="small"
-            type="text"
-          >
-            Vừa khung
-          </Button>
-          <Tooltip title="Đặt lại tỷ lệ 100%">
-            <Button
-              aria-label="Đặt lại tỷ lệ 100%"
-              className="sportdata-draw-control"
-              disabled={collapsed}
-              icon={<RotateCcw className="h-4 w-4" />}
-              onClick={resetScale}
-              size="small"
-              type="text"
-            />
-          </Tooltip>
-          <Button
-            aria-label={collapsed ? 'Mở cây thi đấu' : 'Thu gọn cây thi đấu'}
-            aria-expanded={!collapsed}
-            className="sportdata-draw-control sportdata-collapse-control"
-            icon={collapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
-            onClick={() => setCollapsed((current) => !current)}
-            size="small"
-            type="text"
-          >
-            {collapsed ? 'Mở cây' : 'Thu gọn'}
-          </Button>
-        </div>
-      </div>
-      {!collapsed && (
-      <div className="sportdata-bracket-scroll" ref={scrollRef}>
-        <div
-          className="sportdata-bracket-stage"
-          style={{ width: boardWidth * scale, height: boardHeight * scale }}
-        >
-        <div
-          className="sportdata-bracket-board"
-          style={{
-            width: boardWidth,
-            height: boardHeight,
-            transform: `scale(${scale})`,
-          }}
-        >
-          {roundNumbers.map((round, index) => (
-            <div
-              className="sportdata-round-title"
-              key={round}
-              style={{ left: index * BRACKET_COLUMN_STEP, width: BRACKET_NODE_WIDTH }}
-            >
-              {draw.name} - Round {index + 1}
-            </div>
-          ))}
-          <div
-            className="sportdata-round-title is-champion"
-            style={{ left: roundNumbers.length * BRACKET_COLUMN_STEP, width: BRACKET_NODE_WIDTH }}
-          >
-            Winner
-          </div>
-          <svg
-            aria-hidden="true"
-            className="sportdata-bracket-lines"
-            width={boardWidth}
-            height={boardHeight}
-            viewBox={`0 0 ${boardWidth} ${boardHeight}`}
-          >
-            {connectors}
-          </svg>
-          {matches.flatMap((match) => {
-            const ordinal = roundOrdinal.get(match.round || 1) || 1;
-            const position = match.bracketPosition || 0;
-            const left = (ordinal - 1) * BRACKET_COLUMN_STEP;
-            return [
-              <BracketParticipantNode
-                key={`${match.id}-athlete1`}
-                match={match}
-                athlete={match.athlete1}
-                score={match.athlete1Score}
-                side="red"
-                winner={match.winnerId === match.athlete1?.id}
-                left={left}
-                top={nodeTop(ordinal, position * 2)}
-              />,
-              <BracketParticipantNode
-                key={`${match.id}-athlete2`}
-                match={match}
-                athlete={match.athlete2}
-                score={match.athlete2Score}
-                side="blue"
-                winner={match.winnerId === match.athlete2?.id}
-                left={left}
-                top={nodeTop(ordinal, position * 2 + 1)}
-              />,
-            ];
-          })}
-          {finalMatch && (
-            <BracketParticipantNode
-              match={finalMatch}
-              athlete={finalMatch.winnerId === finalMatch.athlete1?.id ? finalMatch.athlete1 : finalMatch.athlete2}
-              side="champion"
-              winner
-              left={roundNumbers.length * BRACKET_COLUMN_STEP}
-              top={championTop}
-            />
-          )}
-        </div>
-        </div>
-      </div>
-      )}
-    </Card>
-  );
-}
-
-function BracketParticipantNode({
-  match,
-  athlete,
-  score,
-  side,
-  winner,
-  left,
-  top,
-}: {
-  match: MatchData;
-  athlete?: Athlete | null;
-  score?: number;
-  side: 'red' | 'blue' | 'champion';
-  winner: boolean;
-  left: number;
-  top: number;
-}) {
-  const content = (
-    <>
-      <Avatar
-        shape="square"
-        size={58}
-        src={athlete ? athlete.photoUrl || `/api/participant-auth/avatar/${athlete.id}` : undefined}
-        icon={<UserRound className="h-6 w-6" />}
-        alt={athlete?.fullName || 'Vận động viên'}
-        className="sportdata-node-avatar"
-      />
-      <div className="sportdata-node-country">
-        <CountryFlag country={athlete?.country} />
-        <span>{athlete?.country?.code || '—'}</span>
-      </div>
-      {side !== 'champion' && (
-        <span className="sportdata-node-score">
-          {athlete && ['FINISHED', 'RUNNING'].includes(match.status) ? score ?? 0 : '—'}
-        </span>
-      )}
-      <strong>{athlete?.fullName || 'CHỜ XÁC ĐỊNH'}</strong>
-      <small>{athlete?.federation?.name || athlete?.country?.name || '—'}</small>
-      {side !== 'champion' && (
-        <span className="sportdata-node-match">
-          {match.matchNumber ? `#${match.matchNumber}` : ''}
-          {[formatTime(match.startTime || match.matchDate), match.fop].filter(Boolean).join(' · ')}
-        </span>
-      )}
-    </>
-  );
-  const className = cn(
-    'sportdata-bracket-node',
-    `is-${side}`,
-    winner && 'is-winner',
-    !athlete && 'is-empty',
-  );
-  const style = { left, top, width: BRACKET_NODE_WIDTH, height: BRACKET_NODE_HEIGHT };
-
-  return athlete ? (
-    <Link href={`/athletes/${athlete.id}`} className={className} style={style} title={match.notes || undefined}>
-      {content}
-    </Link>
-  ) : (
-    <div className={className} style={style} title={match.notes || undefined}>{content}</div>
-  );
-}
-
-function drawTypeLabel(type: DrawData['type']) {
-  return ({
-    ROUND_ROBIN_POOL: 'Vòng tròn',
-    MAIN_TREE: 'Main tree',
-    POOL_WINNER_TREE: 'Poolwinner tree',
-    REPECHAGE: 'Repechage',
-    DOUBLE_ELIMINATION: 'Loại kép',
-  } as const)[type];
 }
 
 function CountryFlag({ country }: { country?: Country | null }) {

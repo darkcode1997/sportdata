@@ -2,10 +2,6 @@ export const CMS_ROLES = [
   'ADMIN',
   'CONTENT',
   'GAMES_ADMIN',
-  'SPORT_MANAGER',
-  'VENUE_OPERATOR',
-  'SCOREKEEPER',
-  'RESULT_APPROVER',
   'READ_ONLY',
 ] as const;
 
@@ -38,44 +34,12 @@ export const CMS_ROLE_INFO: Record<CmsRole, {
     restrictions: ['Không điều hành lịch', 'Không nhập hoặc phê duyệt kết quả'],
   },
   GAMES_ADMIN: {
-    label: 'Quản trị đại hội',
-    shortLabel: 'Đại hội',
-    description: 'Điều phối toàn bộ quy trình thi đấu của một đại hội.',
+    label: 'Quản lý sự kiện',
+    shortLabel: 'Sự kiện',
+    description: 'Quản lý mọi sự kiện và toàn bộ nghiệp vụ đăng ký, thi đấu, thanh toán và kết quả.',
     startPath: '/cms/events',
-    capabilities: ['Địa điểm, ca và khung giờ', 'Đăng ký, thể thức và xếp lịch', 'Toàn bộ quy trình kết quả'],
-    restrictions: ['Không quản lý tài khoản hệ thống hoặc bản sao lưu'],
-  },
-  SPORT_MANAGER: {
-    label: 'Trưởng bộ môn',
-    shortLabel: 'Trưởng môn',
-    description: 'Quản lý chuyên môn, lượt đăng ký, thể thức, lịch và xác nhận trọng tài.',
-    startPath: '/cms/events',
-    capabilities: ['Quản lý VĐV/hạng mục', 'Sinh thể thức và xếp lịch', 'Nhập và xác nhận kết quả'],
-    restrictions: ['Không phê duyệt/công bố kết quả cuối', 'Không tạo hoặc xóa venue'],
-  },
-  VENUE_OPERATOR: {
-    label: 'Điều hành địa điểm',
-    shortLabel: 'Địa điểm',
-    description: 'Điều phối ca, sàn thi đấu và khóa lịch tại địa điểm.',
-    startPath: '/cms/matches',
-    capabilities: ['Quản lý ca và khung giờ', 'Cập nhật và khóa lịch trận', 'Theo dõi xung đột'],
-    restrictions: ['Không thay đổi đăng ký/thể thức', 'Không nhập hoặc duyệt kết quả'],
-  },
-  SCOREKEEPER: {
-    label: 'Nhập điểm',
-    shortLabel: 'Nhập điểm',
-    description: 'Nhập và hiệu chỉnh kết quả ở trạng thái bản nháp/đã nhập.',
-    startPath: '/cms/matches',
-    capabilities: ['Xem lịch và người thi đấu', 'Nhập tỷ số và người thắng', 'Xem lịch sử phiên bản'],
-    restrictions: ['Không xác nhận trọng tài', 'Không phê duyệt, công bố hoặc khóa kết quả'],
-  },
-  RESULT_APPROVER: {
-    label: 'Phê duyệt kết quả',
-    shortLabel: 'Phê duyệt',
-    description: 'Phê duyệt, công bố và khóa kết quả đã được trọng tài xác nhận.',
-    startPath: '/cms/matches',
-    capabilities: ['Phê duyệt kết quả', 'Công bố ra website', 'Khóa kết quả chính thức'],
-    restrictions: ['Không tự nhập tỷ số', 'Không mở lại kết quả đã khóa'],
+    capabilities: ['Tạo, sửa, xóa sự kiện; quản lý VĐV và hạng đấu', 'Đăng ký, thanh toán, địa điểm và lịch thi đấu', 'Đặt trước cặp, preview và sinh cây đấu', 'Nhập, xác nhận, duyệt, công bố và khóa kết quả'],
+    restrictions: ['Không quản lý tài khoản CMS, cấu hình hoặc sao lưu hệ thống', 'Không mở lại kết quả đã khóa'],
   },
   READ_ONLY: {
     label: 'Chỉ xem',
@@ -89,16 +53,15 @@ export const CMS_ROLE_INFO: Record<CmsRole, {
 
 export const CMS_PAGE_ACCESS: Record<string, readonly CmsRole[]> = {
   '/cms': ALL_CMS_ROLES,
-  '/cms/operations': ['ADMIN', 'GAMES_ADMIN', 'SPORT_MANAGER', 'VENUE_OPERATOR', 'SCOREKEEPER', 'RESULT_APPROVER', 'READ_ONLY'],
-  '/cms/events': ['ADMIN', 'CONTENT', 'GAMES_ADMIN', 'SPORT_MANAGER', 'READ_ONLY'],
-  '/cms/registrations': ['ADMIN', 'GAMES_ADMIN', 'SPORT_MANAGER', 'READ_ONLY'],
-  '/cms/athletes': ['ADMIN', 'CONTENT', 'GAMES_ADMIN', 'SPORT_MANAGER', 'READ_ONLY'],
-  '/cms/sports': ['ADMIN', 'CONTENT', 'GAMES_ADMIN', 'SPORT_MANAGER', 'READ_ONLY'],
-  '/cms/organizations': ['ADMIN', 'CONTENT', 'GAMES_ADMIN', 'SPORT_MANAGER', 'READ_ONLY'],
+  '/cms/operations': ['ADMIN', 'GAMES_ADMIN', 'READ_ONLY'],
+  '/cms/events': ALL_CMS_ROLES,
+  '/cms/registrations': ['ADMIN', 'GAMES_ADMIN', 'READ_ONLY'],
+  '/cms/athletes': ['ADMIN', 'CONTENT', 'GAMES_ADMIN', 'READ_ONLY'],
+  '/cms/sports': ['ADMIN', 'CONTENT', 'GAMES_ADMIN', 'READ_ONLY'],
+  '/cms/organizations': ['ADMIN', 'CONTENT', 'GAMES_ADMIN', 'READ_ONLY'],
   '/cms/accounts': ['ADMIN', 'GAMES_ADMIN', 'READ_ONLY'],
   '/cms/users': ['ADMIN'],
   '/cms/account': ALL_CMS_ROLES,
-  '/cms/matches': ['ADMIN', 'CONTENT', 'GAMES_ADMIN', 'SPORT_MANAGER', 'VENUE_OPERATOR', 'READ_ONLY'],
   '/cms/statistics': ALL_CMS_ROLES,
   '/cms/banners': ['ADMIN', 'CONTENT'],
   '/cms/news': ['ADMIN', 'CONTENT'],
@@ -110,10 +73,6 @@ export const DEMO_ROLE_USERNAMES: Record<CmsRole, string> = {
   ADMIN: 'demo.admin',
   CONTENT: 'demo.content',
   GAMES_ADMIN: 'demo.games',
-  SPORT_MANAGER: 'demo.sport',
-  VENUE_OPERATOR: 'demo.venue',
-  SCOREKEEPER: 'demo.score',
-  RESULT_APPROVER: 'demo.approver',
   READ_ONLY: 'demo.viewer',
 };
 
@@ -125,6 +84,8 @@ export function canAccessCmsPath(pathname: string, role?: string | null) {
   if (!isCmsRole(role)) return false;
   if (pathname === '/cms') return true;
 
+  if (/^\/cms\/matches\/[^/]+\/scoreboard$/.test(pathname)) return ['ADMIN', 'GAMES_ADMIN'].includes(role);
+
   const mutationRouteRoles: Array<{ matches: boolean; roles: readonly CmsRole[] }> = [
     {
       matches: pathname === '/cms/events/new' || /^\/cms\/events\/[^/]+\/edit$/.test(pathname),
@@ -132,11 +93,11 @@ export function canAccessCmsPath(pathname: string, role?: string | null) {
     },
     {
       matches: pathname === '/cms/athletes/new' || /^\/cms\/athletes\/[^/]+\/edit$/.test(pathname),
-      roles: ['ADMIN', 'CONTENT', 'GAMES_ADMIN', 'SPORT_MANAGER'],
+      roles: ['ADMIN', 'CONTENT', 'GAMES_ADMIN'],
     },
     {
       matches: pathname === '/cms/matches/new' || /^\/cms\/matches\/[^/]+\/edit$/.test(pathname),
-      roles: ['ADMIN', 'CONTENT', 'GAMES_ADMIN', 'SPORT_MANAGER', 'VENUE_OPERATOR'],
+      roles: ['ADMIN', 'CONTENT', 'GAMES_ADMIN'],
     },
   ];
   const mutationRoute = mutationRouteRoles.find((rule) => rule.matches);

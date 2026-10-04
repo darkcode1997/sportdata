@@ -1,0 +1,47 @@
+/* scoreboard.html uses a root rem of 1.11111vw. Scope that unit to this screen. */
+.board { --unit: 1.11111vw; position: fixed; inset: 0; z-index: 100; width: 100%; height: 100vh; background: blue; color: #0339e9; font-family: 'Roboto', sans-serif; font-weight: 900; line-height: normal; overflow: hidden; }
+.board *, .board *::before, .board *::after { box-sizing: border-box; }
+.board button { margin: 0; padding: 0; border-radius: 0; font-family: inherit; font-weight: inherit; line-height: normal; cursor: pointer; }
+.board button:disabled { cursor: default; }
+.board button:focus-visible, .board a:focus-visible, .board select:focus-visible { outline: 3px solid #b3fd7c; outline-offset: 2px; }
+.rows { width: 100%; height: 80vh; background: blue; }
+.row { height: 50%; background: blue; border-bottom: calc(.1 * var(--unit)) solid aliceblue; display: flex; justify-content: flex-end; align-items: center; padding-right: 5%; gap: 4vw; }
+.red { --score-color: red; }
+.cyan { --score-color: #03e2fe; }
+.actionGroup { display: flex; justify-content: space-between; align-items: stretch; gap: 1vw; }
+.actionColumn { display: flex; flex-direction: column; justify-content: space-between; }
+.submissionRow { display: flex; align-items: center; justify-content: space-between; gap: 1.5vw; }
+.submission { min-width: calc(10 * var(--unit)); aspect-ratio: 4 / 1; background: #1901ca; flex-grow: 1; border: 1px solid gray; display: flex; justify-content: center; align-items: center; font-size: calc(2 * var(--unit)); color: #0339e9; }
+.advantageCount { aspect-ratio: 1; width: calc(4.5 * var(--unit)); font-size: calc(4 * var(--unit)); background: #1901ca; border: 1px solid gray; display: flex; justify-content: center; align-items: center; color: #0339e9; }
+.penalties { display: flex; border: 1px solid gray; }
+.penalty { aspect-ratio: 16 / 9; width: calc(5 * var(--unit)); background: #1901ca; display: flex; justify-content: center; align-items: center; font-size: calc(2 * var(--unit)); border: 0; border-right: 1px solid gray; color: #0339e9; }
+.penalty:last-child { border-right: 0; }
+.penaltyLit, .advantageLit, .submissionLit { background: #ffe600; color: #191900; box-shadow: inset 0 0 0 1px #fff9a8, 0 0 calc(.6 * var(--unit)) #ffe60088; }
+.point { aspect-ratio: 2 / 3; width: calc(2 * var(--unit)); background: #1901ca; font-size: calc(2 * var(--unit)); display: flex; justify-content: center; align-items: center; color: #7440ff; border: 0; }
+.score { color: var(--score-color); font-size: calc(18 * var(--unit)); min-width: calc(21 * var(--unit)); }
+.footer { background: blue; width: 100%; height: 20vh; display: flex; justify-content: center; align-items: center; }
+.clock { color: #b3fd7c; font-size: calc(9.5 * var(--unit)); }
+/* Operational controls float above the reference layout and never resize its rows. */
+.board .controlsToggle { position: absolute; top: 12px; left: 12px; z-index: 2; padding: 8px 12px; border: 1px solid #ffffff60; border-radius: 6px; color: #fff; background: #000080; font: 14px Arial, sans-serif; }
+.controlPanel { position: absolute; left: 12px; top: 56px; width: min(380px, calc(100% - 24px)); max-height: calc(100% - 68px); overflow: auto; z-index: 3; padding: 18px; border: 1px solid #65749c; border-radius: 12px; color: #fff; background: #101b40; font: 14px/1.5 Arial, sans-serif; box-shadow: 0 12px 48px #0008; }
+.controlPanel p { margin: 10px 0; }
+.panelHeading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.controlPanel button, .back, .dialog button, .notice button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid #ffffff45; border-radius: 6px; padding: 8px 10px; color: #fff; background: #050568; font: 14px/1.4 Arial, sans-serif; text-decoration: none; }
+.controlPanel button:disabled, .dialog button:disabled { opacity: .4; cursor: not-allowed; }
+.controlPanel .primary, .dialog .primary { background: #b3fd7c; color: #0c2840; font-weight: bold; }
+.status, .winner { color: #b3fd7c; }
+.athleteSummary { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; margin: 14px 0; }
+.tools, .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 16px; }
+.controls small { width: 100%; color: #cad7ff; }
+.notice { position: absolute; top: 12px; right: 12px; z-index: 4; max-width: min(640px, calc(100% - 150px)); display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 12px; background: #683600; color: #fff0b5; font: 14px/1.4 Arial, sans-serif; }
+.overlay { position: absolute; inset: 0; z-index: 10; background: #000b; display: flex; align-items: center; justify-content: center; padding: 20px; color: #fff; font: 16px/1.5 Arial, sans-serif; }
+.dialog { background: #101b40; border: 1px solid #65749c; border-radius: 16px; padding: 28px; width: min(600px, 100%); max-height: 90vh; overflow: auto; box-shadow: 0 20px 90px #0008; }
+.dialog h2 { font-size: 24px; margin: 0 0 18px; }
+.dialog p { line-height: 1.6; color: #d8e1ff; }
+.dialog label { display: block; margin: 20px 0; }
+.dialog select { display: block; width: 100%; padding: 12px; margin-top: 8px; background: #080e26; color: #fff; border: 1px solid #65749c; border-radius: 8px; }
+.dialogButtons { display: flex; gap: 12px; justify-content: space-between; align-items: center; margin-top: 20px; }
+.dialog .dialogError { color: #ff9898; }
+.history { padding-left: 20px; line-height: 2; }
+.undone { opacity: .5; text-decoration: line-through; }
+.loading { padding: 40px; display: flex; gap: 20px; align-items: center; }

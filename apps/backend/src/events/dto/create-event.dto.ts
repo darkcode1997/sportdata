@@ -1,6 +1,7 @@
-import { IsString, IsOptional, IsBoolean, IsDateString, IsArray, IsInt, Min, IsIn, Matches, MaxLength } from 'class-validator';
+import type { TicketDesign } from '../ticket-design';
+import { IsObject, IsString, IsOptional, IsBoolean, IsDateString, IsArray, IsInt, Min, IsIn, Matches, MaxLength } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { EventLevel, PaymentMode, PaymentProvider } from '@prisma/client';
+import { EventAgeLimitMode, EventLevel, PaymentMode, PaymentProvider } from '@prisma/client';
 import { IsEnum } from 'class-validator';
 
 export class CreateEventDto {
@@ -85,6 +86,23 @@ export class CreateEventDto {
   @IsBoolean()
   allowIndependentAthletes?: boolean;
 
+  @ApiPropertyOptional({ enum: EventAgeLimitMode })
+  @IsOptional()
+  @IsEnum(EventAgeLimitMode)
+  ageLimitMode?: EventAgeLimitMode;
+
+  @ApiPropertyOptional({ nullable: true, minimum: 0 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  minAge?: number | null;
+
+  @ApiPropertyOptional({ nullable: true, minimum: 0 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  maxAge?: number | null;
+
   @ApiPropertyOptional({ default: false })
   @IsOptional()
   @IsBoolean()
@@ -164,4 +182,9 @@ export class CreateEventDto {
   @IsOptional()
   @Matches(/^#[0-9A-Fa-f]{6}$/)
   ticketAccentColor?: string;
+
+  @ApiPropertyOptional({ description: 'A6 layout with photo, QR and editable text regions' })
+  @IsOptional()
+  @IsObject()
+  ticketDesign?: TicketDesign | null;
 }

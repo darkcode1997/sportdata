@@ -51,7 +51,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800;900&display=swap"
         />
       </head>
-      <body className="min-h-screen bg-sdark-950 text-slate-100 antialiased">
+      {/* Browser extensions can inject body attributes before hydration (e.g. cz-shortcut-listen). */}
+      <body className="min-h-screen bg-sdark-950 text-slate-100 antialiased" suppressHydrationWarning>
         <AntdRegistry>
           <AntdProvider>
             <PublicShell>{children}</PublicShell>

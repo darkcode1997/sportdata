@@ -30,7 +30,7 @@ export class AthletesController {
 
   @Post()
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN, UserRole.CONTENT, UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER)
+  @Roles(UserRole.ADMIN, UserRole.CONTENT, UserRole.GAMES_ADMIN)
   @ApiOperation({ summary: 'Create a new athlete' })
   @ApiResponse({ status: 201, description: 'Athlete created successfully' })
   create(@Body() createAthleteDto: CreateAthleteDto) {
@@ -39,7 +39,7 @@ export class AthletesController {
 
   @Post(':id/avatar')
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN, UserRole.CONTENT, UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER)
+  @Roles(UserRole.ADMIN, UserRole.CONTENT, UserRole.GAMES_ADMIN)
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 8 * 1024 * 1024 } }))
   uploadAvatar(@Param('id') id: string, @UploadedFile() file?: Express.Multer.File) {
     return this.athletesService.uploadAvatar(id, file);
@@ -68,7 +68,7 @@ export class AthletesController {
 
   @Patch(':id')
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN, UserRole.CONTENT, UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER)
+  @Roles(UserRole.ADMIN, UserRole.CONTENT, UserRole.GAMES_ADMIN)
   @ApiOperation({ summary: 'Update athlete by ID' })
   @ApiResponse({ status: 200, description: 'Athlete updated successfully' })
   @ApiResponse({ status: 404, description: 'Athlete not found' })

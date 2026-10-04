@@ -23,6 +23,7 @@ import {
 import { Download, FileImage, ImageIcon, Loader2, Plus, RefreshCw, Send, Trash2, UploadCloud, Users } from 'lucide-react';
 import { CameraCaptureButton } from '@/components/CameraCaptureButton';
 import { EventParticipationCard } from '@/components/EventParticipationCard';
+import type { TicketDesign } from '@/lib/ticket-design';
 import { PaymentCheckout } from '@/components/PaymentCheckout';
 import { IdentityOcrReviewModal, type IdentityOcrFields, type IdentityOcrResult } from '@/components/IdentityOcrReviewModal';
 import { useSportDataToast } from '@/hooks/useSportDataToast';
@@ -52,6 +53,7 @@ type EventData = {
   endDate?: string;
   location?: string | null;
   ticketBackgroundUrl?: string | null;
+  ticketDesign?: TicketDesign | null;
   ticketThemePreset?: string | null;
   ticketLayout?: string | null;
   ticketPrimaryColor?: string | null;
@@ -491,6 +493,7 @@ export default function GuestEventRegistrationPage() {
                   endDate: event.endDate,
                   location: event.location,
                   ticketBackgroundUrl: event.ticketBackgroundUrl,
+                  ticketDesign: event.ticketDesign,
                   ticketThemePreset: event.ticketThemePreset,
                   ticketLayout: event.ticketLayout,
                   ticketPrimaryColor: event.ticketPrimaryColor,

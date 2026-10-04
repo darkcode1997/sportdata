@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import {
   EntryStatus,
   MatchStatus,
@@ -205,14 +205,7 @@ export class SchedulingService {
     ) as Partial<Record<EntryStatus, number>>;
     const activeEntries = (entryCounts.REGISTERED || 0) + (entryCounts.VERIFIED || 0);
     const roleCounts = new Map(activeUserRoles.map((group) => [group.role, group._count._all]));
-    const operationalRoles = [
-      UserRole.GAMES_ADMIN,
-      UserRole.SPORT_MANAGER,
-      UserRole.VENUE_OPERATOR,
-      UserRole.SCOREKEEPER,
-      UserRole.RESULT_APPROVER,
-    ];
-    const missingOperationalRoles = operationalRoles.filter((role) => !roleCounts.get(role));
+    const hasEventManager = Boolean(roleCounts.get(UserRole.GAMES_ADMIN) || roleCounts.get(UserRole.ADMIN));
     const checks: Array<{
       code: string;
       status: 'PASS' | 'WARN' | 'FAIL';
@@ -360,11 +353,11 @@ export class SchedulingService {
     );
     addCheck(
       'OPERATIONAL_STAFFING',
-      missingOperationalRoles.length ? 'WARN' : 'PASS',
+      hasEventManager ? 'PASS' : 'WARN',
       'Phân công tài khoản vận hành',
-      missingOperationalRoles.length
-        ? `Chưa có tài khoản chuyên trách: ${missingOperationalRoles.join(', ')}.`
-        : 'Đã có đủ nhóm tài khoản vận hành chuyên trách.',
+      hasEventManager
+        ? 'Đã có tài khoản Quản lý sự kiện hoặc Quản trị hệ thống để vận hành.'
+        : 'Chưa có tài khoản Quản lý sự kiện hoặc Quản trị hệ thống đang hoạt động.',
       'resources',
     );
 
@@ -568,7 +561,7 @@ export class SchedulingService {
       where: {
         eventId,
         scheduleLocked: false,
-        status: { not: MatchStatus.CANCELLED },
+        status: MatchStatus.SCHEDULED,
         ...(onlyUnscheduled ? { OR: [{ startTime: null }, { timeSlotId: null }] } : {}),
         ...(dto.categoryIds?.length ? { categoryId: { in: dto.categoryIds } } : {}),
         ...(dto.sportIds?.length ? { category: { sportId: { in: dto.sportIds } } } : {}),
@@ -688,18 +681,24 @@ export class SchedulingService {
     }
 
     if (!dryRun && assignments.length) {
-      await this.prisma.$transaction(assignments.map((assignment) => this.prisma.match.update({
-        where: { id: assignment.matchId },
-        data: {
-          matchDate: assignment.startTime,
-          startTime: assignment.startTime,
-          endTime: assignment.endTime,
-          fop: assignment.fop,
-          fopId: assignment.fopId,
-          sessionId: assignment.sessionId,
-          timeSlotId: assignment.timeSlotId,
-        },
-      })));
+      await this.prisma.$transaction(async (transaction) => {
+        for (const assignment of assignments) {
+          const original = matches.find((match) => match.id === assignment.matchId)!;
+          const written = await transaction.match.updateMany({
+            where: { id: assignment.matchId, status: MatchStatus.SCHEDULED, scheduleLocked: false, updatedAt: original.updatedAt },
+            data: {
+              matchDate: assignment.startTime,
+              startTime: assignment.startTime,
+              endTime: assignment.endTime,
+              fop: assignment.fop,
+              fopId: assignment.fopId,
+              sessionId: assignment.sessionId,
+              timeSlotId: assignment.timeSlotId,
+            },
+          });
+          if (written.count !== 1) throw new ConflictException('Trận đấu đã bắt đầu hoặc lịch đã thay đổi. Hãy xếp lịch lại.');
+        }
+      });
     }
     return {
       dryRun,

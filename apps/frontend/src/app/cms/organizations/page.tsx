@@ -62,9 +62,9 @@ export default function OrganizationsManagementPage() {
   const countries = Array.isArray(countriesQuery.data) ? countriesQuery.data : [];
   const organizations = Array.isArray(organizationsQuery.data) ? organizationsQuery.data : [];
   const role = currentUser?.role;
-  const canManageCountries = ['ADMIN', 'CONTENT'].includes(role);
-  const canManageOrganizations = ['ADMIN', 'CONTENT', 'GAMES_ADMIN', 'SPORT_MANAGER'].includes(role);
-  const canDeleteCountries = role === 'ADMIN';
+  const canManageCountries = ['ADMIN', 'CONTENT', 'GAMES_ADMIN'].includes(role);
+  const canManageOrganizations = ['ADMIN', 'CONTENT', 'GAMES_ADMIN'].includes(role);
+  const canDeleteCountries = ['ADMIN', 'GAMES_ADMIN'].includes(role);
   const canDeleteOrganizations = ['ADMIN', 'GAMES_ADMIN'].includes(role);
   const [countryForm] = Form.useForm<CountryForm>();
   const [organizationForm] = Form.useForm<OrganizationForm>();

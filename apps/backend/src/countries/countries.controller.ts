@@ -20,7 +20,7 @@ export class CountriesController {
   constructor(private readonly countriesService: CountriesService) {}
 
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN, UserRole.CONTENT)
+  @Roles(UserRole.ADMIN, UserRole.CONTENT, UserRole.GAMES_ADMIN)
   @Post()
   create(@Body() createCountryDto: CreateCountryDto) {
     return this.countriesService.create(createCountryDto);
@@ -37,7 +37,7 @@ export class CountriesController {
   }
 
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN, UserRole.CONTENT)
+  @Roles(UserRole.ADMIN, UserRole.CONTENT, UserRole.GAMES_ADMIN)
   @Patch(':id')
   update(
     @Param('id') id: string,
@@ -47,7 +47,7 @@ export class CountriesController {
   }
 
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.GAMES_ADMIN)
   @Delete(':id')
   remove(@Param('id') id: string) {
     return this.countriesService.remove(id);

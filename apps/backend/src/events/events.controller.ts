@@ -60,7 +60,7 @@ export class EventsController {
 
   @Get(':id/admin-detail')
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN, UserRole.CONTENT, UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER, UserRole.READ_ONLY)
+  @Roles(UserRole.ADMIN, UserRole.CONTENT, UserRole.GAMES_ADMIN, UserRole.READ_ONLY)
   @ApiOperation({ summary: 'Get event details including selected athletes for editing' })
   findAdminDetail(@Param('id') id: string) {
     return this.eventsService.findOne(id, true);
@@ -68,7 +68,7 @@ export class EventsController {
 
   @Post(':id/fops')
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER)
+  @Roles(UserRole.GAMES_ADMIN)
   @ApiOperation({ summary: 'Add a floor/FOP to an event' })
   createFop(@Param('id') id: string, @Body() dto: CreateEventFopDto) {
     return this.eventsService.createFop(id, dto);
@@ -76,7 +76,7 @@ export class EventsController {
 
   @Patch(':id/fops/:fopId')
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER)
+  @Roles(UserRole.GAMES_ADMIN)
   @ApiOperation({ summary: 'Update an event floor/FOP' })
   updateFop(
     @Param('id') id: string,
@@ -88,7 +88,7 @@ export class EventsController {
 
   @Delete(':id/fops/:fopId')
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER)
+  @Roles(UserRole.GAMES_ADMIN)
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Remove an unused floor/FOP from an event' })
   removeFop(@Param('id') id: string, @Param('fopId') fopId: string) {

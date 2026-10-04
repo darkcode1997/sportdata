@@ -179,7 +179,7 @@ export default function DashboardPage() {
       <Card
         className="cms-table"
         title={<Space><Swords className="h-5 w-5 text-red-400" />Trận đấu gần đây</Space>}
-        extra={<Button type="link" href="/cms/matches" icon={<ArrowRight className="h-4 w-4" />} iconPosition="end">Xem tất cả</Button>}
+        extra={<Button type="link" href="/cms/events" icon={<ArrowRight className="h-4 w-4" />} iconPosition="end">Xem sự kiện</Button>}
         styles={{ body: { padding: 0 } }}
       >
         <Table rowKey="id" columns={matchColumns} dataSource={recentMatches} loading={loadingMatches} pagination={false} scroll={{ x: 900 }} />

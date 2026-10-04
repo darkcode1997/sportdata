@@ -12,12 +12,7 @@ datasource db {
 enum UserRole {
   ADMIN
   CONTENT         @map("EDITOR")
-  LEGACY_VIEWER   @map("VIEWER")
   GAMES_ADMIN
-  SPORT_MANAGER
-  VENUE_OPERATOR
-  SCOREKEEPER
-  RESULT_APPROVER
   READ_ONLY
 }
 
@@ -407,6 +402,7 @@ model Sport {
 }
 
 model Category {
+  drawPreconfigurations DrawPreconfiguration[]
   id                   String              @id @default(cuid())
   name                 String
   sportId              String
@@ -451,7 +447,14 @@ model Division {
   @@index([categoryId])
 }
 
+enum EventAgeLimitMode {
+  CATEGORY
+  UNRESTRICTED
+  CUSTOM
+}
+
 model Event {
+  drawPreconfigurations DrawPreconfiguration[]
   id                       String                   @id @default(cuid())
   name                     String
   sportId                  String
@@ -472,6 +475,7 @@ model Event {
   ticketBackgroundData     Bytes?
   ticketBackgroundMimeType String?
   ticketBackgroundSize     Int?
+  ticketDesign             Json?
   ticketThemePreset        String                   @default("OCEAN")
   ticketLayout             String                   @default("CLASSIC")
   ticketPrimaryColor       String                   @default("#0284C7")
@@ -487,6 +491,9 @@ model Event {
   organizer                Federation?              @relation("EventOrganizer", fields: [organizerId], references: [id], onDelete: SetNull)
   participatingFederations Federation[]             @relation("EventParticipatingFederations")
   allowIndependentAthletes Boolean                  @default(true)
+  ageLimitMode             EventAgeLimitMode        @default(UNRESTRICTED)
+  minAge                   Int?
+  maxAge                   Int?
   registrationEnabled      Boolean                  @default(false)
   registrationOpenAt       DateTime?
   registrationCloseAt      DateTime?
@@ -1126,4 +1133,39 @@ model Statistic {
   @@index([athleteId])
   @@index([eventId])
   @@index([sportId])
+}
+
+// Private draw data is exposed only through permission-checked endpoints.
+model DrawPreconfiguration {
+  id           String   @id @default(cuid())
+  eventId      String
+  event        Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  categoryId   String
+  category     Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  drawType     DrawType
+  pairs        Json
+  options      Json
+  revision     Int      @default(1)
+  inputVersion String?
+  slots        Json?
+  plan         Json?
+  previewedAt  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  history      DrawPreconfigurationHistory[]
+
+  @@unique([eventId, categoryId, drawType])
+}
+
+model DrawPreconfigurationHistory {
+  id              String   @id @default(cuid())
+  configurationId String
+  configuration   DrawPreconfiguration @relation(fields: [configurationId], references: [id], onDelete: Cascade)
+  actorUserId     String
+  action          String
+  revision        Int
+  snapshot        Json
+  createdAt       DateTime @default(now())
+
+  @@index([configurationId, createdAt])
 }
