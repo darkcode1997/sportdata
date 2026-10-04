@@ -1,7 +1,4 @@
-import { Permission } from '@prisma/client';
 import {
-  IsArray,
-  ArrayUnique,
   IsBoolean,
   IsEmail,
   IsEnum,
@@ -43,12 +40,6 @@ export class UpdateUserDto {
   @IsOptional()
   @IsEnum(UserRole)
   role?: UserRole;
-
-  @IsOptional()
-  @IsArray()
-  @ArrayUnique()
-  @IsEnum(Permission, { each: true })
-  permissions?: Permission[];
 
   @IsOptional()
   @IsBoolean()

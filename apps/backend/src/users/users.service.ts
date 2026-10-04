@@ -17,7 +17,6 @@ const safeUserSelect = {
   username: true,
   name: true,
   role: true,
-  permissions: true,
   isActive: true,
   createdAt: true,
   updatedAt: true,
@@ -50,7 +49,6 @@ export class UsersService {
         password: await bcrypt.hash(dto.password, 12),
         role: this.toPrismaRole(dto.role || UserRole.CONTENT),
         isActive: dto.isActive ?? true,
-        permissions: dto.permissions || [],
       },
       select: safeUserSelect,
     });
@@ -85,7 +83,6 @@ export class UsersService {
     if (email || username) await this.assertUnique(email, username, id);
 
     const data: Prisma.UserUpdateInput = {};
-    if (dto.permissions !== undefined) data.permissions = dto.permissions;
     if (email !== undefined) data.email = email;
     if (username !== undefined) data.username = username;
     if (name !== undefined) data.name = name;

@@ -20,7 +20,6 @@ import { QueryMatchDto } from './dto/query-match.dto';
 import { RevertDrawDto } from './dto/revert-draw.dto';
 import { GenerateDrawDto } from './dto/generate-draw.dto';
 import { QueryDrawPreconfigurationDto, SaveDrawPreconfigurationDto, PreviewDrawDto } from './dto/draw-preconfiguration.dto';
-import { DrawPreconfigureGuard } from '../auth/draw-preconfigure.guard';
 import { MatchStatus } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../auth/optional-jwt-auth.guard';
@@ -92,28 +91,32 @@ export class MatchesController {
   }
 
   @Get('event/:eventId/category/:categoryId/preconfiguration')
-  @UseGuards(JwtAuthGuard, DrawPreconfigureGuard)
+  @UseGuards(JwtAuthGuard)
+  @Roles(UserRole.ADMIN, UserRole.GAMES_ADMIN)
   getPreconfiguration(@Param('eventId') eventId: string, @Param('categoryId') categoryId: string,
     @Query() query: QueryDrawPreconfigurationDto) {
     return this.matchesService.getPreconfiguration(eventId, categoryId, query.drawType);
   }
 
   @Patch('event/:eventId/category/:categoryId/preconfiguration')
-  @UseGuards(JwtAuthGuard, DrawPreconfigureGuard)
+  @UseGuards(JwtAuthGuard)
+  @Roles(UserRole.ADMIN, UserRole.GAMES_ADMIN)
   savePreconfiguration(@Param('eventId') eventId: string, @Param('categoryId') categoryId: string,
     @Body() dto: SaveDrawPreconfigurationDto, @Req() request: { user: { id: string } }) {
     return this.matchesService.savePreconfiguration(eventId, categoryId, dto, request.user.id);
   }
 
   @Post('event/:eventId/category/:categoryId/preview-draw')
-  @UseGuards(JwtAuthGuard, DrawPreconfigureGuard)
+  @UseGuards(JwtAuthGuard)
+  @Roles(UserRole.ADMIN, UserRole.GAMES_ADMIN)
   previewDraw(@Param('eventId') eventId: string, @Param('categoryId') categoryId: string,
     @Body() dto: PreviewDrawDto, @Req() request: { user: { id: string } }) {
     return this.matchesService.previewDraw(eventId, categoryId, dto, request.user.id);
   }
 
   @Get('event/:eventId/category/:categoryId/preconfiguration/history')
-  @UseGuards(JwtAuthGuard, DrawPreconfigureGuard)
+  @UseGuards(JwtAuthGuard)
+  @Roles(UserRole.ADMIN, UserRole.GAMES_ADMIN)
   getPreconfigurationHistory(@Param('eventId') eventId: string, @Param('categoryId') categoryId: string,
     @Query() query: QueryDrawPreconfigurationDto) {
     return this.matchesService.getPreconfigurationHistory(eventId, categoryId, query.drawType);
@@ -121,7 +124,7 @@ export class MatchesController {
 
   @Get('event/:eventId/category/:categoryId/draw-state')
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN, UserRole.CONTENT, UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER)
+  @Roles(UserRole.ADMIN, UserRole.CONTENT, UserRole.GAMES_ADMIN)
   @ApiOperation({ summary: 'Check whether generated draws can be reverted before competition starts' })
   getDrawState(@Param('eventId') eventId: string, @Param('categoryId') categoryId: string) {
     return this.matchesService.getDrawState(eventId, categoryId);
@@ -129,7 +132,7 @@ export class MatchesController {
 
   @Post('event/:eventId/category/:categoryId/revert-draw')
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN, UserRole.CONTENT, UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER)
+  @Roles(UserRole.ADMIN, UserRole.CONTENT, UserRole.GAMES_ADMIN)
   @ApiOperation({ summary: 'Revert generated draws and fixtures of an unstarted category' })
   revertDraw(@Param('eventId') eventId: string, @Param('categoryId') categoryId: string,
     @Body() dto: RevertDrawDto, @Req() request: { user: { id: string } }) {
@@ -138,7 +141,7 @@ export class MatchesController {
 
   @Post('event/:eventId/category/:categoryId/generate-draw')
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN, UserRole.CONTENT, UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER)
+  @Roles(UserRole.ADMIN, UserRole.CONTENT, UserRole.GAMES_ADMIN)
   @ApiOperation({
     summary: 'Generate a seeded elimination graph',
     description:
@@ -157,7 +160,7 @@ export class MatchesController {
 
   @Post('event/:eventId/distribute-dates')
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN, UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER)
+  @Roles(UserRole.ADMIN, UserRole.GAMES_ADMIN)
   @ApiOperation({
     summary: 'Distribute unscheduled event matches evenly across event days',
     description:
@@ -181,7 +184,7 @@ export class MatchesController {
 
   @Post()
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN, UserRole.CONTENT, UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER, UserRole.VENUE_OPERATOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTENT, UserRole.GAMES_ADMIN)
   @ApiOperation({
     summary: 'Create a new match',
     description: 'Create an unfinished match with participants and scheduling details. Results use the approval workflow.',
@@ -193,7 +196,7 @@ export class MatchesController {
 
   @Patch(':id')
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN, UserRole.CONTENT, UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER, UserRole.VENUE_OPERATOR)
+  @Roles(UserRole.ADMIN, UserRole.CONTENT, UserRole.GAMES_ADMIN)
   @ApiOperation({
     summary: 'Update a match',
     description:

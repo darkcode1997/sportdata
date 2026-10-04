@@ -18,7 +18,7 @@ The four lights record referee-awarded penalties; penalty buttons do not themsel
 
 ## Permissions and synchronization
 
-`ADMIN`, `GAMES_ADMIN`, `SPORT_MANAGER`, and `SCOREKEEPER` can operate the board. Sport managers represent the referee confirmation role in the existing role model. A scorekeeper's confirmation saves an `ENTERED` result; a sport manager/admin saves `REFEREE_CONFIRMED`. Approval and publication retain their existing workflow and permissions. Public scores remain hidden until publication.
+`ADMIN` (Quản trị hệ thống) and `GAMES_ADMIN` (Quản lý sự kiện) can operate the board. Finishing a bout saves `REFEREE_CONFIRMED`. Both roles can approve, publish and lock results; only ADMIN can reopen results. Public scores remain hidden until publication.
 
 The board polls every two seconds; schedule/bracket screens refresh every five seconds. Server version checks reject stale commands rather than overwrite another operator. Every command records the actor and a result revision. State is stored in `Match.resultData.scoreboard`; no database migration is required.
 

@@ -19,32 +19,8 @@ export const operationalDemoAccounts = [
   {
     username: 'demo.games',
     email: 'demo-games@sportdata.test',
-    name: 'Demo · Quản trị đại hội',
+    name: 'Demo · Quản lý sự kiện',
     role: UserRole.GAMES_ADMIN,
-  },
-  {
-    username: 'demo.sport',
-    email: 'demo-sport@sportdata.test',
-    name: 'Demo · Trưởng bộ môn',
-    role: UserRole.SPORT_MANAGER,
-  },
-  {
-    username: 'demo.venue',
-    email: 'demo-venue@sportdata.test',
-    name: 'Demo · Điều hành địa điểm',
-    role: UserRole.VENUE_OPERATOR,
-  },
-  {
-    username: 'demo.score',
-    email: 'demo-score@sportdata.test',
-    name: 'Demo · Nhập điểm',
-    role: UserRole.SCOREKEEPER,
-  },
-  {
-    username: 'demo.approver',
-    email: 'demo-approver@sportdata.test',
-    name: 'Demo · Phê duyệt kết quả',
-    role: UserRole.RESULT_APPROVER,
   },
   {
     username: 'demo.viewer',

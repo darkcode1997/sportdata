@@ -111,7 +111,7 @@ export class ScoreboardService {
     });
   }
 
-  async command(id: string, userId: string, role: string, dto: ScoreboardCommandDto) {
+  async command(id: string, userId: string, dto: ScoreboardCommandDto) {
     await this.prisma.$transaction(async (tx) => {
       // Serialize starts within an event, including different matches on the same FOP.
       const initial = await this.load(tx, id);
@@ -211,13 +211,11 @@ export class ScoreboardService {
           update.status = MatchStatus.FINISHED;
           update.winnerId = dto.winnerId;
           update.winMethod = dto.winMethod;
-          update.resultStatus = role === 'SCOREKEEPER' ? ResultStatus.ENTERED : ResultStatus.REFEREE_CONFIRMED;
+          update.resultStatus = ResultStatus.REFEREE_CONFIRMED;
           update.resultEnteredAt = now;
           update.resultEnteredBy = userId;
-          if (role !== 'SCOREKEEPER') {
-            update.refereeConfirmedAt = now;
-            update.refereeConfirmedBy = userId;
-          }
+          update.refereeConfirmedAt = now;
+          update.refereeConfirmedBy = userId;
         }
       }
       const resultData: Record<string, any> = { ...data, scoreboard: clock };

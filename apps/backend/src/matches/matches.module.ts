@@ -1,4 +1,3 @@
-import { DrawPreconfigureGuard } from '../auth/draw-preconfigure.guard';
 import { Module } from '@nestjs/common';
 import { MatchesService } from './matches.service';
 import { MatchesController } from './matches.controller';
@@ -7,7 +6,7 @@ import { PrismaModule } from '../prisma/prisma.module';
 @Module({
   imports: [PrismaModule],
   controllers: [MatchesController],
-  providers: [MatchesService, DrawPreconfigureGuard],
+  providers: [MatchesService],
   exports: [MatchesService],
 })
 export class MatchesModule {}

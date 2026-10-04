@@ -3216,6 +3216,7 @@ h3,
   font-size: 0.75rem;
 }
 
+/* Keep the bracket canvas consistent with CMS in both public themes. */
 .sportdata-bracket-scroll {
   height: clamp(280px, 65dvh, 760px);
   overflow: auto;
@@ -3294,7 +3295,7 @@ h3,
   border-left-color: #6b6650;
 }
 
-.sportdata-bracket-node:hover {
+.sportdata-bracket-node:not(.is-readonly):hover {
   border-color: #29bfff;
   border-left-color: #29bfff;
   background: #ffffff;
@@ -3358,6 +3359,11 @@ h3,
   color: #ffffff;
   font-size: 0.74rem;
   font-weight: 950;
+}
+
+.sportdata-node-score.is-readonly {
+  background: transparent;
+  color: #030712;
 }
 
 .sportdata-node-match {
@@ -5355,8 +5361,7 @@ html[data-app-theme="light"] .registration-document-empty {
 .public-theme-light .category-protocol-section h3,
 .public-theme-light .protocol-result strong,
 .public-theme-light .protocol-match-number strong,
-.public-theme-light .protocol-stage strong,
-.public-theme-light .sportdata-round-title {
+.public-theme-light .protocol-stage strong {
   color: #0f172a;
 }
 
@@ -5620,11 +5625,6 @@ html[data-app-theme="light"] .registration-document-empty {
   color: #334155;
 }
 
-.public-theme-light .sportdata-bracket-scroll {
-  background: #f8fafc;
-  scrollbar-color: #94a3b8 #e2e8f0;
-}
-
 .public-theme-light .sportdata-draw-control.ant-btn {
   border-color: #cbd5e1;
   background: #ffffff;
@@ -5639,10 +5639,6 @@ html[data-app-theme="light"] .registration-document-empty {
 
 .public-theme-light .sportdata-zoom-value {
   color: #334155;
-}
-
-.public-theme-light .sportdata-bracket-lines path {
-  stroke: rgba(71, 85, 105, 0.72);
 }
 
 /* ===== NEWS, CONTACT & CONTENT EDITOR ===== */

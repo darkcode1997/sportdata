@@ -81,9 +81,9 @@ const beltOptions = [
 
 export default function SportsPage() {
   const { data: currentUser } = useSWR<any>('/auth/profile', fetcher);
-  const canManageSports = ['ADMIN', 'CONTENT'].includes(currentUser?.role);
-  const canManageCategories = ['ADMIN', 'CONTENT', 'GAMES_ADMIN', 'SPORT_MANAGER'].includes(currentUser?.role);
-  const canDeleteSport = currentUser?.role === 'ADMIN';
+  const canManageSports = ['ADMIN', 'CONTENT', 'GAMES_ADMIN'].includes(currentUser?.role);
+  const canManageCategories = ['ADMIN', 'CONTENT', 'GAMES_ADMIN'].includes(currentUser?.role);
+  const canDeleteSport = ['ADMIN', 'GAMES_ADMIN'].includes(currentUser?.role);
   const canDeleteCategory = ['ADMIN', 'GAMES_ADMIN'].includes(currentUser?.role);
   const { message: toast } = AntApp.useApp();
   const { data: sports = [], error, isLoading, mutate } = useSWR<any[]>('/sports', fetcher);

@@ -92,10 +92,10 @@ export default function OperationsPage() {
   const isAdmin = currentUser?.role === 'ADMIN';
   const hasRole = (...roles: string[]) => isAdmin || roles.includes(currentUser?.role);
   const canCreateVenue = hasRole('GAMES_ADMIN');
-  const canManageSessions = hasRole('GAMES_ADMIN', 'SPORT_MANAGER', 'VENUE_OPERATOR');
-  const canManageRules = hasRole('GAMES_ADMIN', 'SPORT_MANAGER');
-  const canManageEntries = hasRole('GAMES_ADMIN', 'SPORT_MANAGER');
-  const canSchedule = hasRole('GAMES_ADMIN', 'SPORT_MANAGER');
+  const canManageSessions = hasRole('GAMES_ADMIN');
+  const canManageRules = hasRole('GAMES_ADMIN');
+  const canManageEntries = hasRole('GAMES_ADMIN');
+  const canSchedule = hasRole('GAMES_ADMIN');
 
   useEffect(() => {
     if (eventId || !events.length) return;
@@ -545,9 +545,9 @@ function ResultWorkflowModal({ match, role, open, onClose, onChanged }: { match:
   const athletes = useMemo(() => [match.athlete1, match.athlete2].filter(Boolean), [match]);
   const resultStages = ['DRAFT', 'ENTERED', 'REFEREE_CONFIRMED', 'APPROVED', 'PUBLISHED', 'LOCKED'];
   const isAdmin = role === 'ADMIN';
-  const canEnter = isAdmin || ['GAMES_ADMIN', 'SPORT_MANAGER', 'SCOREKEEPER'].includes(role || '');
-  const canConfirm = isAdmin || ['GAMES_ADMIN', 'SPORT_MANAGER'].includes(role || '');
-  const canApprove = isAdmin || ['GAMES_ADMIN', 'RESULT_APPROVER'].includes(role || '');
+  const canEnter = isAdmin || ['GAMES_ADMIN'].includes(role || '');
+  const canConfirm = isAdmin || ['GAMES_ADMIN'].includes(role || '');
+  const canApprove = isAdmin || ['GAMES_ADMIN'].includes(role || '');
 
   const act = async (action: string, payload: Record<string, unknown> = {}) => {
     setPending(true);

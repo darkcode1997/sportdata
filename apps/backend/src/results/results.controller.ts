@@ -16,40 +16,36 @@ export class ResultsController {
   constructor(private readonly results: ResultsService, private readonly scoreboard: ScoreboardService) {}
 
   @Get('matches/:matchId/scoreboard')
-  @Roles(UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER, UserRole.SCOREKEEPER)
+  @Roles(UserRole.GAMES_ADMIN)
   getScoreboard(@Param('matchId') id: string) { return this.scoreboard.get(id); }
 
   @Post('matches/:matchId/scoreboard/claim')
-  @Roles(UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER, UserRole.SCOREKEEPER)
+  @Roles(UserRole.GAMES_ADMIN)
   claimScoreboard(@Param('matchId') id: string, @Req() req: { user: { id: string } }, @Body() dto: ScoreboardLeaseDto) {
     return this.scoreboard.claim(id, req.user.id, dto.clientId);
   }
 
   @Post('matches/:matchId/scoreboard/heartbeat')
-  @Roles(UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER, UserRole.SCOREKEEPER)
+  @Roles(UserRole.GAMES_ADMIN)
   heartbeatScoreboard(@Param('matchId') id: string, @Req() req: { user: { id: string } }, @Body() dto: ScoreboardLeaseDto) {
     return this.scoreboard.heartbeat(id, req.user.id, dto.clientId);
   }
 
   @Post('matches/:matchId/scoreboard/release')
-  @Roles(UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER, UserRole.SCOREKEEPER)
+  @Roles(UserRole.GAMES_ADMIN)
   releaseScoreboard(@Param('matchId') id: string, @Req() req: { user: { id: string } }, @Body() dto: ScoreboardLeaseDto) {
     return this.scoreboard.release(id, req.user.id, dto.clientId);
   }
 
   @Post('matches/:matchId/scoreboard')
-  @Roles(UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER, UserRole.SCOREKEEPER)
-  scoreboardCommand(@Param('matchId') id: string, @Req() req: { user: { id: string; role: string } }, @Body() dto: ScoreboardCommandDto) {
-    return this.scoreboard.command(id, req.user.id, req.user.role, dto);
+  @Roles(UserRole.GAMES_ADMIN)
+  scoreboardCommand(@Param('matchId') id: string, @Req() req: { user: { id: string } }, @Body() dto: ScoreboardCommandDto) {
+    return this.scoreboard.command(id, req.user.id, dto);
   }
 
   @Get('matches/:matchId')
   @Roles(
     UserRole.GAMES_ADMIN,
-    UserRole.SPORT_MANAGER,
-    UserRole.VENUE_OPERATOR,
-    UserRole.SCOREKEEPER,
-    UserRole.RESULT_APPROVER,
     UserRole.READ_ONLY,
   )
   get(@Param('matchId') matchId: string) {
@@ -57,7 +53,7 @@ export class ResultsController {
   }
 
   @Post('matches/:matchId/enter')
-  @Roles(UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER, UserRole.SCOREKEEPER)
+  @Roles(UserRole.GAMES_ADMIN)
   @ApiOperation({ summary: 'Enter or correct a draft result' })
   enter(
     @Param('matchId') matchId: string,
@@ -68,7 +64,7 @@ export class ResultsController {
   }
 
   @Post('matches/:matchId/referee-confirm')
-  @Roles(UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER)
+  @Roles(UserRole.GAMES_ADMIN)
   confirm(
     @Param('matchId') matchId: string,
     @Req() req: { user: { id: string } },
@@ -78,7 +74,7 @@ export class ResultsController {
   }
 
   @Post('matches/:matchId/approve')
-  @Roles(UserRole.GAMES_ADMIN, UserRole.RESULT_APPROVER)
+  @Roles(UserRole.GAMES_ADMIN)
   approve(
     @Param('matchId') matchId: string,
     @Req() req: { user: { id: string } },
@@ -88,7 +84,7 @@ export class ResultsController {
   }
 
   @Post('matches/:matchId/publish')
-  @Roles(UserRole.GAMES_ADMIN, UserRole.RESULT_APPROVER)
+  @Roles(UserRole.GAMES_ADMIN)
   publish(
     @Param('matchId') matchId: string,
     @Req() req: { user: { id: string } },
@@ -98,7 +94,7 @@ export class ResultsController {
   }
 
   @Post('matches/:matchId/lock')
-  @Roles(UserRole.GAMES_ADMIN, UserRole.RESULT_APPROVER)
+  @Roles(UserRole.GAMES_ADMIN)
   lock(
     @Param('matchId') matchId: string,
     @Req() req: { user: { id: string } },
@@ -108,7 +104,7 @@ export class ResultsController {
   }
 
   @Post('matches/:matchId/reopen')
-  @Roles(UserRole.GAMES_ADMIN)
+  @Roles(UserRole.ADMIN)
   reopen(
     @Param('matchId') matchId: string,
     @Req() req: { user: { id: string } },

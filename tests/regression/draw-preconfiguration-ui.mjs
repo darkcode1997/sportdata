@@ -25,7 +25,7 @@ async function pageFor(privileged,count=5,started=false){
  await page.addInitScript(()=>localStorage.setItem('cms_token','test-token'));
  await page.route('**/api/**',async route=>{
   const req=route.request(),url=new URL(req.url()),path=url.pathname.replace('/api','');let body={};
-  if(path==='/auth/profile')body={id:privileged?'private-user':'ordinary-user',name:'Test Operator',role:'GAMES_ADMIN',permissions:privileged?['DRAW_PRECONFIGURE']:[]};
+  if(path==='/auth/profile')body={id:privileged?'private-user':'ordinary-user',name:'Test Operator',role:privileged?'GAMES_ADMIN':'READ_ONLY'};
   else if(path==='/events/ui-pre/admin-detail')body=event;
   else if(path.includes('/entries'))body=pageEntries;
   else if(path.endsWith('/preconfiguration')){
@@ -143,18 +143,13 @@ try{
  assert.equal(await ordinary.getByText('Pre-matches · Cặp đặt trước',{exact:true}).count(),0);
  assert.equal(await ordinary.getByRole('button',{name:'Preview cây đấu',exact:true}).count(),0);
  assert.equal(privateCalls,before,'Ordinary UI should never load private configuration');
- await ordinary.getByRole('button',{name:'Sinh nhánh đấu tự động',exact:true}).click();
- await ordinary.getByRole('button',{name:'Thu hồi nhánh đấu',exact:true}).click();
- const undo=ordinary.waitForResponse(response=>response.url().endsWith('/revert-draw'));
- await ordinary.getByRole('button',{name:'Thu hồi nhánh',exact:true}).click();await undo;
- await ordinary.getByRole('button',{name:'Thu hồi nhánh đấu',exact:true}).waitFor({state:'hidden'});
- assert.equal(privateCalls,before,'Revert must not request private configuration for ordinary operators');
- const blocked=await pageFor(false,5,true);
+ assert.equal(await ordinary.getByRole('button',{name:'Sinh nhánh đấu tự động',exact:true}).isDisabled(),true);
+ const blocked=await pageFor(true,5,true);
  const blockedUndo=blocked.getByRole('button',{name:'Thu hồi nhánh đấu',exact:true});
  await blockedUndo.waitFor();assert.equal(await blockedUndo.isDisabled(),true);
  await blocked.getByText('Hạng đấu đã có trận bắt đầu hoặc ghi nhận kết quả; không thể thu hồi nhánh.',{exact:true}).waitFor();
  assert.deepEqual(errors,[]);
- console.log('PASS: browser autosaves complete CompetitionEntry pairs and deletion; preview renders; ordinary account never fetches private data.');
- console.log('PASS: revert confirmation for all rules and ordinary operators; revert is disabled once a bout starts.');
+ console.log('PASS: browser autosaves complete CompetitionEntry pairs and deletion; preview renders; read-only account never fetches private data.');
+ console.log('PASS: revert confirmation for event managers; revert is disabled once a bout starts.');
  console.log('PASS: all five rules show Pre-matches above the rules, use matching preview/generation types, and handle Repechage under six and double elimination under four.');
 }finally{await browser.close();}

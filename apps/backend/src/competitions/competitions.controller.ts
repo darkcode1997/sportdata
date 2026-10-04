@@ -19,25 +19,25 @@ export class CompetitionsController {
   constructor(private readonly competitions: CompetitionsService) {}
 
   @Get('events/:eventId/teams')
-  @Roles(UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER, UserRole.SCOREKEEPER, UserRole.RESULT_APPROVER, UserRole.READ_ONLY)
+  @Roles(UserRole.GAMES_ADMIN, UserRole.READ_ONLY)
   listTeams(@Param('eventId') eventId: string) {
     return this.competitions.listTeams(eventId);
   }
 
   @Post('events/:eventId/teams')
-  @Roles(UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER)
+  @Roles(UserRole.GAMES_ADMIN)
   createTeam(@Param('eventId') eventId: string, @Body() dto: CreateTeamDto) {
     return this.competitions.createTeam(eventId, dto);
   }
 
   @Get('events/:eventId/categories/:categoryId/entries')
-  @Roles(UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER, UserRole.VENUE_OPERATOR, UserRole.SCOREKEEPER, UserRole.RESULT_APPROVER, UserRole.READ_ONLY)
+  @Roles(UserRole.GAMES_ADMIN, UserRole.READ_ONLY)
   listEntries(@Param('eventId') eventId: string, @Param('categoryId') categoryId: string) {
     return this.competitions.listEntries(eventId, categoryId);
   }
 
   @Post('events/:eventId/categories/:categoryId/entries')
-  @Roles(UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER)
+  @Roles(UserRole.GAMES_ADMIN)
   createEntry(
     @Param('eventId') eventId: string,
     @Param('categoryId') categoryId: string,
@@ -47,13 +47,13 @@ export class CompetitionsController {
   }
 
   @Patch('entries/:entryId/seed')
-  @Roles(UserRole.ADMIN, UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER)
+  @Roles(UserRole.ADMIN, UserRole.GAMES_ADMIN)
   updateEntrySeed(@Param('entryId') entryId: string, @Body() dto: UpdateEntrySeedDto) {
     return this.competitions.updateEntrySeed(entryId, dto.seed ?? null);
   }
 
   @Post('events/:eventId/categories/:categoryId/heats/generate')
-  @Roles(UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER)
+  @Roles(UserRole.GAMES_ADMIN)
   generateHeats(
     @Param('eventId') eventId: string,
     @Param('categoryId') categoryId: string,
@@ -63,7 +63,7 @@ export class CompetitionsController {
   }
 
   @Post('events/:eventId/categories/:categoryId/round-robin/generate')
-  @Roles(UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER)
+  @Roles(UserRole.GAMES_ADMIN)
   generateRoundRobin(
     @Param('eventId') eventId: string,
     @Param('categoryId') categoryId: string,

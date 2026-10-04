@@ -155,8 +155,8 @@ export function EventWorkspace({ event, onRefresh }: EventWorkspaceProps) {
   const searchParams = useSearchParams();
   const { data: currentUser } = useSWR<any>('/auth/profile', fetcher);
   const canEditEvent = ['ADMIN', 'CONTENT', 'GAMES_ADMIN'].includes(currentUser?.role);
-  const canScore = ['ADMIN', 'GAMES_ADMIN', 'SPORT_MANAGER', 'SCOREKEEPER'].includes(currentUser?.role);
-  const canOperate = ['ADMIN', 'GAMES_ADMIN', 'SPORT_MANAGER'].includes(currentUser?.role);
+  const canScore = ['ADMIN', 'GAMES_ADMIN'].includes(currentUser?.role);
+  const canOperate = ['ADMIN', 'GAMES_ADMIN'].includes(currentUser?.role);
   const canConfirmPayment = ['ADMIN', 'GAMES_ADMIN'].includes(currentUser?.role);
   const requestedTab = searchParams.get('tab');
   const activeTab: EventTabKey = eventTabKeys.includes(requestedTab as EventTabKey)
@@ -196,7 +196,7 @@ export function EventWorkspace({ event, onRefresh }: EventWorkspaceProps) {
         {
           key: 'matches',
           label: <span className="flex items-center gap-2"><List className="h-4 w-4" />Trận đấu</span>,
-          children: <MatchesTab event={event} returnTo={workspaceHref('matches')} canOperate={canOperate} canScore={canScore} canEditMatch={canEditEvent || canOperate} />,
+          children: <MatchesTab event={event} returnTo={workspaceHref('matches')} canOperate={canOperate} canScore={canScore} canEditMatch={canEditEvent || canOperate} canEditBracket={canOperate} />,
         },
         {
           key: 'payment',
@@ -211,7 +211,7 @@ export function EventWorkspace({ event, onRefresh }: EventWorkspaceProps) {
         {
           key: 'bracket',
           label: <span className="flex items-center gap-2"><Network className="h-4 w-4" />Thể thức & nhánh đấu</span>,
-          children: <BracketTab event={event} canOperate={canOperate} preconfigureActorId={currentUser?.permissions?.includes('DRAW_PRECONFIGURE') ? currentUser.id : undefined} />,
+          children: <BracketTab event={event} canOperate={canOperate} preconfigureActorId={canOperate ? currentUser?.id : undefined} />,
         },
       ]}
     />
@@ -680,7 +680,7 @@ type MatchFilters = {
   venue?: string;
 };
 
-function MatchesTab({ event, returnTo, canOperate, canScore, canEditMatch }: { event: any; returnTo: string; canOperate: boolean; canScore: boolean; canEditMatch: boolean }) {
+function MatchesTab({ event, returnTo, canOperate, canScore, canEditMatch, canEditBracket }: { event: any; returnTo: string; canOperate: boolean; canScore: boolean; canEditMatch: boolean; canEditBracket: boolean }) {
   const toast = useSportDataToast();
   const { mutate: mutateGlobal } = useSWRConfig();
   const [categoryId, setCategoryId] = useState<string>(event.categories?.[0]?.id || '');
@@ -794,7 +794,7 @@ function MatchesTab({ event, returnTo, canOperate, canScore, canEditMatch }: { e
       </Card>
       {view === 'tree' ? (
         <div className="space-y-5">
-          {drawsLoading ? <Card loading /> : draws.length ? draws.map((draw) => <SportdataBracket key={draw.id} draw={draw} sourceMatches={draws.flatMap((item) => item.matches)} matchHref={(match) => withCmsReturnTo(`/cms/matches/${match.id}/edit`, returnTo)} />) : <Card><Empty description="Chưa sinh sơ đồ cây cho hạng đấu này." /></Card>}
+          {drawsLoading ? <Card loading /> : draws.length ? draws.map((draw) => <SportdataBracket key={draw.id} draw={draw} sourceMatches={draws.flatMap((item) => item.matches)} readOnly={!canEditBracket} matchHref={(match) => withCmsReturnTo(`/cms/matches/${match.id}/edit`, returnTo)} />) : <Card><Empty description="Chưa sinh sơ đồ cây cho hạng đấu này." /></Card>}
         </div>
       ) : (
         <Card styles={{ body: { padding: 0 } }}>

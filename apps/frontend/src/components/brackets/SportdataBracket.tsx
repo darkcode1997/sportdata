@@ -54,6 +54,7 @@ export interface BracketDraw {
 type SportdataBracketProps = {
   draw: BracketDraw;
   sourceMatches?: BracketMatch[];
+  readOnly?: boolean;
   matchHref?: (match: BracketMatch, athlete?: BracketAthlete | null) => string | undefined;
 };
 
@@ -63,7 +64,7 @@ const BRACKET_SLOT_PITCH = 116;
 const BRACKET_COLUMN_STEP = 470;
 const BRACKET_HEADER_HEIGHT = 64;
 
-export function SportdataBracket({ draw, sourceMatches = draw.matches, matchHref }: SportdataBracketProps) {
+export function SportdataBracket({ draw, sourceMatches = draw.matches, readOnly = false, matchHref }: SportdataBracketProps) {
   const [collapsed, setCollapsed] = useState(false);
   const matches = [...draw.matches].sort((left, right) => {
     if ((left.round || 0) !== (right.round || 0)) return (left.round || 0) - (right.round || 0);
@@ -247,6 +248,7 @@ export function SportdataBracket({ draw, sourceMatches = draw.matches, matchHref
                       left={left}
                       top={nodeTop(ordinal, position * 2)}
                       matchHref={matchHref}
+                      readOnly={readOnly}
                     />,
                     <BracketParticipantNode
                       key={`${match.id}-athlete2`}
@@ -259,6 +261,7 @@ export function SportdataBracket({ draw, sourceMatches = draw.matches, matchHref
                       left={left}
                       top={nodeTop(ordinal, position * 2 + 1)}
                       matchHref={matchHref}
+                      readOnly={readOnly}
                     />,
                   ];
                 })}
@@ -279,6 +282,7 @@ export function SportdataBracket({ draw, sourceMatches = draw.matches, matchHref
                       left={roundNumbers.length * BRACKET_COLUMN_STEP}
                       top={(nodeTop(ordinal, position * 2) + nodeTop(ordinal, position * 2 + 1)) / 2}
                       matchHref={matchHref}
+                      readOnly={readOnly}
                     />
                   );
                 })}
@@ -301,6 +305,7 @@ function BracketParticipantNode({
   left,
   top,
   matchHref,
+  readOnly,
 }: {
   match: BracketMatch;
   athlete?: BracketAthlete | null;
@@ -311,6 +316,7 @@ function BracketParticipantNode({
   left: number;
   top: number;
   matchHref?: SportdataBracketProps['matchHref'];
+  readOnly: boolean;
 }) {
   const content = (
     <>
@@ -327,7 +333,7 @@ function BracketParticipantNode({
         <span>{athlete?.country?.code || '—'}</span>
       </div>
       {side !== 'champion' && (
-        <span className="sportdata-node-score">
+        <span className={cn('sportdata-node-score', readOnly && 'is-readonly')}>
           {athlete && ['FINISHED', 'RUNNING'].includes(match.status) ? score ?? 0 : '—'}
         </span>
       )}
@@ -351,9 +357,10 @@ function BracketParticipantNode({
     `is-${side}`,
     winner && 'is-winner',
     !athlete && 'is-empty',
+    readOnly && 'is-readonly',
   );
   const style = { left, top, width: BRACKET_NODE_WIDTH, height: BRACKET_NODE_HEIGHT };
-  const href = matchHref
+  const href = readOnly ? undefined : matchHref
     ? matchHref(match, athlete)
     : athlete
       ? `/athletes/${athlete.id}`

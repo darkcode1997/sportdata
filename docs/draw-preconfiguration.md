@@ -1,10 +1,10 @@
 # Pre-matches và Preview cây đấu
 
-Áp dụng migration `20261003020000_draw_preconfiguration`, chạy `npm run prisma:generate`, rồi khởi động lại backend. Migration không tự cấp quyền cho bất kỳ tài khoản nào.
+Áp dụng các migration, bao gồm `20261004000000_simplify_cms_roles`, chạy `npm run prisma:generate`, rồi khởi động lại backend.
 
-Admin cấp `DRAW_PRECONFIGURE` trong **Tài khoản CMS → Chỉnh sửa → Quyền riêng**. Quyền này độc lập với vai trò: kể cả Admin cũng cần được cấp để truy cập cấu hình, preview và lịch sử. Quyền sinh nhánh vẫn theo vai trò vận hành hiện có. JWT được kiểm tra bằng quyền hiện tại trong database mỗi request.
+**Quản trị hệ thống** (`ADMIN`) và **Quản lý sự kiện** (`GAMES_ADMIN`) đều được cấu hình cặp đặt trước, preview, xem lịch sử và sinh/thu hồi nhánh. Không cần cấp quyền riêng. Biên tập nội dung và Chỉ xem không được truy cập API cấu hình/preview. JWT được kiểm tra bằng vai trò hiện tại trong database mỗi request.
 
-Trong workspace sự kiện, chọn hạng đấu rồi cấu hình Pre-matches phía trên phần chọn thể thức. Cả năm thể thức loại trực tiếp, tuyệt đối, loại kép, đấu vớt và vòng tròn đều hỗ trợ. Người có quyền riêng chọn hai CompetitionEntry và hệ thống tự lưu; xóa cặp cũng tự lưu. Mỗi lần lưu tăng revision và vô hiệu hóa preview trước đó. Cách xếp seed cũng được tự lưu tại đây. Khi có lỗi lưu, xử lý lỗi hoặc tải lại trước khi preview.
+Trong workspace sự kiện, chọn hạng đấu rồi cấu hình Pre-matches phía trên phần chọn thể thức. Cả năm thể thức loại trực tiếp, tuyệt đối, loại kép, đấu vớt và vòng tròn đều hỗ trợ. Người quản lý sự kiện chọn hai CompetitionEntry và hệ thống tự lưu; xóa cặp cũng tự lưu. Mỗi lần lưu tăng revision và vô hiệu hóa preview trước đó. Cách xếp seed cũng được tự lưu tại đây. Khi có lỗi lưu, xử lý lỗi hoặc tải lại trước khi preview.
 
 **Preview cây đấu** lưu phương án hoàn chỉnh trên server, gồm slot đầu vào, trận, miễn đấu và liên kết thắng/thua các vòng tiếp theo, nhưng không tạo bản ghi Draw, Match hoặc bảng vòng tròn. Đối với loại kép và đấu vớt, cặp đặt trước chỉ áp dụng vòng đầu nhánh chính; preview vẫn hiển thị đầy đủ nhánh phụ. SportdataBracket dùng chính graph này để hiển thị.
 
@@ -38,7 +38,7 @@ Chỉ cho thu hồi khi chưa có trận nào trong hạng bắt đầu hoặc g
 
 Thu hồi giữ cặp Pre-matches và cấu hình, vô hiệu hóa phương án preview cũ và tăng revision. Sau đó chỉnh seed, preview lại bằng tài khoản có quyền, rồi sinh nhánh. Hạng không có cấu hình riêng có thể sinh lại trực tiếp. Lịch sử riêng ghi `REVERT`; audit chung ghi người thu hồi và số nhánh/bảng/trận bị xóa.
 
-API vận hành (JWT và vai trò được phép sinh nhánh, không yêu cầu DRAW_PRECONFIGURE), với cùng tiền tố event/category:
+API vận hành (JWT và vai trò được phép sinh nhánh, không cần quyền riêng), với cùng tiền tố event/category:
 
 - `GET /draw-state`: `{ version, canRevert, drawCount, groupCount, matchCount, reason }`.
 - `POST /revert-draw`: `{ version }`, dùng version từ GET. Version cũ, hạng đã bắt đầu hoặc yêu cầu thu hồi trùng trả 409.
@@ -47,7 +47,7 @@ Thu hồi, sinh cây và thao tác START/FINISH dùng chung khóa event. Thu h�
 
 ## API riêng
 
-Các đường dẫn dưới đây có tiền tố `/api/matches/event/:eventId/category/:categoryId` và yêu cầu JWT cùng `DRAW_PRECONFIGURE`:
+Các đường dẫn dưới đây có tiền tố `/api/matches/event/:eventId/category/:categoryId` và yêu cầu JWT với vai trò `ADMIN` hoặc `GAMES_ADMIN`:
 
 - `GET /preconfiguration?drawType=MAIN_TREE|DOUBLE_ELIMINATION|REPECHAGE|ROUND_ROBIN_POOL`
 - `PATCH /preconfiguration`: `{ drawType, pairs: [{ entry1Id, entry2Id }], seedingMode, groupCount?, revision }`
@@ -74,4 +74,4 @@ Kiểm tra giao diện bằng Playwright với frontend đang chạy (toàn bộ
 node tests/regression/draw-preconfiguration-ui.mjs
 ```
 
-Có thể đặt `DRAW_PLAYWRIGHT_MODULE` để trỏ đến Playwright cài sẵn, `DRAW_CHROME_PATH` cho executable Chrome, `DRAW_UI_URL` cho URL frontend và `DRAW_SCREENSHOT_PATH` để lưu ảnh chụp. Bài kiểm tra xác nhận chọn một VĐV chưa lưu, chọn đủ hai tự lưu đúng Entry ID, xóa cặp tự lưu, render preview và tài khoản thường không gọi API cấu hình riêng.
+Có thể đặt `DRAW_PLAYWRIGHT_MODULE` để trỏ đến Playwright cài sẵn, `DRAW_CHROME_PATH` cho executable Chrome, `DRAW_UI_URL` cho URL frontend và `DRAW_SCREENSHOT_PATH` để lưu ảnh chụp. Bài kiểm tra xác nhận chọn một VĐV chưa lưu, chọn đủ hai tự lưu đúng Entry ID, xóa cặp tự lưu, render preview và tài khoản Chỉ xem không gọi API cấu hình riêng.

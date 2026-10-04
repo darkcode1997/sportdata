@@ -12,12 +12,7 @@ datasource db {
 enum UserRole {
   ADMIN
   CONTENT         @map("EDITOR")
-  LEGACY_VIEWER   @map("VIEWER")
   GAMES_ADMIN
-  SPORT_MANAGER
-  VENUE_OPERATOR
-  SCOREKEEPER
-  RESULT_APPROVER
   READ_ONLY
 }
 
@@ -268,10 +263,6 @@ model Federation {
   @@index([type])
 }
 
-enum Permission {
-  DRAW_PRECONFIGURE
-}
-
 model User {
   id                       String     @id @default(cuid())
   email                    String     @unique
@@ -286,7 +277,6 @@ model User {
   passwordChangedAt        DateTime?
   createdAt                DateTime   @default(now())
   updatedAt                DateTime   @updatedAt
-  permissions              Permission[] @default([])
   auditLogs                AuditLog[] @relation("AuditActor")
 
   @@index([isActive, role])

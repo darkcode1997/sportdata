@@ -192,7 +192,7 @@ export class ParticipantsController {
 
   @Get('admin/registrations')
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN, UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER, UserRole.READ_ONLY)
+  @Roles(UserRole.ADMIN, UserRole.GAMES_ADMIN, UserRole.READ_ONLY)
   adminRegistrations(@Query('eventId') eventId?: string) {
     return this.service.listAllRegistrations(eventId);
   }
@@ -213,7 +213,7 @@ export class ParticipantsController {
 
   @Patch('admin/registrations/:id/status')
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN, UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER)
+  @Roles(UserRole.ADMIN, UserRole.GAMES_ADMIN)
   updateRegistrationStatus(
     @Req() request: Request & { user?: { email?: string; username?: string; sub?: string } },
     @Param('id') id: string,
@@ -245,7 +245,7 @@ export class ParticipantsController {
 
   @Get('admin/athletes/:athleteId/media/:type')
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN, UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER, UserRole.READ_ONLY)
+  @Roles(UserRole.ADMIN, UserRole.GAMES_ADMIN, UserRole.READ_ONLY)
   async adminMedia(
     @Param('athleteId') athleteId: string,
     @Param('type') type: AthleteMediaType,
@@ -259,7 +259,7 @@ export class ParticipantsController {
 
   @Patch('admin/athletes/:athleteId/media/:type/verification')
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN, UserRole.GAMES_ADMIN, UserRole.SPORT_MANAGER)
+  @Roles(UserRole.ADMIN, UserRole.GAMES_ADMIN)
   updateDocumentVerification(
     @Req() request: Request & { user?: { email?: string; sub?: string } },
     @Param('athleteId') athleteId: string,

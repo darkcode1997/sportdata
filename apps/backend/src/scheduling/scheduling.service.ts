@@ -205,14 +205,7 @@ export class SchedulingService {
     ) as Partial<Record<EntryStatus, number>>;
     const activeEntries = (entryCounts.REGISTERED || 0) + (entryCounts.VERIFIED || 0);
     const roleCounts = new Map(activeUserRoles.map((group) => [group.role, group._count._all]));
-    const operationalRoles = [
-      UserRole.GAMES_ADMIN,
-      UserRole.SPORT_MANAGER,
-      UserRole.VENUE_OPERATOR,
-      UserRole.SCOREKEEPER,
-      UserRole.RESULT_APPROVER,
-    ];
-    const missingOperationalRoles = operationalRoles.filter((role) => !roleCounts.get(role));
+    const hasEventManager = Boolean(roleCounts.get(UserRole.GAMES_ADMIN) || roleCounts.get(UserRole.ADMIN));
     const checks: Array<{
       code: string;
       status: 'PASS' | 'WARN' | 'FAIL';
@@ -360,11 +353,11 @@ export class SchedulingService {
     );
     addCheck(
       'OPERATIONAL_STAFFING',
-      missingOperationalRoles.length ? 'WARN' : 'PASS',
+      hasEventManager ? 'PASS' : 'WARN',
       'Phân công tài khoản vận hành',
-      missingOperationalRoles.length
-        ? `Chưa có tài khoản chuyên trách: ${missingOperationalRoles.join(', ')}.`
-        : 'Đã có đủ nhóm tài khoản vận hành chuyên trách.',
+      hasEventManager
+        ? 'Đã có tài khoản Quản lý sự kiện hoặc Quản trị hệ thống để vận hành.'
+        : 'Chưa có tài khoản Quản lý sự kiện hoặc Quản trị hệ thống đang hoạt động.',
       'resources',
     );
 

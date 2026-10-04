@@ -28,7 +28,7 @@ export class SportsController {
   constructor(private readonly sportsService: SportsService) {}
 
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN, UserRole.CONTENT)
+  @Roles(UserRole.ADMIN, UserRole.CONTENT, UserRole.GAMES_ADMIN)
   @Post()
   create(@Body() createSportDto: CreateSportDto) {
     return this.sportsService.create(createSportDto);
@@ -69,14 +69,14 @@ export class SportsController {
   }
 
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN, UserRole.CONTENT)
+  @Roles(UserRole.ADMIN, UserRole.CONTENT, UserRole.GAMES_ADMIN)
   @Patch(':id')
   update(@Param('id') id: string, @Body() updateSportDto: UpdateSportDto) {
     return this.sportsService.update(id, updateSportDto);
   }
 
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN, UserRole.CONTENT)
+  @Roles(UserRole.ADMIN, UserRole.CONTENT, UserRole.GAMES_ADMIN)
   @Patch(':id/background')
   @UseInterceptors(FileInterceptor('image', backgroundUploadOptions))
   uploadBackground(
@@ -87,14 +87,14 @@ export class SportsController {
   }
 
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN, UserRole.CONTENT)
+  @Roles(UserRole.ADMIN, UserRole.CONTENT, UserRole.GAMES_ADMIN)
   @Delete(':id/background')
   removeBackground(@Param('id') id: string) {
     return this.sportsService.removeBackground(id);
   }
 
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN, UserRole.CONTENT)
+  @Roles(UserRole.ADMIN, UserRole.CONTENT, UserRole.GAMES_ADMIN)
   @Patch(':id/logo')
   @UseInterceptors(FileInterceptor('image', logoUploadOptions))
   uploadLogo(
@@ -105,14 +105,14 @@ export class SportsController {
   }
 
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN, UserRole.CONTENT)
+  @Roles(UserRole.ADMIN, UserRole.CONTENT, UserRole.GAMES_ADMIN)
   @Delete(':id/logo')
   removeLogo(@Param('id') id: string) {
     return this.sportsService.removeLogo(id);
   }
 
   @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.GAMES_ADMIN)
   @Delete(':id')
   remove(@Param('id') id: string) {
     return this.sportsService.remove(id);
