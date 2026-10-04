@@ -13,6 +13,32 @@ import { Type } from 'class-transformer';
 import { MatchStatus } from '@prisma/client';
 
 export class QueryMatchDto {
+  @ApiPropertyOptional({ description: 'Tên VĐV, ở bất kỳ bên nào của trận' })
+  @IsString()
+  @IsOptional()
+  athleteName?: string;
+
+  @ApiPropertyOptional({ description: 'Tên đối thủ; kết hợp với athleteName để tìm cặp đấu' })
+  @IsString()
+  @IsOptional()
+  opponentName?: string;
+
+  @ApiPropertyOptional({ description: 'Số trận đấu' })
+  @IsInt()
+  @Min(1)
+  @Max(2147483647)
+  @IsOptional()
+  @Type(() => Number)
+  matchNumber?: number;
+
+  @ApiPropertyOptional({ description: 'Vòng đấu' })
+  @IsInt()
+  @Min(1)
+  @Max(2147483647)
+  @IsOptional()
+  @Type(() => Number)
+  round?: number;
+
   @ApiPropertyOptional({ description: 'Tìm theo vận động viên hoặc tên sự kiện' })
   @IsString()
   @IsOptional()

@@ -27,6 +27,7 @@ import {
   Tooltip,
 } from 'antd';
 import type { UploadProps } from 'antd';
+import type { ColumnType } from 'antd/es/table';
 import {
   BadgeDollarSign,
   CalendarRange,
@@ -42,6 +43,7 @@ import {
   Plus,
   Play,
   RefreshCw,
+  Search,
   Settings2,
   TicketCheck,
   Trash2,
@@ -56,6 +58,7 @@ import type { ParticipationTicket } from '@/lib/ticket-types';
 import { DrawPreconfiguration } from '@/components/cms/DrawPreconfiguration';
 import { AthleteQuickViewModal } from '@/components/cms/AthleteQuickViewModal';
 import { openCmsScoreboard, withCmsReturnTo } from '@/lib/cms-navigation';
+import { MATCH_STATUS_META } from '@/lib/vi-labels';
 
 const TicketDesignEditor = dynamic(() => import('@/components/cms/TicketDesignEditor').then((module) => module.TicketDesignEditor), { ssr: false });
 const SportdataBracket = dynamic(() => import('@/components/brackets/SportdataBracket').then((module) => module.SportdataBracket), { ssr: false });
@@ -667,17 +670,69 @@ function RegistrationsTab({ eventId, canOperate, canConfirmPayment }: { eventId:
   );
 }
 
+type MatchFilters = {
+  athleteName?: string;
+  opponentName?: string;
+  matchNumber?: number;
+  round?: number;
+  status?: string;
+  date?: string;
+  venue?: string;
+};
+
 function MatchesTab({ event, returnTo, canOperate, canScore, canEditMatch }: { event: any; returnTo: string; canOperate: boolean; canScore: boolean; canEditMatch: boolean }) {
   const toast = useSportDataToast();
   const { mutate: mutateGlobal } = useSWRConfig();
   const [categoryId, setCategoryId] = useState<string>(event.categories?.[0]?.id || '');
   const [view, setView] = useState<'tree' | 'list'>('list');
   const [page, setPage] = useState(1);
+  const [filters, setFilters] = useState<MatchFilters>({});
   const [selectedAthleteId, setSelectedAthleteId] = useState<string>();
   const [distributingDates, setDistributingDates] = useState(false);
   const pageSize = 50;
   const query = new URLSearchParams({ eventId: event.id, limit: String(pageSize), page: String(page) });
   if (categoryId) query.set('categoryId', categoryId);
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && String(value).trim()) query.set(key, String(value).trim());
+  });
+  const hasFilters = Object.values(filters).some((value) => value !== undefined && value !== null && String(value).trim());
+  const columnFilter = (key: keyof MatchFilters, label: string, kind: 'text' | 'number' | 'date' = 'text'): ColumnType<any> => ({
+    key,
+    filteredValue: filters[key] !== undefined ? [String(filters[key])] : null,
+    filterIcon: (filtered) => <Search className={`h-4 w-4 ${filtered ? 'text-blue-600' : ''}`} />,
+    filterDropdown: ({ selectedKeys, setSelectedKeys, confirm, clearFilters }) => (
+      <div className="space-y-3 p-3" style={{ width: 270 }} onKeyDown={(event) => event.stopPropagation()}>
+        <div className="text-sm font-medium">{label}</div>
+        {kind === 'number' ? (
+          <InputNumber
+            className="!w-full"
+            min={1}
+            max={2147483647}
+            precision={0}
+            aria-label={label}
+            value={selectedKeys[0] ? Number(selectedKeys[0]) : null}
+            onChange={(value) => setSelectedKeys(value === null ? [] : [String(value)])}
+            onPressEnter={() => confirm()}
+          />
+        ) : (
+          <Input
+            autoFocus
+            allowClear
+            type={kind === 'date' ? 'date' : 'text'}
+            aria-label={label}
+            placeholder={label}
+            value={String(selectedKeys[0] || '')}
+            onChange={(event) => setSelectedKeys(event.target.value ? [event.target.value] : [])}
+            onPressEnter={() => confirm()}
+          />
+        )}
+        <Space>
+          <Button type="primary" size="small" onClick={() => confirm()}>Áp dụng</Button>
+          <Button size="small" onClick={() => clearFilters?.({ confirm: true, closeDropdown: true })}>Xóa</Button>
+        </Space>
+      </div>
+    ),
+  });
   const { data, error, isLoading, mutate } = useSWR<any>(`/matches?${query}`, fetcher, { refreshInterval: 5000 });
   const { data: drawData, isLoading: drawsLoading, mutate: mutateDraws } = useSWR<{ draws: BracketDraw[] }>(categoryId ? `/matches/event/${event.id}/category/${categoryId}/draws` : null, fetcher, { refreshInterval: 5000 });
   const draws = [...(drawData?.draws || [])].sort((a, b) => a.sortOrder - b.sortOrder);
@@ -743,6 +798,10 @@ function MatchesTab({ event, returnTo, canOperate, canScore, canEditMatch }: { e
         </div>
       ) : (
         <Card styles={{ body: { padding: 0 } }}>
+          <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 p-4">
+            <span className="text-sm text-slate-500">Bấm biểu tượng lọc trên tiêu đề cột để tìm trận. Lọc cả hai cột VĐV để tìm cặp đấu theo bất kỳ thứ tự nào.</span>
+            {hasFilters && <Button onClick={() => { setFilters({}); setPage(1); }}>Xóa bộ lọc</Button>}
+          </div>
           {error ? (
             <Alert
               className="m-4"
@@ -756,21 +815,36 @@ function MatchesTab({ event, returnTo, canOperate, canScore, canEditMatch }: { e
             rowKey="id"
             loading={isLoading}
             dataSource={data?.items || []}
-            locale={{ emptyText: <Empty description="Chưa có trận đấu trong hạng đấu này." /> }}
+            locale={{ emptyText: <Empty description={hasFilters ? 'Không tìm thấy trận đấu phù hợp. Thử đổi hoặc xóa bộ lọc.' : 'Chưa có trận đấu trong hạng đấu này.'} /> }}
+            scroll={{ x: 1100 }}
+            onChange={(pagination, tableFilters, _sorter, extra) => {
+              if (extra.action === 'filter') {
+                const nextFilters: MatchFilters = {};
+                Object.entries(tableFilters).forEach(([key, values]) => {
+                  if (values?.[0] !== undefined && String(values[0]).trim()) {
+                    Object.assign(nextFilters, { [key]: key === 'matchNumber' || key === 'round' ? Number(values[0]) : String(values[0]).trim() });
+                  }
+                });
+                setFilters(nextFilters);
+                setPage(1);
+              } else if (extra.action === 'paginate') {
+                setPage(pagination.current || 1);
+              }
+            }}
             pagination={{
               current: data?.meta?.page || page,
               pageSize,
               total: data?.meta?.total || 0,
               showSizeChanger: false,
               hideOnSinglePage: true,
-              onChange: setPage,
               showTotal: (total) => `${total} trận đấu`,
             }}
             columns={[
-              { title: '#', dataIndex: 'matchNumber', width: 70 },
-              { title: 'Vòng', dataIndex: 'round', width: 90 },
+              { title: '#', dataIndex: 'matchNumber', width: 90, ...columnFilter('matchNumber', 'Số trận', 'number') },
+              { title: 'Vòng', dataIndex: 'round', width: 90, ...columnFilter('round', 'Vòng đấu', 'number') },
               {
                 title: 'Ngày / giờ',
+                ...columnFilter('date', 'Ngày thi đấu', 'date'),
                 width: 185,
                 render: (_: unknown, match: any) => match.startTime
                   ? new Date(match.startTime).toLocaleString('vi-VN', {
@@ -782,10 +856,10 @@ function MatchesTab({ event, returnTo, canOperate, canScore, canEditMatch }: { e
                   })
                   : `${new Date(match.matchDate).toLocaleDateString('vi-VN')} · Chưa xếp giờ`,
               },
-              { title: 'VĐV 1', render: (_: unknown, match: any) => match.athlete1 ? <Button type="link" className="h-auto !p-0" onClick={() => setSelectedAthleteId(match.athlete1.id)}>{match.athlete1.fullName}</Button> : 'Chờ xác định' },
-              { title: 'VĐV 2', render: (_: unknown, match: any) => match.athlete2 ? <Button type="link" className="h-auto !p-0" onClick={() => setSelectedAthleteId(match.athlete2.id)}>{match.athlete2.fullName}</Button> : 'Chờ xác định' },
-              { title: 'Sân', dataIndex: 'fop', width: 120 },
-              { title: 'Trạng thái', dataIndex: 'status', width: 130, render: (value) => <Tag>{value}</Tag> },
+              { title: 'VĐV 1', ...columnFilter('athleteName', 'Tên VĐV (ở bất kỳ bên nào)'), render: (_: unknown, match: any) => match.athlete1 ? <Button type="link" className="h-auto !p-0" onClick={() => setSelectedAthleteId(match.athlete1.id)}>{match.athlete1.fullName}</Button> : 'Chờ xác định' },
+              { title: 'VĐV 2', ...columnFilter('opponentName', 'Tên đối thủ (ở bất kỳ bên nào)'), render: (_: unknown, match: any) => match.athlete2 ? <Button type="link" className="h-auto !p-0" onClick={() => setSelectedAthleteId(match.athlete2.id)}>{match.athlete2.fullName}</Button> : 'Chờ xác định' },
+              { title: 'Sân', dataIndex: 'fop', width: 120, ...columnFilter('venue', 'Tên sân / sàn') },
+              { title: 'Trạng thái', key: 'status', dataIndex: 'status', width: 150, filters: Object.entries(MATCH_STATUS_META).map(([value, meta]) => ({ value, text: meta.label })), filterMultiple: false, filteredValue: filters.status ? [filters.status] : null, render: (value: string) => <Tag color={MATCH_STATUS_META[value]?.color}>{MATCH_STATUS_META[value]?.label || value}</Tag> },
               { title: 'Điều hành', width: 190, render: (_: unknown, match: any) => {
                 const ready = match.athlete1Id && match.athlete2Id && match.fopId && match.startTime && match.endTime;
                 const playable = ['SCHEDULED', 'RUNNING'].includes(match.status);
