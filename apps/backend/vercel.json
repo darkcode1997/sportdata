@@ -1,4 +1,4 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "node scripts/deploy-migrations.cjs && npm run build"
+  "buildCommand": "node scripts/deploy-migrations.cjs && node scripts/sync-production-admin.cjs && npm run build"
 }
