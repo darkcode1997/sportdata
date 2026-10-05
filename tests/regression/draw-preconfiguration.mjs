@@ -85,17 +85,18 @@ try {
     assert.equal(response.status, expected, `${method} ${path}: ${JSON.stringify(data)}`);
     return data;
   }
-  async function account(role = 'GAMES_ADMIN') {
+  async function account(role = 'GAMES_ADMIN', permissions = []) {
     const password = randomBytes(24).toString('hex');
     const email = `${randomUUID()}@example.test`;
-    const user = await prisma.user.create({ data: { email, name: 'Smoke user', password: await bcrypt.hash(password, 4), role } });
+    const user = await prisma.user.create({ data: { email, name: 'Smoke user', password: await bcrypt.hash(password, 4), role, permissions } });
     const session = await api('/auth/login', null, { identifier: email, password }, 'POST', 201);
     return { ...user, token: session.accessToken };
   }
-  const privileged = await account();
+  const privileged = await account('ADMIN', ['DRAW_PRECONFIGURE']);
   const ordinary = await account();
   const admin = await account('ADMIN');
-  assert.equal((await api('/auth/profile', privileged.token)).role, 'GAMES_ADMIN');
+  assert.deepEqual((await api('/auth/profile', privileged.token)).permissions, ['DRAW_PRECONFIGURE']);
+  const managerWithPermission = await account('GAMES_ADMIN', ['DRAW_PRECONFIGURE']);
   const content = await account('CONTENT');
   const viewer = await account('READ_ONLY');
   for (const role of ['SPORT_MANAGER', 'VENUE_OPERATOR', 'SCOREKEEPER', 'RESULT_APPROVER']) {
@@ -128,7 +129,7 @@ try {
   const { event, entries, path, dto } = fixtureA;
   const query = '?drawType=MAIN_TREE';
   const pairs = [{ entry1Id: entries[0].id, entry2Id: entries[2].id }];
-  for (const caller of [content, viewer]) {
+  for (const caller of [content, viewer, ordinary, admin, managerWithPermission]) {
     for (const type of ['MAIN_TREE', 'DOUBLE_ELIMINATION', 'REPECHAGE', 'ROUND_ROBIN_POOL']) {
       await api(`${path}/preconfiguration?drawType=${type}`, caller.token, null, 'GET', 403);
       await api(`${path}/preconfiguration/history?drawType=${type}`, caller.token, null, 'GET', 403);
@@ -137,9 +138,9 @@ try {
     }
   }
   await api(`${path}/preconfiguration${query}`, null, null, 'GET', 401);
-  await api(`${path}/preconfiguration${query}`, admin.token);
-  await api(`${path}/preconfiguration${query}`, ordinary.token);
-  console.log('PASS: CONTENT and READ_ONLY cannot use configuration or preview endpoints.');
+  await api(`${path}/preconfiguration${query}`, privileged.token);
+  await api(`/users/${ordinary.id}`, admin.token, { permissions: ['DRAW_PRECONFIGURE'] }, 'PATCH', 400);
+  console.log('PASS: Only ADMIN with DRAW_PRECONFIGURE can use configuration, preview and history; permissions cannot be granted to event managers.');
 
   await api(`${path}/preconfiguration`, privileged.token, { drawType: 'MAIN_TREE', pairs: [pairs[0], pairs[0]], revision: 0, seedingMode: 'RANDOM' }, 'PATCH', 400);
   await api(`${path}/preconfiguration`, privileged.token, { drawType: 'MAIN_TREE', pairs: [{ entry1Id: entries[0].id, entry2Id: 'foreign-entry' }], revision: 0, seedingMode: 'RANDOM' }, 'PATCH', 400);
@@ -330,12 +331,12 @@ try {
   await assertPersistedPlan(absolute, absoluteConfig);
   assert.equal(absoluteConfig.preview[0].name, 'Hạng Tuyệt đối');
   console.log('PASS: round-robin fixed pairs in round 1, all unique opponents, balanced groups, stale legacy endpoint protection, Repechage under 6 and Open Weight.');
-  // Revocation applies to an already-issued JWT, because roles are read
+  // Revocation applies to an already-issued JWT, because permissions are read
   // from the database for every request.
-  await prisma.user.update({ where: { id: privileged.id }, data: { role: 'READ_ONLY' } });
+  await prisma.user.update({ where: { id: privileged.id }, data: { permissions: [] } });
   await api(`${path}/preconfiguration${query}`, privileged.token, null, 'GET', 403);
-  await api(`/users/${ordinary.id}`, ordinary.token, { role: 'GAMES_ADMIN' }, 'PATCH', 403);
-  await api(`/users/${privileged.id}`, admin.token, { role: 'GAMES_ADMIN' }, 'PATCH');
+  await api(`/users/${ordinary.id}`, ordinary.token, { permissions: ['DRAW_PRECONFIGURE'] }, 'PATCH', 403);
+  await api(`/users/${privileged.id}`, admin.token, { permissions: ['DRAW_PRECONFIGURE'] }, 'PATCH');
   await api(`${path}/preconfiguration${query}`, privileged.token);
   const legacy = await fixture(3);
   await api(`${legacy.path}/generate-draw`, ordinary.token, { ...legacy.dto, fops: ['New FOP'] }, 'POST', 201);
@@ -353,7 +354,7 @@ try {
     assert.equal((await prisma.match.findUnique({ where: { id: match.id } })).matchNumber, match.matchNumber);
   }
   console.log('PASS: preview match numbers are retained; an occupied number range requires a new preview.');
-  console.log('PASS: role changes require ADMIN; categories without preconfiguration retain automatic generation and FOP creation.');
+  console.log('PASS: permission grants require ADMIN; categories without preconfiguration retain automatic generation and FOP creation.');
 
   const assertSeedTree = (matches, athleteIds) => {
     const byId = new Map(matches.map((match) => [match.id, match]));
@@ -458,7 +459,7 @@ try {
     }
   }
   console.log('PASS: scheduled/claimed matches can revert; started, paused, completed or reopened matches cannot; standalone matches survive; START/revert races retain started matches.');
-  console.log('PASS: double-elimination preview/generation and immediate role revocation.');
+  console.log('PASS: double-elimination preview/generation and immediate permission revocation.');
 } finally {
   if (app) await app.close();
   await control.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);

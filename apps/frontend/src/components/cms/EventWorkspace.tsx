@@ -211,7 +211,7 @@ export function EventWorkspace({ event, onRefresh }: EventWorkspaceProps) {
         {
           key: 'bracket',
           label: <span className="flex items-center gap-2"><Network className="h-4 w-4" />Thể thức & nhánh đấu</span>,
-          children: <BracketTab event={event} canOperate={canOperate} preconfigureActorId={canOperate ? currentUser?.id : undefined} />,
+          children: <BracketTab event={event} canOperate={canOperate} preconfigureActorId={currentUser?.role === 'ADMIN' && currentUser?.permissions?.includes('DRAW_PRECONFIGURE') ? currentUser.id : undefined} />,
         },
       ]}
     />

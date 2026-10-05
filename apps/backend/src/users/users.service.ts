@@ -17,6 +17,7 @@ const safeUserSelect = {
   username: true,
   name: true,
   role: true,
+  permissions: true,
   isActive: true,
   createdAt: true,
   updatedAt: true,
@@ -39,6 +40,10 @@ export class UsersService {
     const username = dto.username.trim().toLowerCase();
     const name = dto.name.trim();
     if (!name) throw new BadRequestException('Tên hiển thị không được để trống');
+    const role = dto.role || UserRole.CONTENT;
+    if (role !== UserRole.ADMIN && dto.permissions?.length) {
+      throw new BadRequestException('Chỉ tài khoản Quản trị hệ thống được cấp quyền riêng');
+    }
     await this.assertUnique(email, username);
 
     const user = await this.prisma.user.create({
@@ -47,7 +52,8 @@ export class UsersService {
         username,
         name,
         password: await bcrypt.hash(dto.password, 12),
-        role: this.toPrismaRole(dto.role || UserRole.CONTENT),
+        role: this.toPrismaRole(role),
+        permissions: dto.permissions || [],
         isActive: dto.isActive ?? true,
       },
       select: safeUserSelect,
@@ -82,7 +88,13 @@ export class UsersService {
     }
     if (email || username) await this.assertUnique(email, username, id);
 
+    const nextRole = dto.role || current.role;
+    if (nextRole !== UserRole.ADMIN && dto.permissions?.length) {
+      throw new BadRequestException('Chỉ tài khoản Quản trị hệ thống được cấp quyền riêng');
+    }
     const data: Prisma.UserUpdateInput = {};
+    if (nextRole !== UserRole.ADMIN) data.permissions = [];
+    else if (dto.permissions !== undefined) data.permissions = dto.permissions;
     if (email !== undefined) data.email = email;
     if (username !== undefined) data.username = username;
     if (name !== undefined) data.name = name;
