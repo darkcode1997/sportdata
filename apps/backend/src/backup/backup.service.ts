@@ -1,7 +1,9 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
-import { createHash } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import { once } from 'events';
-import { createReadStream, promises as fs } from 'fs';
+import { createReadStream, createWriteStream, promises as fs } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import { createInterface } from 'readline';
 import { finished } from 'stream/promises';
 import { createGunzip, createGzip } from 'zlib';
@@ -16,6 +18,9 @@ const BACKUP_VERSION = 1;
 const BACKUP_BYTES_KEY = '$sportdataBytes';
 const MAX_BATCH_ROWS = 500;
 const MAX_BATCH_BYTES = 4 * 1024 * 1024;
+export const BACKUP_UPLOAD_CHUNK_SIZE = 3 * 1024 * 1024;
+const BACKUP_UPLOAD_TTL_HOURS = 24;
+const BACKUP_STAGING_TABLES = ['BackupUpload', 'BackupUploadChunk'];
 
 type SchemaTable = {
   table: string;
@@ -53,6 +58,180 @@ type BackupEnd = {
 @Injectable()
 export class BackupService {
   private readonly logger = new Logger(BackupService.name);
+
+  async createImportUpload(filename?: string, size?: number) {
+    const normalizedFilename = filename?.trim();
+    if (!normalizedFilename?.toLowerCase().endsWith('.jsonl.gz')) {
+      throw new BadRequestException('Chỉ chấp nhận file .jsonl.gz');
+    }
+    if (!Number.isSafeInteger(size) || size <= 0 || size > MAX_BACKUP_FILE_SIZE) {
+      throw new BadRequestException('Dung lượng file backup không hợp lệ');
+    }
+
+    const client = this.createClient();
+    await client.connect();
+    try {
+      await client.query('DELETE FROM "BackupUpload" WHERE "expiresAt" < NOW()');
+      const uploadId = randomUUID();
+      await client.query(
+        `INSERT INTO "BackupUpload"
+          ("id", "fileName", "totalSize", "expiresAt")
+         VALUES ($1, $2, $3, NOW() + ($4 * INTERVAL '1 hour'))`,
+        [uploadId, normalizedFilename, size, BACKUP_UPLOAD_TTL_HOURS],
+      );
+      return { uploadId, chunkSize: BACKUP_UPLOAD_CHUNK_SIZE };
+    } finally {
+      await client.end();
+    }
+  }
+
+  async storeImportChunk(uploadId: string, index: number, data: Buffer) {
+    if (!Number.isSafeInteger(index) || index < 0) {
+      throw new BadRequestException('Chỉ số chunk không hợp lệ');
+    }
+    if (!data.length || data.length > BACKUP_UPLOAD_CHUNK_SIZE) {
+      throw new BadRequestException('Dung lượng chunk backup không hợp lệ');
+    }
+
+    const client = this.createClient();
+    await client.connect();
+    let transactionOpen = false;
+    try {
+      await client.query('BEGIN');
+      transactionOpen = true;
+      const uploadResult = await client.query<{
+        totalSize: string;
+        receivedSize: string;
+        nextChunk: number;
+        status: string;
+        expired: boolean;
+      }>(
+        `SELECT "totalSize", "receivedSize", "nextChunk", "status",
+                "expiresAt" < NOW() AS expired
+         FROM "BackupUpload"
+         WHERE "id" = $1
+         FOR UPDATE`,
+        [uploadId],
+      );
+      const upload = uploadResult.rows[0];
+      if (!upload || upload.expired) {
+        throw new BadRequestException('Phiên tải backup không tồn tại hoặc đã hết hạn');
+      }
+      if (upload.status !== 'UPLOADING') {
+        throw new BadRequestException('Phiên tải backup không còn nhận dữ liệu');
+      }
+
+      const chunkHash = createHash('sha256').update(data).digest('hex');
+      if (index < upload.nextChunk) {
+        const existing = await client.query<{ sha256: string }>(
+          `SELECT "sha256" FROM "BackupUploadChunk"
+           WHERE "uploadId" = $1 AND "index" = $2`,
+          [uploadId, index],
+        );
+        if (existing.rows[0]?.sha256 !== chunkHash) {
+          throw new BadRequestException('Chunk tải lại không khớp dữ liệu đã nhận');
+        }
+        await client.query('COMMIT');
+        transactionOpen = false;
+        return { receivedSize: Number(upload.receivedSize), nextChunk: upload.nextChunk };
+      }
+      if (index !== upload.nextChunk) {
+        throw new BadRequestException(`Chunk không đúng thứ tự, cần chunk ${upload.nextChunk}`);
+      }
+
+      const receivedSize = Number(upload.receivedSize) + data.length;
+      if (receivedSize > Number(upload.totalSize)) {
+        throw new BadRequestException('Dữ liệu tải lên vượt quá dung lượng file đã khai báo');
+      }
+      await client.query(
+        `INSERT INTO "BackupUploadChunk"
+          ("uploadId", "index", "size", "sha256", "data")
+         VALUES ($1, $2, $3, $4, $5)`,
+        [uploadId, index, data.length, chunkHash, data],
+      );
+      await client.query(
+        `UPDATE "BackupUpload"
+         SET "receivedSize" = $2, "nextChunk" = $3, "updatedAt" = NOW()
+         WHERE "id" = $1`,
+        [uploadId, receivedSize, index + 1],
+      );
+      await client.query('COMMIT');
+      transactionOpen = false;
+      return { receivedSize, nextChunk: index + 1 };
+    } catch (error) {
+      if (transactionOpen) await client.query('ROLLBACK').catch(() => undefined);
+      throw error;
+    } finally {
+      await client.end();
+    }
+  }
+
+  async importUploadedBackup(uploadId: string) {
+    const filePath = join(tmpdir(), `sportdata-import-${randomUUID()}.jsonl.gz`);
+    try {
+      const client = this.createClient();
+      await client.connect();
+      try {
+        const uploadResult = await client.query<{
+          totalSize: string;
+          receivedSize: string;
+          status: string;
+          expired: boolean;
+        }>(
+          `UPDATE "BackupUpload"
+           SET "status" = 'PROCESSING', "updatedAt" = NOW()
+           WHERE "id" = $1 AND "status" = 'UPLOADING'
+           RETURNING "totalSize", "receivedSize", "status", "expiresAt" < NOW() AS expired`,
+          [uploadId],
+        );
+        const upload = uploadResult.rows[0];
+        if (!upload || upload.expired) {
+          throw new BadRequestException('Phiên tải backup không tồn tại, đã hết hạn hoặc đang xử lý');
+        }
+        if (upload.totalSize !== upload.receivedSize) {
+          throw new BadRequestException('File backup chưa được tải lên đầy đủ');
+        }
+
+        const output = createWriteStream(filePath, { flags: 'wx' });
+        const chunks = client.query(new QueryStream(
+          `SELECT "data" FROM "BackupUploadChunk"
+           WHERE "uploadId" = $1 ORDER BY "index" ASC`,
+          [uploadId],
+          { batchSize: 8 },
+        ));
+        try {
+          for await (const row of chunks) {
+            if (!output.write(row.data)) await once(output, 'drain');
+          }
+          output.end();
+          await finished(output);
+        } catch (error) {
+          output.destroy();
+          chunks.destroy();
+          throw error;
+        }
+      } finally {
+        await client.end();
+      }
+
+      const stats = await fs.stat(filePath);
+      return await this.importDatabase(filePath, stats.size);
+    } finally {
+      await fs.unlink(filePath).catch(() => undefined);
+      await this.deleteImportUpload(uploadId).catch(() => undefined);
+    }
+  }
+
+  async deleteImportUpload(uploadId: string) {
+    const client = this.createClient();
+    await client.connect();
+    try {
+      await client.query('DELETE FROM "BackupUpload" WHERE "id" = $1', [uploadId]);
+      return { success: true };
+    } finally {
+      await client.end();
+    }
+  }
 
   async exportDatabase(response: Response) {
     const client = this.createClient();
@@ -257,8 +436,9 @@ export class BackupService {
       WHERE columns.table_schema = 'public'
         AND tables.table_type = 'BASE TABLE'
         AND columns.table_name <> '_prisma_migrations'
+        AND columns.table_name <> ALL($1::text[])
       ORDER BY columns.table_name ASC, columns.ordinal_position ASC
-    `);
+    `, [BACKUP_STAGING_TABLES]);
 
     const tables = new Map<string, string[]>();
     for (const row of result.rows) {

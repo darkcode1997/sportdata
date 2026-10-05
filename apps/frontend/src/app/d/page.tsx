@@ -359,33 +359,102 @@ export default function HiddenBackupPage() {
   );
 }
 
-function uploadBackup(file: File, token: string, onProgress: (percent: number) => void) {
-  return new Promise<ImportResult>((resolve, reject) => {
-    const formData = new FormData();
-    formData.append('file', file);
+async function uploadBackup(file: File, token: string, onProgress: (percent: number) => void) {
+  const headers = {
+    Authorization: `Bearer ${token}`,
+    'Content-Type': 'application/json',
+  };
+  const createResponse = await fetch('/api/system-backup/import/uploads', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ filename: file.name, size: file.size }),
+  });
+  if (!createResponse.ok) throw new Error(await readResponseError(createResponse));
+  const session = await createResponse.json() as { uploadId: string; chunkSize: number };
+
+  try {
+    let index = 0;
+    for (let offset = 0; offset < file.size; offset += session.chunkSize) {
+      const chunk = file.slice(offset, Math.min(offset + session.chunkSize, file.size));
+      await uploadBackupChunk(session.uploadId, index, chunk, token, (loaded) => {
+        const uploaded = Math.min(file.size, offset + loaded);
+        onProgress(Math.min(95, Math.round((uploaded / file.size) * 95)));
+      });
+      index += 1;
+    }
+
+    onProgress(96);
+    const completeResponse = await fetch(
+      `/api/system-backup/import/uploads/${encodeURIComponent(session.uploadId)}/complete`,
+      { method: 'POST', headers: { Authorization: `Bearer ${token}` } },
+    );
+    if (!completeResponse.ok) throw new Error(await readResponseError(completeResponse));
+    onProgress(100);
+    return await completeResponse.json() as ImportResult;
+  } catch (error) {
+    await fetch(`/api/system-backup/import/uploads/${encodeURIComponent(session.uploadId)}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    }).catch(() => undefined);
+    throw error;
+  }
+}
+
+async function uploadBackupChunk(
+  uploadId: string,
+  index: number,
+  chunk: Blob,
+  token: string,
+  onProgress: (loaded: number) => void,
+) {
+  let lastError: Error | null = null;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      await sendBackupChunk(uploadId, index, chunk, token, onProgress);
+      return;
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error('Không thể tải chunk backup');
+      if (attempt < 3) await new Promise((resolve) => window.setTimeout(resolve, attempt * 750));
+    }
+  }
+  throw lastError;
+}
+
+function sendBackupChunk(
+  uploadId: string,
+  index: number,
+  chunk: Blob,
+  token: string,
+  onProgress: (loaded: number) => void,
+) {
+  return new Promise<void>((resolve, reject) => {
     const request = new XMLHttpRequest();
-    request.open('POST', '/api/system-backup/import');
+    request.open(
+      'POST',
+      `/api/system-backup/import/uploads/${encodeURIComponent(uploadId)}/chunks/${index}`,
+    );
     request.setRequestHeader('Authorization', `Bearer ${token}`);
-    request.upload.onprogress = (event) => {
-      if (event.lengthComputable) onProgress(Math.round((event.loaded / event.total) * 100));
-    };
+    request.setRequestHeader('Content-Type', 'application/octet-stream');
+    request.upload.onprogress = (event) => onProgress(event.loaded);
     request.onerror = () => reject(new Error('Mất kết nối khi tải file backup.'));
     request.onload = () => {
-      let payload: any = null;
-      try {
-        payload = request.responseText ? JSON.parse(request.responseText) : null;
-      } catch {
-        // The status message below is more useful for a non-JSON proxy error.
-      }
       if (request.status >= 200 && request.status < 300) {
-        onProgress(100);
-        resolve(payload as ImportResult);
+        resolve();
         return;
       }
-      const errorMessage = payload?.message || `Không thể nhập backup (HTTP ${request.status})`;
-      reject(new Error(Array.isArray(errorMessage) ? errorMessage.join(', ') : errorMessage));
+      let message = `Không thể tải chunk backup (HTTP ${request.status})`;
+      try {
+        const payload = request.responseText ? JSON.parse(request.responseText) : null;
+        const responseMessage = payload?.message;
+        if (responseMessage) message = Array.isArray(responseMessage)
+          ? responseMessage.join(', ')
+          : responseMessage;
+      } catch {
+        // Keep the HTTP status message for non-JSON proxy errors.
+      }
+      reject(new Error(message));
     };
-    request.send(formData);
+    request.send(chunk);
   });
 }
 

@@ -1174,3 +1174,32 @@ model DrawPreconfigurationHistory {
 
   @@index([configurationId, createdAt])
 }
+
+// Temporary chunk storage used to keep each Vercel upload request below the
+// platform payload limit. These tables are excluded from exported backups.
+model BackupUpload {
+  id           String              @id
+  fileName     String
+  totalSize    BigInt
+  receivedSize BigInt              @default(0)
+  nextChunk    Int                 @default(0)
+  status       String              @default("UPLOADING")
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @default(now())
+  expiresAt    DateTime
+  chunks       BackupUploadChunk[]
+
+  @@index([expiresAt])
+}
+
+model BackupUploadChunk {
+  uploadId  String
+  index     Int
+  size      Int
+  sha256    String
+  data      Bytes
+  createdAt DateTime     @default(now())
+  upload    BackupUpload @relation(fields: [uploadId], references: [id], onDelete: Cascade)
+
+  @@id([uploadId, index])
+}

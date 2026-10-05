@@ -1,8 +1,13 @@
 import {
   BadRequestException,
+  Body,
   Controller,
+  Delete,
   Get,
+  Param,
+  ParseIntPipe,
   Post,
+  Req,
   Res,
   UploadedFile,
   UseGuards,
@@ -12,7 +17,7 @@ import { randomUUID } from 'crypto';
 import { promises as fs } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 import { diskStorage } from 'multer';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -63,5 +68,32 @@ export class BackupController {
     } finally {
       await fs.unlink(file.path).catch(() => undefined);
     }
+  }
+
+  @Post('import/uploads')
+  createImportUpload(@Body() body: { filename?: string; size?: number }) {
+    return this.backupService.createImportUpload(body?.filename, body?.size);
+  }
+
+  @Post('import/uploads/:uploadId/chunks/:index')
+  uploadImportChunk(
+    @Param('uploadId') uploadId: string,
+    @Param('index', ParseIntPipe) index: number,
+    @Req() request: Request,
+  ) {
+    if (!Buffer.isBuffer(request.body) || request.body.length === 0) {
+      throw new BadRequestException('Chunk backup không hợp lệ');
+    }
+    return this.backupService.storeImportChunk(uploadId, index, request.body);
+  }
+
+  @Post('import/uploads/:uploadId/complete')
+  completeImportUpload(@Param('uploadId') uploadId: string) {
+    return this.backupService.importUploadedBackup(uploadId);
+  }
+
+  @Delete('import/uploads/:uploadId')
+  cancelImportUpload(@Param('uploadId') uploadId: string) {
+    return this.backupService.deleteImportUpload(uploadId);
   }
 }

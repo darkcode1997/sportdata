@@ -5,6 +5,7 @@ import compression from 'compression';
 import helmet from 'helmet';
 import { rateLimit } from 'express-rate-limit';
 import type { NextFunction, Request, Response } from 'express';
+import { raw } from 'express';
 import { constants as zlibConstants } from 'zlib';
 import { AppModule } from './app.module';
 
@@ -12,6 +13,12 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
   app.getHttpAdapter().getInstance().set('trust proxy', 1);
+  // Vercel limits each function request to 4.5 MB. Large backup files are
+  // uploaded as 3 MB binary chunks and staged before the restore starts.
+  app.use(
+    '/api/system-backup/import/uploads',
+    raw({ type: 'application/octet-stream', limit: '4mb' }),
+  );
   app.use(helmet({
     contentSecurityPolicy: process.env.NODE_ENV === 'production' ? undefined : false,
     crossOriginResourcePolicy: { policy: 'cross-origin' },
