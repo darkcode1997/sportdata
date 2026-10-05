@@ -8,6 +8,8 @@ dist
 coverage
 .vscode
 scripts/
+!apps/backend/scripts/
+!apps/backend/scripts/deploy-migrations.cjs
 
 .vercel
 .env*
