@@ -1,10 +1,10 @@
 # Pre-matches và Preview cây đấu
 
-Áp dụng các migration, bao gồm `20261004000000_simplify_cms_roles`, chạy `npm run prisma:generate`, rồi khởi động lại backend.
+Áp dụng các migration, bao gồm `20261005000000_restore_admin_draw_permission`, chạy `npm run prisma:generate`, rồi khởi động lại backend.
 
-**Quản trị hệ thống** (`ADMIN`) và **Quản lý sự kiện** (`GAMES_ADMIN`) đều được cấu hình cặp đặt trước, preview, xem lịch sử và sinh/thu hồi nhánh. Không cần cấp quyền riêng. Biên tập nội dung và Chỉ xem không được truy cập API cấu hình/preview. JWT được kiểm tra bằng vai trò hiện tại trong database mỗi request.
+**Đặt trước cặp & preview cây đấu** (`DRAW_PRECONFIGURE`) là quyền riêng, chỉ được cấp cho tài khoản **Quản trị hệ thống** (`ADMIN`) tại **Tài khoản CMS → Chỉnh sửa → Quyền riêng**. Admin phải có quyền này mới được cấu hình, preview và xem lịch sử. Quản lý sự kiện không được dùng các API này, kể cả nếu dữ liệu cũ chứa quyền riêng. Migration khôi phục quyền cho admin hiện có; admin mới cần được cấp riêng. JWT đọc vai trò và quyền hiện tại từ database mỗi request.
 
-Trong workspace sự kiện, chọn hạng đấu rồi cấu hình Pre-matches phía trên phần chọn thể thức. Cả năm thể thức loại trực tiếp, tuyệt đối, loại kép, đấu vớt và vòng tròn đều hỗ trợ. Người quản lý sự kiện chọn hai CompetitionEntry và hệ thống tự lưu; xóa cặp cũng tự lưu. Mỗi lần lưu tăng revision và vô hiệu hóa preview trước đó. Cách xếp seed cũng được tự lưu tại đây. Khi có lỗi lưu, xử lý lỗi hoặc tải lại trước khi preview.
+Trong workspace sự kiện, chọn hạng đấu rồi cấu hình Pre-matches phía trên phần chọn thể thức. Cả năm thể thức loại trực tiếp, tuyệt đối, loại kép, đấu vớt và vòng tròn đều hỗ trợ. Admin có quyền riêng chọn hai CompetitionEntry và hệ thống tự lưu; xóa cặp cũng tự lưu. Mỗi lần lưu tăng revision và vô hiệu hóa preview trước đó. Cách xếp seed cũng được tự lưu tại đây. Khi có lỗi lưu, xử lý lỗi hoặc tải lại trước khi preview.
 
 **Preview cây đấu** lưu phương án hoàn chỉnh trên server, gồm slot đầu vào, trận, miễn đấu và liên kết thắng/thua các vòng tiếp theo, nhưng không tạo bản ghi Draw, Match hoặc bảng vòng tròn. Đối với loại kép và đấu vớt, cặp đặt trước chỉ áp dụng vòng đầu nhánh chính; preview vẫn hiển thị đầy đủ nhánh phụ. SportdataBracket dùng chính graph này để hiển thị.
 
@@ -47,7 +47,7 @@ Thu hồi, sinh cây và thao tác START/FINISH dùng chung khóa event. Thu h�
 
 ## API riêng
 
-Các đường dẫn dưới đây có tiền tố `/api/matches/event/:eventId/category/:categoryId` và yêu cầu JWT với vai trò `ADMIN` hoặc `GAMES_ADMIN`:
+Các đường dẫn dưới đây có tiền tố `/api/matches/event/:eventId/category/:categoryId` và yêu cầu JWT với vai trò `ADMIN` cùng quyền `DRAW_PRECONFIGURE`:
 
 - `GET /preconfiguration?drawType=MAIN_TREE|DOUBLE_ELIMINATION|REPECHAGE|ROUND_ROBIN_POOL`
 - `PATCH /preconfiguration`: `{ drawType, pairs: [{ entry1Id, entry2Id }], seedingMode, groupCount?, revision }`
@@ -74,4 +74,4 @@ Kiểm tra giao diện bằng Playwright với frontend đang chạy (toàn bộ
 node tests/regression/draw-preconfiguration-ui.mjs
 ```
 
-Có thể đặt `DRAW_PLAYWRIGHT_MODULE` để trỏ đến Playwright cài sẵn, `DRAW_CHROME_PATH` cho executable Chrome, `DRAW_UI_URL` cho URL frontend và `DRAW_SCREENSHOT_PATH` để lưu ảnh chụp. Bài kiểm tra xác nhận chọn một VĐV chưa lưu, chọn đủ hai tự lưu đúng Entry ID, xóa cặp tự lưu, render preview và tài khoản Chỉ xem không gọi API cấu hình riêng.
+Có thể đặt `DRAW_PLAYWRIGHT_MODULE` để trỏ đến Playwright cài sẵn, `DRAW_CHROME_PATH` cho executable Chrome, `DRAW_UI_URL` cho URL frontend và `DRAW_SCREENSHOT_PATH` để lưu ảnh chụp. Bài kiểm tra xác nhận chọn một VĐV chưa lưu, chọn đủ hai tự lưu đúng Entry ID, xóa cặp tự lưu, render preview và tài khoản Quản lý sự kiện không gọi API cấu hình riêng.

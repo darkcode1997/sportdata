@@ -1,3 +1,4 @@
+import { DrawPreconfigureGuard } from '../auth/draw-preconfigure.guard';
 import {
   Controller,
   Get,
@@ -91,32 +92,32 @@ export class MatchesController {
   }
 
   @Get('event/:eventId/category/:categoryId/preconfiguration')
-  @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN, UserRole.GAMES_ADMIN)
+  @UseGuards(JwtAuthGuard, DrawPreconfigureGuard)
+  @Roles(UserRole.ADMIN)
   getPreconfiguration(@Param('eventId') eventId: string, @Param('categoryId') categoryId: string,
     @Query() query: QueryDrawPreconfigurationDto) {
     return this.matchesService.getPreconfiguration(eventId, categoryId, query.drawType);
   }
 
   @Patch('event/:eventId/category/:categoryId/preconfiguration')
-  @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN, UserRole.GAMES_ADMIN)
+  @UseGuards(JwtAuthGuard, DrawPreconfigureGuard)
+  @Roles(UserRole.ADMIN)
   savePreconfiguration(@Param('eventId') eventId: string, @Param('categoryId') categoryId: string,
     @Body() dto: SaveDrawPreconfigurationDto, @Req() request: { user: { id: string } }) {
     return this.matchesService.savePreconfiguration(eventId, categoryId, dto, request.user.id);
   }
 
   @Post('event/:eventId/category/:categoryId/preview-draw')
-  @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN, UserRole.GAMES_ADMIN)
+  @UseGuards(JwtAuthGuard, DrawPreconfigureGuard)
+  @Roles(UserRole.ADMIN)
   previewDraw(@Param('eventId') eventId: string, @Param('categoryId') categoryId: string,
     @Body() dto: PreviewDrawDto, @Req() request: { user: { id: string } }) {
     return this.matchesService.previewDraw(eventId, categoryId, dto, request.user.id);
   }
 
   @Get('event/:eventId/category/:categoryId/preconfiguration/history')
-  @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN, UserRole.GAMES_ADMIN)
+  @UseGuards(JwtAuthGuard, DrawPreconfigureGuard)
+  @Roles(UserRole.ADMIN)
   getPreconfigurationHistory(@Param('eventId') eventId: string, @Param('categoryId') categoryId: string,
     @Query() query: QueryDrawPreconfigurationDto) {
     return this.matchesService.getPreconfigurationHistory(eventId, categoryId, query.drawType);

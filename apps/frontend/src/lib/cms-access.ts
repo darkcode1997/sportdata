@@ -38,8 +38,8 @@ export const CMS_ROLE_INFO: Record<CmsRole, {
     shortLabel: 'Sự kiện',
     description: 'Quản lý mọi sự kiện và toàn bộ nghiệp vụ đăng ký, thi đấu, thanh toán và kết quả.',
     startPath: '/cms/events',
-    capabilities: ['Tạo, sửa, xóa sự kiện; quản lý VĐV và hạng đấu', 'Đăng ký, thanh toán, địa điểm và lịch thi đấu', 'Đặt trước cặp, preview và sinh cây đấu', 'Nhập, xác nhận, duyệt, công bố và khóa kết quả'],
-    restrictions: ['Không quản lý tài khoản CMS, cấu hình hoặc sao lưu hệ thống', 'Không mở lại kết quả đã khóa'],
+    capabilities: ['Tạo, sửa, xóa sự kiện; quản lý VĐV và hạng đấu', 'Đăng ký, thanh toán, địa điểm và lịch thi đấu', 'Sinh và thu hồi cây đấu', 'Nhập, xác nhận, duyệt, công bố và khóa kết quả'],
+    restrictions: ['Không quản lý tài khoản CMS, cấu hình hoặc sao lưu hệ thống', 'Không mở lại kết quả đã khóa', 'Không đặt trước cặp hoặc preview cây đấu'],
   },
   READ_ONLY: {
     label: 'Chỉ xem',

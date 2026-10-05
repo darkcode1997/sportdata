@@ -31,6 +31,7 @@ type CmsUser = {
   name: string;
   role: CmsRole;
   isActive: boolean;
+  permissions?: string[];
   createdAt: string;
 };
 
@@ -40,6 +41,7 @@ type UserForm = {
   email: string;
   role: CmsRole;
   isActive: boolean;
+  permissions?: string[];
   password?: string;
 };
 
@@ -51,6 +53,7 @@ function requestMessage(error: any, fallback: string) {
 export default function CmsUsersPage() {
   const toast = useSportDataToast();
   const [form] = Form.useForm<UserForm>();
+  const selectedRole = Form.useWatch('role', form);
   const { data: users = [], isLoading, mutate } = useSWR<CmsUser[]>('/users', fetcher);
   const { data: profile } = useSWR<CmsUser>('/auth/profile', fetcher);
   const [editing, setEditing] = useState<CmsUser | null>(null);
@@ -61,7 +64,7 @@ export default function CmsUsersPage() {
   const create = () => {
     setEditing(null);
     form.resetFields();
-    form.setFieldsValue({ role: 'CONTENT', isActive: true });
+    form.setFieldsValue({ role: 'CONTENT', isActive: true, permissions: [] });
     setOpen(true);
   };
 
@@ -73,6 +76,7 @@ export default function CmsUsersPage() {
       email: user.email,
       role: user.role,
       isActive: user.isActive,
+      permissions: user.permissions || [],
       password: undefined,
     });
     setOpen(true);
@@ -87,7 +91,7 @@ export default function CmsUsersPage() {
     }
     setSaving(true);
     try {
-      const payload = { ...values, password: values.password?.trim() || undefined };
+      const payload = { ...values, permissions: values.role === 'ADMIN' ? values.permissions || [] : [], password: values.password?.trim() || undefined };
       if (editing) {
         await api.patch(`/users/${editing.id}`, payload);
         toast.success('Đã cập nhật tài khoản CMS');
@@ -245,11 +249,21 @@ export default function CmsUsersPage() {
               <Select
                 disabled={editing?.id === profile?.id}
                 options={CMS_ROLES.map((role) => ({ value: role, label: CMS_ROLE_INFO[role].label }))}
+                onChange={(role) => {
+                  if (role !== 'ADMIN') form.setFieldValue('permissions', []);
+                }}
               />
             </Form.Item>
           </div>
           <Form.Item name="email" label="Email" rules={[{ required: true, message: 'Nhập email' }, { type: 'email', message: 'Email không hợp lệ' }]}>
             <Input type="email" autoComplete="off" />
+          </Form.Item>
+          <Form.Item name="permissions" label="Quyền riêng" extra="Chỉ cấp cho tài khoản Quản trị hệ thống.">
+            <Select
+              mode="multiple"
+              disabled={selectedRole !== 'ADMIN'}
+              options={[{ value: 'DRAW_PRECONFIGURE', label: 'Đặt trước cặp & preview cây đấu' }]}
+            />
           </Form.Item>
           <Form.Item name="isActive" label="Cho phép đăng nhập" valuePropName="checked">
             <Switch disabled={editing?.id === profile?.id} />
