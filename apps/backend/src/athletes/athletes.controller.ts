@@ -7,12 +7,15 @@ import {
   Param,
   Delete,
   Query,
+  Res,
   HttpCode,
   HttpStatus,
   UseGuards,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
+import type { Response } from 'express';
+import { AthleteMediaType } from '@prisma/client';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { AthletesService } from './athletes.service';
@@ -43,6 +46,47 @@ export class AthletesController {
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 8 * 1024 * 1024 } }))
   uploadAvatar(@Param('id') id: string, @UploadedFile() file?: Express.Multer.File) {
     return this.athletesService.uploadAvatar(id, file);
+  }
+
+  @Get(':id/documents')
+  @UseGuards(JwtAuthGuard)
+  @Roles(UserRole.ADMIN, UserRole.CONTENT, UserRole.GAMES_ADMIN, UserRole.READ_ONLY)
+  getDocuments(@Param('id') id: string) {
+    return this.athletesService.getDocuments(id);
+  }
+
+  @Get(':id/documents/:type')
+  @UseGuards(JwtAuthGuard)
+  @Roles(UserRole.ADMIN, UserRole.CONTENT, UserRole.GAMES_ADMIN, UserRole.READ_ONLY)
+  async getDocument(
+    @Param('id') id: string,
+    @Param('type') type: AthleteMediaType,
+    @Res() response: Response,
+  ) {
+    const document = await this.athletesService.getDocument(id, type);
+    response.setHeader('Content-Type', document.mimeType);
+    response.setHeader('Cache-Control', 'private, no-store');
+    response.setHeader('Content-Disposition', 'inline');
+    response.send(document.data);
+  }
+
+  @Post(':id/documents/:type')
+  @UseGuards(JwtAuthGuard)
+  @Roles(UserRole.ADMIN, UserRole.CONTENT, UserRole.GAMES_ADMIN)
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 4 * 1024 * 1024 } }))
+  uploadDocument(
+    @Param('id') id: string,
+    @Param('type') type: AthleteMediaType,
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
+    return this.athletesService.uploadDocument(id, type, file);
+  }
+
+  @Delete(':id/documents/:type')
+  @UseGuards(JwtAuthGuard)
+  @Roles(UserRole.ADMIN, UserRole.CONTENT, UserRole.GAMES_ADMIN)
+  deleteDocument(@Param('id') id: string, @Param('type') type: AthleteMediaType) {
+    return this.athletesService.deleteDocument(id, type);
   }
 
   @Get()

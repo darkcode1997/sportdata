@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { AthleteMediaType } from '@prisma/client';
+import { AthleteMediaType, DocumentOcrStatus, DocumentVerificationStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateAthleteDto } from './dto/create-athlete.dto';
 import { UpdateAthleteDto } from './dto/update-athlete.dto';
@@ -16,6 +16,8 @@ export class AthletesService {
     return this.prisma.athlete.create({
       data: {
         ...data,
+        email: data.email?.trim().toLowerCase(),
+        phone: data.phone?.trim(),
         birthDate: birthDate ? new Date(birthDate) : undefined,
         events: eventIds
           ? { connect: eventIds.map((id) => ({ id })) }
@@ -51,6 +53,8 @@ export class AthletesService {
         { fullName: { contains: search, mode: 'insensitive' } },
         { firstName: { contains: search, mode: 'insensitive' } },
         { lastName: { contains: search, mode: 'insensitive' } },
+        { email: { contains: search, mode: 'insensitive' } },
+        { phone: { contains: search, mode: 'insensitive' } },
       ];
     }
 
@@ -250,6 +254,8 @@ export class AthletesService {
       where: { id },
       data: {
         ...data,
+        email: data.email === null ? null : data.email?.trim().toLowerCase(),
+        phone: data.phone === null ? null : data.phone?.trim(),
         birthDate: birthDate ? new Date(birthDate) : undefined,
         events: eventIds
           ? { set: eventIds.map((eId) => ({ id: eId })) }
@@ -290,6 +296,124 @@ export class AthletesService {
       }),
     ]);
     return { photoUrl: `/api/participant-auth/avatar/${id}` };
+  }
+
+  async getDocuments(id: string) {
+    await this.findOne(id);
+    return this.prisma.athleteMedia.findMany({
+      where: {
+        athleteId: id,
+        type: { in: this.documentTypes() },
+      },
+      select: {
+        id: true,
+        type: true,
+        mimeType: true,
+        size: true,
+        verificationStatus: true,
+        verificationNote: true,
+        verifiedAt: true,
+        updatedAt: true,
+      },
+      orderBy: { type: 'asc' },
+    });
+  }
+
+  async getDocument(id: string, type: AthleteMediaType) {
+    this.validateDocumentType(type);
+    const document = await this.prisma.athleteMedia.findUnique({
+      where: { athleteId_type: { athleteId: id, type } },
+    });
+    if (!document) throw new NotFoundException('Chưa có giấy tờ này');
+    return document;
+  }
+
+  async uploadDocument(id: string, type: AthleteMediaType, file?: Express.Multer.File) {
+    await this.findOne(id);
+    this.validateDocumentType(type);
+    if (!file) throw new BadRequestException('Vui lòng chọn ảnh giấy tờ');
+    this.validateDocumentFile(file);
+
+    return this.prisma.athleteMedia.upsert({
+      where: { athleteId_type: { athleteId: id, type } },
+      create: {
+        athleteId: id,
+        type,
+        data: file.buffer,
+        mimeType: file.mimetype,
+        size: file.size,
+        verificationStatus: DocumentVerificationStatus.PENDING,
+      },
+      update: {
+        data: file.buffer,
+        mimeType: file.mimetype,
+        size: file.size,
+        verificationStatus: DocumentVerificationStatus.PENDING,
+        verificationNote: null,
+        verifiedAt: null,
+        verifiedBy: null,
+        ocrStatus: DocumentOcrStatus.NOT_REQUESTED,
+        ocrProvider: null,
+        ocrConfidence: null,
+        ocrData: Prisma.DbNull,
+      },
+      select: {
+        id: true,
+        type: true,
+        mimeType: true,
+        size: true,
+        verificationStatus: true,
+        verificationNote: true,
+        verifiedAt: true,
+        updatedAt: true,
+      },
+    });
+  }
+
+  async deleteDocument(id: string, type: AthleteMediaType) {
+    this.validateDocumentType(type);
+    const deleted = await this.prisma.athleteMedia.deleteMany({
+      where: { athleteId: id, type },
+    });
+    if (!deleted.count) throw new NotFoundException('Chưa có giấy tờ này');
+    return { success: true };
+  }
+
+  private documentTypes(): AthleteMediaType[] {
+    return [
+      AthleteMediaType.CCCD_FRONT,
+      AthleteMediaType.CCCD_BACK,
+      AthleteMediaType.PASSPORT,
+    ];
+  }
+
+  private validateDocumentType(type: AthleteMediaType) {
+    if (!this.documentTypes().includes(type)) {
+      throw new BadRequestException('Loại giấy tờ không hợp lệ');
+    }
+  }
+
+  private validateDocumentFile(file: Express.Multer.File) {
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+    if (!allowedTypes.includes(file.mimetype)) {
+      throw new BadRequestException('Chỉ hỗ trợ JPG, PNG, WebP hoặc PDF');
+    }
+    if (file.size > 4 * 1024 * 1024) {
+      throw new BadRequestException('Tệp không được vượt quá 4 MB');
+    }
+
+    const bytes = file.buffer;
+    const valid = file.mimetype === 'image/jpeg'
+      ? bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff
+      : file.mimetype === 'image/png'
+        ? bytes.length >= 8
+          && bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+        : file.mimetype === 'image/webp'
+          ? bytes.length >= 12
+            && bytes.subarray(0, 4).toString('ascii') === 'RIFF'
+            && bytes.subarray(8, 12).toString('ascii') === 'WEBP'
+          : bytes.length >= 5 && bytes.subarray(0, 5).toString('ascii') === '%PDF-';
+    if (!valid) throw new BadRequestException('Nội dung tệp không đúng định dạng đã khai báo');
   }
 
   private getAthleteInclude() {

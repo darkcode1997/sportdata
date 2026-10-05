@@ -6,16 +6,21 @@ import dynamic from 'next/dynamic';
 import useSWR, { useSWRConfig } from 'swr';
 import {
   Alert,
+  Avatar,
   Button,
   Card,
   Checkbox,
+  Col,
+  DatePicker,
   Descriptions,
   Empty,
   Form,
+  Image,
   Input,
   InputNumber,
   Modal,
   Popconfirm,
+  Row,
   Segmented,
   Select,
   Space,
@@ -48,6 +53,7 @@ import {
   TicketCheck,
   Trash2,
   UploadCloud,
+  UserRound,
   XCircle,
 } from 'lucide-react';
 import { api, fetcher } from '@/lib/api';
@@ -57,6 +63,7 @@ import type { BracketDraw } from '@/components/brackets/SportdataBracket';
 import type { ParticipationTicket } from '@/lib/ticket-types';
 import { DrawPreconfiguration } from '@/components/cms/DrawPreconfiguration';
 import { AthleteQuickViewModal } from '@/components/cms/AthleteQuickViewModal';
+import { RemoteAthleteSelect } from '@/components/cms/RemoteAthleteSelect';
 import { openCmsScoreboard, withCmsReturnTo } from '@/lib/cms-navigation';
 import { MATCH_STATUS_META } from '@/lib/vi-labels';
 
@@ -78,10 +85,13 @@ type Registration = {
   statusReason?: string | null;
   paymentStatusReason?: string | null;
   event: { id: string; name: string };
-  category: { name: string; sport?: { name: string } };
+  category: { id: string; name: string; sport?: { name: string } };
   athlete: {
     id: string;
     fullName: string;
+    email?: string | null;
+    phone?: string | null;
+    photoUrl?: string | null;
     weight?: number;
     country?: { code: string };
     federation?: { name: string };
@@ -98,6 +108,8 @@ type Registration = {
   }>;
   competitionEntry?: { id: string; seed?: number | null; status: string } | null;
 };
+
+type RegistrationIdentityDocument = 'CCCD_FRONT' | 'CCCD_BACK' | 'PASSPORT';
 
 const paymentStatusLabels: Record<string, { label: string; color: string }> = {
   NOT_REQUIRED: { label: 'Miễn thanh toán', color: 'success' },
@@ -139,6 +151,118 @@ function SeedInput({ value, disabled, onSave }: { value?: number | null; disable
       }}
       onPressEnter={(event) => event.currentTarget.blur()}
     />
+  );
+}
+
+function IdentityDocumentPicker({
+  file,
+  label,
+  required,
+  onChange,
+  onError,
+}: {
+  file?: File;
+  label: string;
+  required?: boolean;
+  onChange: (file?: File) => void;
+  onError: (message: string) => void;
+}) {
+  const [previewUrl, setPreviewUrl] = useState<string>();
+
+  useEffect(() => {
+    if (!file) {
+      setPreviewUrl(undefined);
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    setPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
+
+  const isPdf = file?.type === 'application/pdf';
+  return (
+    <div className="flex h-full flex-col rounded-lg border border-slate-300/15 p-3">
+      <div className="mb-2 text-sm font-semibold">{required && <span className="mr-1 text-red-500">*</span>}{label}</div>
+      {file && previewUrl ? (
+        <div className="mb-3 overflow-hidden rounded-lg border border-slate-300/15 bg-slate-950/30">
+          {isPdf ? (
+            <iframe src={`${previewUrl}#toolbar=0&navpanes=0`} title={`Xem trước ${label}`} className="h-36 w-full bg-white" />
+          ) : <Image src={previewUrl} alt={`Xem trước ${label}`} width="100%" height={144} className="object-contain" />}
+        </div>
+      ) : (
+        <div className="mb-3 grid h-36 place-items-center rounded-lg border border-dashed border-slate-300/20 bg-slate-950/20 px-3 text-center text-xs text-slate-500">
+          Ảnh xem trước sẽ hiển thị tại đây
+        </div>
+      )}
+      <div className="mt-auto flex flex-wrap gap-2">
+        <Upload
+          accept="image/jpeg,image/png,image/webp,application/pdf"
+          showUploadList={false}
+          beforeUpload={(nextFile) => {
+            if (!['image/jpeg', 'image/png', 'image/webp', 'application/pdf'].includes(nextFile.type)) {
+              onError(`${label} chỉ hỗ trợ JPG, PNG, WebP hoặc PDF.`);
+              return Upload.LIST_IGNORE;
+            }
+            if (nextFile.size > 4 * 1024 * 1024) {
+              onError(`${label} không được vượt quá 4 MB.`);
+              return Upload.LIST_IGNORE;
+            }
+            onChange(nextFile);
+            return false;
+          }}
+        >
+          <Button icon={<UploadCloud className="h-4 w-4" />}>{file ? 'Thay tệp' : 'Chọn tệp'}</Button>
+        </Upload>
+        {file && <Button danger type="text" icon={<Trash2 className="h-4 w-4" />} onClick={() => onChange(undefined)}>Xóa</Button>}
+      </div>
+      <div className="mt-2 truncate text-xs text-slate-500" title={file?.name}>
+        {file?.name || 'JPG, PNG, WebP hoặc PDF'}
+      </div>
+    </div>
+  );
+}
+
+function AthleteAvatarPicker({ file, onChange, onError }: { file?: File; onChange: (file?: File) => void; onError: (message: string) => void }) {
+  const [previewUrl, setPreviewUrl] = useState<string>();
+  useEffect(() => {
+    if (!file) {
+      setPreviewUrl(undefined);
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    setPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
+  return (
+    <div className="mt-4 flex flex-col gap-4 rounded-xl border border-slate-300/15 p-4 sm:flex-row sm:items-center">
+      <Avatar size={96} src={previewUrl} icon={<UserRound className="h-9 w-9" />} />
+      <div className="min-w-0 flex-1">
+        <div className="font-semibold"><span className="mr-1 text-red-500">*</span>Ảnh đại diện vận động viên</div>
+        <div className="mt-1 text-xs text-slate-500">Ảnh chân dung JPG, PNG hoặc WebP · tối đa 8 MB</div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Upload
+            accept="image/jpeg,image/png,image/webp"
+            showUploadList={false}
+            beforeUpload={(nextFile) => {
+              if (!['image/jpeg', 'image/png', 'image/webp'].includes(nextFile.type)) {
+                onError('Ảnh đại diện chỉ hỗ trợ JPG, PNG hoặc WebP.');
+                return Upload.LIST_IGNORE;
+              }
+              if (nextFile.size > 8 * 1024 * 1024) {
+                onError('Ảnh đại diện không được vượt quá 8 MB.');
+                return Upload.LIST_IGNORE;
+              }
+              onChange(nextFile);
+              return false;
+            }}
+          >
+            <Button icon={<UploadCloud className="h-4 w-4" />}>{file ? 'Thay ảnh' : 'Chọn ảnh'}</Button>
+          </Upload>
+          {file && <Button danger type="text" icon={<Trash2 className="h-4 w-4" />} onClick={() => onChange(undefined)}>Xóa</Button>}
+        </div>
+        {file && <div className="mt-2 truncate text-xs text-slate-500" title={file.name}>{file.name}</div>}
+      </div>
+    </div>
   );
 }
 
@@ -186,7 +310,7 @@ export function EventWorkspace({ event, onRefresh }: EventWorkspaceProps) {
         {
           key: 'registrations',
           label: <span className="flex items-center gap-2"><TicketCheck className="h-4 w-4" />Đăng ký thi đấu</span>,
-          children: <RegistrationsTab eventId={event.id} canOperate={canOperate} canConfirmPayment={canConfirmPayment} />,
+          children: <RegistrationsTab event={event} canOperate={canOperate} canConfirmPayment={canConfirmPayment} />,
         },
         {
           key: 'fops',
@@ -219,6 +343,25 @@ export function EventWorkspace({ event, onRefresh }: EventWorkspaceProps) {
 }
 
 function EventOverview({ event, canEdit, returnTo }: { event: any; canEdit: boolean; returnTo: string }) {
+  const { data: registrations } = useSWR<Registration[]>(
+    `/participant-auth/admin/registrations?eventId=${event.id}`,
+    fetcher,
+    { refreshInterval: 10_000 },
+  );
+  const registrationTotal = registrations?.length ?? event._count?.registrations ?? 0;
+  const confirmedTotal = registrations?.filter((item) => item.status === 'CONFIRMED').length ?? 0;
+  const waitingTotal = registrations?.filter((item) => item.status === 'SUBMITTED').length ?? 0;
+  const paidTotal = registrations?.filter((item) => ['PAID', 'NOT_REQUIRED'].includes(item.paymentStatus)).length ?? 0;
+  const operationMetrics = [
+    { label: 'Đăng ký', value: registrationTotal, color: 'text-sky-500' },
+    { label: 'Đã xác nhận', value: confirmedTotal, color: 'text-emerald-500' },
+    { label: 'Chờ xử lý', value: waitingTotal, color: 'text-amber-500' },
+    { label: 'Đủ thanh toán', value: paidTotal, color: 'text-teal-500' },
+    { label: 'Vận động viên', value: event._count?.athletes || 0, color: 'text-violet-500' },
+    { label: 'Trận đấu', value: event._count?.matches || 0, color: 'text-blue-500' },
+    { label: 'Hạng đấu', value: event.categories?.length || 0, color: 'text-fuchsia-500' },
+    { label: 'Sân / FOP', value: event.fops?.length || 0, color: 'text-cyan-500' },
+  ];
   return (
     <div className="grid gap-6 xl:grid-cols-[1fr_340px]">
       <Card title="Thông tin sự kiện" extra={canEdit ? <Button href={withCmsReturnTo(`/cms/events/${event.id}/edit`, returnTo)} icon={<Pencil className="h-4 w-4" />}>Chỉnh sửa</Button> : null}>
@@ -241,15 +384,10 @@ function EventOverview({ event, canEdit, returnTo }: { event: any; canEdit: bool
       </Card>
       <Card title="Dữ liệu vận hành">
         <div className="grid grid-cols-2 gap-3 text-center">
-          {[
-            ['Đăng ký', event._count?.registrations || 0],
-            ['Trận đấu', event._count?.matches || 0],
-            ['Hạng đấu', event.categories?.length || 0],
-            ['Sân / FOP', event.fops?.length || 0],
-          ].map(([label, value]) => (
-            <div className="rounded-xl border border-slate-200/15 p-4" key={String(label)}>
-              <strong className="block text-2xl text-sky-500">{value}</strong>
-              <span className="text-xs text-slate-500">{label}</span>
+          {operationMetrics.map((metric) => (
+            <div className="rounded-xl border border-slate-200/15 bg-slate-500/[0.03] p-3.5" key={metric.label}>
+              <strong className={`block text-2xl tabular-nums ${metric.color}`}>{metric.value}</strong>
+              <span className="text-xs text-slate-500">{metric.label}</span>
             </div>
           ))}
         </div>
@@ -425,13 +563,169 @@ function FopsTab({ event, canOperate, onRefresh }: EventWorkspaceProps & { canOp
   );
 }
 
-function RegistrationsTab({ eventId, canOperate, canConfirmPayment }: { eventId: string; canOperate: boolean; canConfirmPayment: boolean }) {
+function RegistrationsTab({ event, canOperate, canConfirmPayment }: { event: any; canOperate: boolean; canConfirmPayment: boolean }) {
+  const eventId = event.id;
   const toast = useSportDataToast();
   const { data: registrations = [], isLoading, mutate } = useSWR<Registration[]>(`/participant-auth/admin/registrations?eventId=${eventId}`, fetcher);
+  const { data: countries = [] } = useSWR<any[]>('/countries', fetcher);
+  const { data: federations = [] } = useSWR<any[]>('/federations', fetcher);
   const [reviewChange, setReviewChange] = useState<{ kind: 'registration' | 'payment'; item: Registration; nextStatus: string }>();
   const [reviewReason, setReviewReason] = useState('');
   const [reviewSaving, setReviewSaving] = useState(false);
   const [selectedAthleteId, setSelectedAthleteId] = useState<string>();
+  const [registrationSearch, setRegistrationSearch] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState<string>();
+  const [statusFilter, setStatusFilter] = useState<string>();
+  const [paymentFilter, setPaymentFilter] = useState<string>();
+  const [documentFilter, setDocumentFilter] = useState<string>();
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createMode, setCreateMode] = useState<'existing' | 'new'>('existing');
+  const [eligibility, setEligibility] = useState<{ eligible: boolean; reasons: string[]; warnings: string[] }>();
+  const [eligibilityChecking, setEligibilityChecking] = useState(false);
+  const [registrationSaving, setRegistrationSaving] = useState(false);
+  const [avatarFile, setAvatarFile] = useState<File>();
+  const [identityFiles, setIdentityFiles] = useState<Partial<Record<RegistrationIdentityDocument, File>>>({});
+  const [createdRegistration, setCreatedRegistration] = useState<Registration>();
+  const [registrationForm] = Form.useForm();
+  const selectedCountryId = Form.useWatch(['athlete', 'countryId'], registrationForm);
+  const selectedPaymentStatus = Form.useWatch('paymentStatus', registrationForm) || 'PENDING';
+  const availableFederations = federations.filter((item) => !selectedCountryId || item.countryId === selectedCountryId);
+  const filteredRegistrations = useMemo(() => {
+    const search = registrationSearch.trim().toLocaleLowerCase('vi');
+    return registrations.filter((item) => {
+      const documentStates = new Map((item.athlete.media || []).map((media) => [media.type, media.verificationStatus]));
+      const hasIdentity = (documentStates.has('CCCD_FRONT') && documentStates.has('CCCD_BACK')) || documentStates.has('PASSPORT');
+      const identityVerified = (documentStates.get('CCCD_FRONT') === 'VERIFIED' && documentStates.get('CCCD_BACK') === 'VERIFIED')
+        || documentStates.get('PASSPORT') === 'VERIFIED';
+      const matchesDocument = !documentFilter
+        || (documentFilter === 'VERIFIED' && identityVerified)
+        || (documentFilter === 'PENDING' && hasIdentity && !identityVerified)
+        || (documentFilter === 'MISSING' && !hasIdentity);
+      const searchable = [item.athlete.fullName, item.athlete.email, item.athlete.phone, item.athlete.country?.code, item.athlete.federation?.name, item.ticketCode, item.category.name]
+        .filter(Boolean)
+        .join(' ')
+        .toLocaleLowerCase('vi');
+      return (!search || searchable.includes(search))
+        && (!categoryFilter || item.category.id === categoryFilter)
+        && (!statusFilter || item.status === statusFilter)
+        && (!paymentFilter || item.paymentStatus === paymentFilter)
+        && matchesDocument;
+    });
+  }, [categoryFilter, documentFilter, paymentFilter, registrationSearch, registrations, statusFilter]);
+  const clearRegistrationFilters = () => {
+    setRegistrationSearch('');
+    setCategoryFilter(undefined);
+    setStatusFilter(undefined);
+    setPaymentFilter(undefined);
+    setDocumentFilter(undefined);
+  };
+  const hasRegistrationFilters = Boolean(registrationSearch || categoryFilter || statusFilter || paymentFilter || documentFilter);
+
+  const registrationPayload = async () => {
+    const values = await registrationForm.validateFields();
+    if (createMode === 'existing') {
+      return {
+        eventId,
+        categoryId: values.categoryId,
+        athleteId: values.athleteId,
+        paymentStatus: event.paymentMode === 'FREE' ? undefined : values.paymentStatus || 'PENDING',
+        paymentNote: values.paymentNote,
+      };
+    }
+    const athlete = values.athlete;
+    return {
+      eventId,
+      categoryId: values.categoryId,
+      athlete: {
+        ...athlete,
+        fullName: `${athlete.firstName} ${athlete.lastName}`.replace(/\s+/g, ' ').trim(),
+        birthDate: athlete.birthDate.format('YYYY-MM-DD'),
+        federationId: athlete.federationId || undefined,
+        height: athlete.height == null ? undefined : Number(athlete.height),
+        weight: Number(athlete.weight),
+      },
+      paymentStatus: event.paymentMode === 'FREE' ? undefined : values.paymentStatus || 'PENDING',
+      paymentNote: values.paymentNote,
+    };
+  };
+
+  const uploadAthleteMedia = async (athleteId: string) => {
+    const failures: string[] = [];
+    if (avatarFile) {
+      const avatarData = new FormData();
+      avatarData.append('file', avatarFile);
+      try {
+        await api.post(`/athletes/${athleteId}/avatar`, avatarData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+      } catch {
+        failures.push('ảnh đại diện');
+      }
+    }
+    for (const [type, file] of Object.entries(identityFiles) as Array<[RegistrationIdentityDocument, File]>) {
+      const formData = new FormData();
+      formData.append('file', file);
+      try {
+        await api.post(`/athletes/${athleteId}/documents/${type}`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+      } catch {
+        failures.push(type === 'CCCD_FRONT' ? 'CCCD mặt trước' : type === 'CCCD_BACK' ? 'CCCD mặt sau' : 'Hộ chiếu');
+      }
+    }
+    return failures;
+  };
+
+  const checkEligibility = async () => {
+    setEligibilityChecking(true);
+    try {
+      const payload = await registrationPayload();
+      const { data } = await api.post('/participant-auth/admin/registrations/eligibility', payload);
+      setEligibility(data);
+      return data as { eligible: boolean; reasons: string[]; warnings: string[] };
+    } catch (error: any) {
+      if (!error?.errorFields) toast.error(error.response?.data?.message || 'Không thể kiểm tra điều kiện tham gia.');
+      return undefined;
+    } finally {
+      setEligibilityChecking(false);
+    }
+  };
+
+  const createRegistration = async () => {
+    setRegistrationSaving(true);
+    try {
+      if (createMode === 'new' && (!identityFiles.CCCD_FRONT || !identityFiles.CCCD_BACK)) {
+        toast.error('VĐV mới cần tải đủ CCCD mặt trước và mặt sau. Hộ chiếu là tùy chọn.');
+        return;
+      }
+      if (createMode === 'new' && !avatarFile) {
+        toast.error('VĐV mới cần tải ảnh đại diện.');
+        return;
+      }
+      const payload = await registrationPayload();
+      const { data: result } = await api.post('/participant-auth/admin/registrations/eligibility', payload);
+      setEligibility(result);
+      if (!result.eligible) return;
+      const { data: registration } = await api.post('/participant-auth/admin/registrations', payload);
+      const documentFailures = await uploadAthleteMedia(registration.athlete.id);
+      await mutate();
+      if (documentFailures.length) {
+        toast.error(`Đã tạo đăng ký nhưng chưa tải được: ${documentFailures.join(', ')}. Hãy bổ sung trong hồ sơ VĐV.`);
+      } else {
+        toast.success(createMode === 'new' ? 'Đã tạo VĐV, tải giấy tờ và thêm vào danh sách đăng ký.' : 'Đã thêm VĐV vào danh sách đăng ký.');
+      }
+      setCreatedRegistration(registration);
+      setCreateOpen(false);
+      setEligibility(undefined);
+      setAvatarFile(undefined);
+      setIdentityFiles({});
+      registrationForm.resetFields();
+    } catch (error: any) {
+      if (!error?.errorFields) toast.error(error.response?.data?.message || 'Không thể thêm vận động viên đăng ký.');
+    } finally {
+      setRegistrationSaving(false);
+    }
+  };
 
   const submitStatusChange = async () => {
     if (!reviewChange || reviewReason.trim().length < 3) return;
@@ -494,14 +788,54 @@ function RegistrationsTab({ eventId, canOperate, canConfirmPayment }: { eventId:
   return (
     <>
     <Card
-      title={`${registrations.length} lượt đăng ký`}
-      extra={<Button icon={<RefreshCw className="h-4 w-4" />} onClick={() => mutate()}>Làm mới</Button>}
+      title={hasRegistrationFilters ? `${filteredRegistrations.length} / ${registrations.length} lượt đăng ký` : `${registrations.length} lượt đăng ký`}
+      extra={<Space wrap>{canOperate && <Button type="primary" icon={<Plus className="h-4 w-4" />} onClick={() => setCreateOpen(true)}>Thêm VĐV đăng ký</Button>}<Button icon={<RefreshCw className="h-4 w-4" />} onClick={() => mutate()}>Làm mới</Button></Space>}
       styles={{ body: { padding: 0 } }}
     >
+      <div className="border-b border-slate-300/10 p-4">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(240px,1.4fr)_repeat(4,minmax(150px,1fr))_auto]">
+          <Input
+            allowClear
+            value={registrationSearch}
+            prefix={<Search className="h-4 w-4 text-slate-500" />}
+            placeholder="Tìm tên, mã vé, quốc gia, CLB..."
+            onChange={(event) => setRegistrationSearch(event.target.value)}
+          />
+          <Select
+            allowClear
+            value={categoryFilter}
+            placeholder="Tất cả hạng đấu"
+            onChange={setCategoryFilter}
+            options={(event.categories || []).map((item: any) => ({ value: item.id, label: item.name }))}
+          />
+          <Select
+            allowClear
+            value={statusFilter}
+            placeholder="Trạng thái hồ sơ"
+            onChange={setStatusFilter}
+            options={[{ value: 'SUBMITTED', label: 'Chờ duyệt' }, { value: 'CONFIRMED', label: 'Đã xác nhận' }, { value: 'REJECTED', label: 'Từ chối' }, { value: 'CANCELLED', label: 'Đã hủy' }]}
+          />
+          <Select
+            allowClear
+            value={paymentFilter}
+            placeholder="Thanh toán"
+            onChange={setPaymentFilter}
+            options={[{ value: 'NOT_REQUIRED', label: 'Miễn thanh toán' }, { value: 'PENDING', label: 'Chờ thanh toán' }, { value: 'PAID', label: 'Đã thanh toán' }, { value: 'FAILED', label: 'Thanh toán lỗi' }]}
+          />
+          <Select
+            allowClear
+            value={documentFilter}
+            placeholder="Giấy tờ"
+            onChange={setDocumentFilter}
+            options={[{ value: 'VERIFIED', label: 'Đã xác thực' }, { value: 'PENDING', label: 'Chờ xác thực' }, { value: 'MISSING', label: 'Thiếu giấy tờ' }]}
+          />
+          <Button disabled={!hasRegistrationFilters} onClick={clearRegistrationFilters}>Xóa lọc</Button>
+        </div>
+      </div>
       <Table
         rowKey="id"
         loading={isLoading}
-        dataSource={registrations}
+        dataSource={filteredRegistrations}
         scroll={{ x: 1700 }}
         pagination={{ pageSize: 15, showSizeChanger: true }}
         locale={{ emptyText: 'Chưa có vận động viên đăng ký.' }}
@@ -510,7 +844,30 @@ function RegistrationsTab({ eventId, canOperate, canConfirmPayment }: { eventId:
             title: 'Vận động viên',
             key: 'athlete',
             width: 250,
-            render: (_, item) => <div><Button type="link" className="h-auto !p-0 font-semibold" onClick={() => setSelectedAthleteId(item.athlete.id)}>{item.athlete.fullName}</Button><div className="text-xs text-slate-500">{item.athlete.country?.code || '—'} · {item.athlete.federation?.name || 'VĐV tự do'} · {item.athlete.weight ? `${item.athlete.weight} kg` : 'chưa cân'}</div></div>,
+            render: (_, item) => (
+              <div className="flex min-w-0 items-center gap-3">
+                <Avatar
+                  size={46}
+                  className="shrink-0"
+                  src={item.athlete.photoUrl || `/api/participant-auth/avatar/${item.athlete.id}`}
+                  icon={<UserRound className="h-5 w-5" />}
+                />
+                <div className="min-w-0 flex-1 overflow-hidden">
+                  <Tooltip title={item.athlete.fullName} placement="topLeft">
+                    <Button
+                      type="link"
+                      className="!block h-auto !w-full overflow-hidden !p-0 text-left font-semibold"
+                      onClick={() => setSelectedAthleteId(item.athlete.id)}
+                    >
+                      <span className="block truncate">{item.athlete.fullName}</span>
+                    </Button>
+                  </Tooltip>
+                  <Tooltip title={`${item.athlete.country?.code || '—'} · ${item.athlete.federation?.name || 'VĐV tự do'} · ${item.athlete.weight ? `${item.athlete.weight} kg` : 'chưa cân'}`} placement="bottomLeft">
+                    <div className="truncate text-xs text-slate-500">{item.athlete.country?.code || '—'} · {item.athlete.federation?.name || 'VĐV tự do'} · {item.athlete.weight ? `${item.athlete.weight} kg` : 'chưa cân'}</div>
+                  </Tooltip>
+                </div>
+              </div>
+            ),
           },
           { title: 'Hạng đấu', key: 'category', width: 240, render: (_, item) => `${item.category.sport?.name || ''} · ${item.category.name}` },
           {
@@ -627,6 +984,179 @@ function RegistrationsTab({ eventId, canOperate, canConfirmPayment }: { eventId:
         ]}
       />
     </Card>
+    <Modal
+      open={createOpen}
+      title="Thêm vận động viên đăng ký thi đấu"
+      width={760}
+      centered
+      destroyOnHidden
+      okText="Kiểm tra và thêm"
+      cancelText="Hủy"
+      confirmLoading={registrationSaving}
+      onOk={() => void createRegistration()}
+      onCancel={() => {
+        if (registrationSaving) return;
+        setCreateOpen(false);
+        setEligibility(undefined);
+        setAvatarFile(undefined);
+        setIdentityFiles({});
+        registrationForm.resetFields();
+      }}
+    >
+      <div className="mb-5 rounded-xl border border-slate-300/15 bg-slate-500/5 p-3">
+        <Segmented
+          block
+          value={createMode}
+          options={[{ value: 'existing', label: 'Chọn VĐV đang có' }, { value: 'new', label: 'Thêm VĐV mới' }]}
+          onChange={(value) => {
+            setCreateMode(value as 'existing' | 'new');
+            setEligibility(undefined);
+            setAvatarFile(undefined);
+            setIdentityFiles({});
+            registrationForm.resetFields(['athleteId', 'athlete']);
+          }}
+        />
+      </div>
+      <Form
+        form={registrationForm}
+        layout="vertical"
+        initialValues={{ athlete: { gender: 'MALE' }, paymentStatus: 'PENDING' }}
+        onValuesChange={() => setEligibility(undefined)}
+      >
+        <Form.Item name="categoryId" label="Hạng đấu" rules={[{ required: true, message: 'Vui lòng chọn hạng đấu' }]}>
+          <Select
+            showSearch
+            optionFilterProp="label"
+            placeholder="Chọn hạng đấu trong sự kiện"
+            options={(event.categories || []).map((item: any) => ({
+              value: item.id,
+              label: `${item.sport?.name ? `${item.sport.name} · ` : ''}${item.name}`,
+            }))}
+          />
+        </Form.Item>
+        {createMode === 'existing' ? (
+          <Form.Item name="athleteId" label="Vận động viên" rules={[{ required: true, message: 'Vui lòng chọn vận động viên' }]}>
+            <RemoteAthleteSelect allAthletes placeholder="Tìm theo họ tên VĐV" />
+          </Form.Item>
+        ) : (
+          <div className="rounded-xl border border-slate-300/15 p-4">
+            <Row gutter={[16, 0]}>
+              <Col xs={24} md={12}><Form.Item name={['athlete', 'firstName']} label="Họ" rules={[{ required: true, message: 'Vui lòng nhập họ' }]}><Input placeholder="Nguyễn" /></Form.Item></Col>
+              <Col xs={24} md={12}><Form.Item name={['athlete', 'lastName']} label="Tên" rules={[{ required: true, message: 'Vui lòng nhập tên' }]}><Input placeholder="Minh Anh" /></Form.Item></Col>
+              <Col xs={24} md={12}><Form.Item name={['athlete', 'email']} label="Email" rules={[{ required: true, message: 'Vui lòng nhập email' }, { type: 'email', message: 'Email không hợp lệ' }]}><Input type="email" placeholder="email@example.com" /></Form.Item></Col>
+              <Col xs={24} md={12}><Form.Item name={['athlete', 'phone']} label="Số điện thoại" rules={[{ required: true, message: 'Vui lòng nhập số điện thoại' }, { min: 8, message: 'Số điện thoại phải có ít nhất 8 ký tự' }]}><Input type="tel" placeholder="0901234567" /></Form.Item></Col>
+              <Col xs={24} md={12}><Form.Item name={['athlete', 'gender']} label="Giới tính" rules={[{ required: true }]}><Select options={[{ value: 'MALE', label: 'Nam' }, { value: 'FEMALE', label: 'Nữ' }, { value: 'MIXED', label: 'Khác / hỗn hợp' }]} /></Form.Item></Col>
+              <Col xs={24} md={12}><Form.Item name={['athlete', 'birthDate']} label="Ngày sinh" rules={[{ required: true, message: 'Vui lòng chọn ngày sinh' }]}><DatePicker className="w-full" format="DD/MM/YYYY" placeholder="Chọn ngày sinh" allowClear /></Form.Item></Col>
+              <Col xs={24} md={12}><Form.Item name={['athlete', 'weight']} label="Cân nặng (kg)" rules={[{ required: true, message: 'Vui lòng nhập cân nặng' }]}><InputNumber min={1} max={500} className="w-full" /></Form.Item></Col>
+              <Col xs={24} md={12}><Form.Item name={['athlete', 'height']} label="Chiều cao (cm)"><InputNumber min={1} max={300} className="w-full" /></Form.Item></Col>
+              <Col xs={24} md={12}><Form.Item name={['athlete', 'countryId']} label="Quốc gia" rules={[{ required: true, message: 'Vui lòng chọn quốc gia' }]}><Select showSearch optionFilterProp="label" options={countries.map((item) => ({ value: item.id, label: `${item.code} · ${item.name}` }))} /></Form.Item></Col>
+              <Col xs={24} md={12}><Form.Item name={['athlete', 'federationId']} label="Đơn vị chủ quản"><Select allowClear showSearch optionFilterProp="label" placeholder="VĐV tự do" options={availableFederations.map((item) => ({ value: item.id, label: item.name }))} /></Form.Item></Col>
+            </Row>
+          </div>
+        )}
+        {createMode === 'new' && <AthleteAvatarPicker file={avatarFile} onChange={setAvatarFile} onError={(message) => toast.error(message)} />}
+        {createMode === 'new' && <div className="mt-4 rounded-xl border border-slate-300/15 p-4">
+          <div className="mb-3">
+            <strong>Giấy tờ định danh</strong>
+            <div className="mt-1 text-xs text-slate-500">
+              CCCD hai mặt là bắt buộc; hộ chiếu tải thêm nếu có.
+            </div>
+          </div>
+          <Row gutter={[12, 12]}>
+            {([
+              ['CCCD_FRONT', 'CCCD mặt trước', true],
+              ['CCCD_BACK', 'CCCD mặt sau', true],
+              ['PASSPORT', 'Hộ chiếu (nếu có)', false],
+            ] as Array<[RegistrationIdentityDocument, string, boolean]>).map(([type, label, required]) => (
+              <Col xs={24} md={8} key={type}>
+                <IdentityDocumentPicker
+                  file={identityFiles[type]}
+                  label={label}
+                  required={required}
+                  onError={(message) => toast.error(message)}
+                  onChange={(file) => setIdentityFiles((current) => ({ ...current, [type]: file }))}
+                />
+              </Col>
+            ))}
+          </Row>
+        </div>}
+        {event.paymentMode !== 'FREE' && event.registrationFee > 0 && (
+          <div className="mt-4 rounded-xl border border-amber-500/25 bg-amber-500/5 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <strong>Lệ phí tham gia</strong>
+                <div className="mt-1 text-sm text-slate-500">{new Intl.NumberFormat('vi-VN').format(event.registrationFee)} {event.registrationCurrency || 'VND'}</div>
+              </div>
+              <Tag color="gold">{event.paymentMode === 'ONLINE' ? 'Thanh toán trực tuyến' : 'Chuyển khoản / đối soát'}</Tag>
+            </div>
+            <Form.Item className="!mb-0 !mt-4" name="paymentStatus" label="Xử lý thanh toán">
+              <Segmented
+                block
+                options={[
+                  { value: 'PENDING', label: 'Chờ VĐV thanh toán' },
+                  { value: 'PAID', label: 'Đã thu phí thủ công' },
+                ]}
+              />
+            </Form.Item>
+            {selectedPaymentStatus === 'PAID' && (
+              <Form.Item className="!mb-0 !mt-3" name="paymentNote" label="Ghi chú thu phí" rules={[{ required: true, message: 'Vui lòng nhập hình thức hoặc nội dung thu phí' }]}>
+                <Input placeholder="Ví dụ: Đã thu tiền mặt tại quầy / đã nhận chuyển khoản" />
+              </Form.Item>
+            )}
+            {selectedPaymentStatus === 'PENDING' && <Alert className="!mt-3" type="info" showIcon message="Sau khi tạo, sao chép liên kết thanh toán gửi cho VĐV. Trang vé sẽ hiển thị QR/MoMo/VNPAY theo cấu hình sự kiện." />}
+          </div>
+        )}
+      </Form>
+      <div className="mt-4 flex flex-wrap items-center gap-3">
+        <Button loading={eligibilityChecking} onClick={() => void checkEligibility()}>Kiểm tra điều kiện</Button>
+        <span className="text-xs text-slate-500">Kiểm tra theo giới tính, tuổi, cân nặng, đơn vị, quốc gia và đăng ký trùng.</span>
+      </div>
+      {eligibility && (
+        <Alert
+          className="!mt-4"
+          showIcon
+          type={eligibility.eligible ? (eligibility.warnings.length ? 'warning' : 'success') : 'error'}
+          message={eligibility.eligible ? 'VĐV đủ điều kiện tham gia hạng đấu' : 'VĐV chưa đủ điều kiện tham gia'}
+          description={[
+            ...eligibility.reasons.map((item) => `• ${item}`),
+            ...eligibility.warnings.map((item) => `• ${item}`),
+          ].map((item, index) => <div key={index}>{item}</div>)}
+        />
+      )}
+    </Modal>
+    <Modal
+      open={Boolean(createdRegistration)}
+      title="Đã thêm vận động viên đăng ký"
+      footer={null}
+      centered
+      onCancel={() => setCreatedRegistration(undefined)}
+    >
+      {createdRegistration && (
+        <div className="space-y-4">
+          <Alert
+            showIcon
+            type={createdRegistration.paymentStatus === 'PENDING' ? 'warning' : 'success'}
+            message={createdRegistration.paymentStatus === 'PENDING' ? 'Đăng ký đang chờ thanh toán' : createdRegistration.paymentStatus === 'PAID' ? 'Đã ghi nhận thanh toán' : 'Sự kiện miễn phí'}
+            description={createdRegistration.paymentStatus === 'PENDING'
+              ? `Lệ phí ${new Intl.NumberFormat('vi-VN').format(createdRegistration.feeAmount)} ${createdRegistration.currency}. Gửi liên kết dưới đây để VĐV thanh toán.`
+              : 'Hồ sơ sẽ được xác nhận sau khi giấy tờ định danh được duyệt.'}
+          />
+          <div className="rounded-xl border border-slate-300/15 p-4">
+            <div className="text-xs text-slate-500">Mã hồ sơ / vé</div>
+            <code className="mt-1 block text-base font-semibold">{createdRegistration.ticketCode}</code>
+            <div className="mt-3 break-all text-sm text-sky-500">{`${window.location.origin}/tickets/${encodeURIComponent(createdRegistration.ticketCode)}`}</div>
+          </div>
+          <Space wrap>
+            <Button type="primary" href={`/tickets/${encodeURIComponent(createdRegistration.ticketCode)}`} target="_blank">Mở trang thanh toán</Button>
+            <Button onClick={() => {
+              void navigator.clipboard.writeText(`${window.location.origin}/tickets/${encodeURIComponent(createdRegistration.ticketCode)}`);
+              toast.success('Đã sao chép liên kết thanh toán.');
+            }}>Sao chép liên kết</Button>
+            <Button onClick={() => setCreatedRegistration(undefined)}>Đóng</Button>
+          </Space>
+        </div>
+      )}
+    </Modal>
     <Modal
       className="registration-review-modal"
       open={Boolean(reviewChange)}
@@ -858,6 +1388,24 @@ function MatchesTab({ event, returnTo, canOperate, canScore, canEditMatch, canEd
               },
               { title: 'VĐV 1', ...columnFilter('athleteName', 'Tên VĐV (ở bất kỳ bên nào)'), render: (_: unknown, match: any) => match.athlete1 ? <Button type="link" className="h-auto !p-0" onClick={() => setSelectedAthleteId(match.athlete1.id)}>{match.athlete1.fullName}</Button> : 'Chờ xác định' },
               { title: 'VĐV 2', ...columnFilter('opponentName', 'Tên đối thủ (ở bất kỳ bên nào)'), render: (_: unknown, match: any) => match.athlete2 ? <Button type="link" className="h-auto !p-0" onClick={() => setSelectedAthleteId(match.athlete2.id)}>{match.athlete2.fullName}</Button> : 'Chờ xác định' },
+              {
+                title: 'Điểm',
+                key: 'score',
+                width: 145,
+                align: 'center',
+                render: (_: unknown, match: any) => match.athlete1 && match.athlete2 ? (
+                  <Tooltip title={`Lợi thế ${match.athlete1Advantages || 0}–${match.athlete2Advantages || 0} · Lỗi phạt ${match.athlete1Penalties || 0}–${match.athlete2Penalties || 0}`}>
+                    <div className="leading-tight">
+                      <div className="text-base font-bold tabular-nums text-slate-100">
+                        {formatScore(match.athlete1Score)} – {formatScore(match.athlete2Score)}
+                      </div>
+                      <div className="mt-1 text-xs tabular-nums text-slate-500">
+                        LT {match.athlete1Advantages || 0}–{match.athlete2Advantages || 0} · P {match.athlete1Penalties || 0}–{match.athlete2Penalties || 0}
+                      </div>
+                    </div>
+                  </Tooltip>
+                ) : '—',
+              },
               { title: 'Sân', dataIndex: 'fop', width: 120, ...columnFilter('venue', 'Tên sân / sàn') },
               { title: 'Trạng thái', key: 'status', dataIndex: 'status', width: 150, filters: Object.entries(MATCH_STATUS_META).map(([value, meta]) => ({ value, text: meta.label })), filterMultiple: false, filteredValue: filters.status ? [filters.status] : null, render: (value: string) => <Tag color={MATCH_STATUS_META[value]?.color}>{MATCH_STATUS_META[value]?.label || value}</Tag> },
               { title: 'Điều hành', width: 190, render: (_: unknown, match: any) => {
@@ -873,6 +1421,11 @@ function MatchesTab({ event, returnTo, canOperate, canScore, canEditMatch, canEd
       <AthleteQuickViewModal athleteId={selectedAthleteId} open={Boolean(selectedAthleteId)} onClose={() => setSelectedAthleteId(undefined)} />
     </div>
   );
+}
+
+function formatScore(value: unknown) {
+  const score = Number(value || 0);
+  return Number.isInteger(score) ? String(score) : score.toLocaleString('vi-VN', { maximumFractionDigits: 2 });
 }
 
 function PaymentTab({ event, canEdit, onRefresh }: EventWorkspaceProps & { canEdit: boolean }) {

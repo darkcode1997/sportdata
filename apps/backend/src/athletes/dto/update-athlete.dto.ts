@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsDateString, IsNumber, IsEnum, IsArray } from 'class-validator';
+import { IsString, IsOptional, IsDateString, IsNumber, IsEnum, IsArray, IsEmail, MinLength } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Gender } from '@prisma/client';
 
@@ -17,6 +17,17 @@ export class UpdateAthleteDto {
   @IsOptional()
   @IsString()
   fullName?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsEmail()
+  email?: string | null;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MinLength(8)
+  phone?: string | null;
 
   @ApiPropertyOptional({ enum: Gender })
   @IsOptional()

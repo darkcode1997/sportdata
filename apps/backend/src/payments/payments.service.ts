@@ -21,6 +21,7 @@ import type { Request } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
 import { SystemSettingsService } from '../system-settings/system-settings.service';
 import { CreateCheckoutDto } from './dto/create-checkout.dto';
+import { NotificationsService } from '../notifications/notifications.service';
 
 type RegistrationForPayment = Prisma.EventRegistrationGetPayload<{
   include: { event: true; athlete: { select: { fullName: true } } };
@@ -34,6 +35,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly prisma: PrismaService,
     private readonly settings: SystemSettingsService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   onModuleInit() {
@@ -415,12 +417,14 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async markPaid(id: string, providerTransactionId: string, response: unknown) {
+    let registrationId: string | undefined;
     await this.prisma.$transaction(async (database) => {
       const transaction = await database.paymentTransaction.findUnique({
         where: { id },
         include: { registration: { select: { paymentStatus: true } } },
       });
       if (!transaction || transaction.status === PaymentTransactionStatus.PAID) return;
+      registrationId = transaction.registrationId;
       await database.paymentTransaction.update({
         where: { id },
         data: {
@@ -460,6 +464,15 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
         data: { status: PaymentTransactionStatus.CANCELLED },
       });
     });
+    if (registrationId) {
+      await this.notifications.notifyRegistration(
+        this.prisma,
+        registrationId,
+        'REGISTRATION_PAYMENT',
+        'Đã nhận thanh toán đăng ký',
+        'Thanh toán trực tuyến thành công',
+      );
+    }
   }
 
   async expireUnpaidRegistrations() {
@@ -540,7 +553,16 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
         });
         return true;
       });
-      if (expired) expiredCount += 1;
+      if (expired) {
+        expiredCount += 1;
+        await this.notifications.notifyRegistration(
+          this.prisma,
+          registration.id,
+          'REGISTRATION_STATUS',
+          'Hồ sơ đăng ký đã tự động hủy',
+          reason,
+        );
+      }
     }
     if (expiredCount) this.logger.log(`Đã tự động hủy ${expiredCount} hồ sơ quá hạn thanh toán`);
     return expiredCount;

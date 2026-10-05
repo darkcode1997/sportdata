@@ -27,7 +27,7 @@ import {
   Typography,
   Upload,
 } from 'antd';
-import { Check, ImagePlus, Pencil, Plus, Save, Trash2, UserRound, X } from 'lucide-react';
+import { Check, Eye, FileText, ImagePlus, Pencil, Plus, Save, Trash2, UploadCloud, UserRound, X } from 'lucide-react';
 import { api, fetcher } from '@/lib/api';
 import { useSportDataToast } from '@/hooks/useSportDataToast';
 import { vietnamCountryId } from '@/lib/countries';
@@ -57,6 +57,27 @@ type FederationType =
   | 'ACADEMY'
   | 'OTHER';
 
+type AthleteDocumentType = 'CCCD_FRONT' | 'CCCD_BACK' | 'PASSPORT';
+type AthleteDocument = {
+  id: string;
+  type: AthleteDocumentType;
+  mimeType: string;
+  size: number;
+  verificationStatus?: 'PENDING' | 'VERIFIED' | 'REJECTED' | null;
+  verificationNote?: string | null;
+  updatedAt: string;
+};
+
+const athleteDocumentOptions: Array<{
+  type: AthleteDocumentType;
+  label: string;
+  description: string;
+}> = [
+  { type: 'CCCD_FRONT', label: 'CCCD mặt trước', description: 'Ảnh rõ họ tên, số CCCD và ngày sinh' },
+  { type: 'CCCD_BACK', label: 'CCCD mặt sau', description: 'Ảnh rõ mã QR và thông tin cấp thẻ' },
+  { type: 'PASSPORT', label: 'Hộ chiếu (nếu có)', description: 'Trang thông tin cá nhân của hộ chiếu' },
+];
+
 const federationTypeOptions: Array<{ value: FederationType; label: string }> = [
   { value: 'SPORTS_CENTER', label: 'Trung tâm thể thao' },
   { value: 'CLUB', label: 'Câu lạc bộ' },
@@ -71,6 +92,8 @@ const athleteSchema = z.object({
   firstName: z.string().min(1, 'Vui lòng nhập họ'),
   lastName: z.string().min(1, 'Vui lòng nhập tên'),
   fullName: z.string().min(3, 'Tên hiển thị phải có ít nhất 3 ký tự'),
+  email: z.string().email('Email không hợp lệ').or(z.literal('')).optional(),
+  phone: z.string().min(8, 'Số điện thoại phải có ít nhất 8 ký tự').or(z.literal('')).optional(),
   gender: z.enum(['MALE', 'FEMALE', 'MIXED']),
   birthDate: z.string().optional(),
   countryId: z.string().min(1, 'Vui lòng chọn quốc gia'),
@@ -84,13 +107,15 @@ const athleteSchema = z.object({
 
 type AthleteFormValues = z.infer<typeof athleteSchema>;
 
-export function AthleteForm({ athleteId, initialData }: { athleteId?: string; initialData?: any }) {
+export function AthleteForm({ athleteId, initialData, returnTo = '/cms/athletes' }: { athleteId?: string; initialData?: any; returnTo?: string }) {
   const { data: currentUser } = useSWR<any>('/auth/profile', fetcher);
   const router = useRouter();
   const toast = useSportDataToast();
   const [federationManagerOpen, setFederationManagerOpen] = useState(false);
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [avatarVersion, setAvatarVersion] = useState(0);
+  const [documentUploading, setDocumentUploading] = useState<AthleteDocumentType | null>(null);
+  const [pendingDocuments, setPendingDocuments] = useState<Partial<Record<AthleteDocumentType, File>>>({});
   const { data: countries = [] } = useSWR<CountryOption[]>('/countries', fetcher);
   const {
     data: federations = [],
@@ -98,6 +123,10 @@ export function AthleteForm({ athleteId, initialData }: { athleteId?: string; in
     mutate: mutateFederations,
   } = useSWR<FederationOption[]>('/federations', fetcher);
   const { data: sports = [] } = useSWR<any[]>('/sports', fetcher);
+  const { data: athleteDocuments = [], mutate: mutateDocuments } = useSWR<AthleteDocument[]>(
+    athleteId ? `/athletes/${athleteId}/documents` : null,
+    fetcher,
+  );
 
   const {
     control,
@@ -114,6 +143,8 @@ export function AthleteForm({ athleteId, initialData }: { athleteId?: string; in
       firstName: initialData?.firstName || '',
       lastName: initialData?.lastName || '',
       fullName: initialData?.fullName || '',
+      email: initialData?.email || '',
+      phone: initialData?.phone || '',
       gender: initialData?.gender || 'MALE',
       birthDate: initialData?.birthDate ? new Date(initialData.birthDate).toISOString().slice(0, 10) : '',
       countryId: initialData?.countryId || '',
@@ -196,19 +227,36 @@ export function AthleteForm({ athleteId, initialData }: { athleteId?: string; in
       ...formValues,
       categoryIds: Array.from(new Set(formValues.categoryIds)),
       birthDate: values.birthDate || undefined,
+      email: athleteId ? values.email || null : values.email || undefined,
+      phone: athleteId ? values.phone || null : values.phone || undefined,
       federationId: athleteId ? values.federationId || null : values.federationId || undefined,
       height: values.height ? Number(values.height) : undefined,
       weight: values.weight ? Number(values.weight) : undefined,
       photoUrl: values.photoUrl || undefined,
     };
+    let savedAthleteId = athleteId;
     try {
-      if (athleteId) await api.patch(`/athletes/${athleteId}`, payload);
-      else await api.post('/athletes', payload);
+      if (athleteId) {
+        await api.patch(`/athletes/${athleteId}`, payload);
+      } else {
+        const response = await api.post('/athletes', payload);
+        savedAthleteId = response.data.id;
+        for (const option of athleteDocumentOptions) {
+          const file = pendingDocuments[option.type];
+          if (file) await sendDocument(savedAthleteId, option.type, file);
+        }
+      }
       toast.success(athleteId ? 'Đã cập nhật vận động viên.' : 'Đã thêm vận động viên.');
-      router.push('/cms/athletes');
+      router.push(athleteId ? returnTo : '/cms/athletes');
       router.refresh();
     } catch (error: any) {
       const message = error.response?.data?.message || error.message || 'Không thể lưu vận động viên';
+      if (!athleteId && savedAthleteId) {
+        toast.error(`Hồ sơ đã được tạo nhưng chưa tải đủ giấy tờ: ${Array.isArray(message) ? message.join(', ') : message}`);
+        router.push(`/cms/athletes/${savedAthleteId}/edit`);
+        router.refresh();
+        return;
+      }
       toast.error(Array.isArray(message) ? message.join(', ') : message);
     }
   };
@@ -233,9 +281,85 @@ export function AthleteForm({ athleteId, initialData }: { athleteId?: string; in
     }
   };
 
+  const sendDocument = async (targetAthleteId: string, type: AthleteDocumentType, file: File) => {
+    const data = new FormData();
+    data.append('file', file);
+    await api.post(`/athletes/${targetAthleteId}/documents/${type}`, data, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  };
+
+  const selectDocument = async (type: AthleteDocumentType, file: File) => {
+    if (file.size > 4 * 1024 * 1024) {
+      toast.error('Tệp giấy tờ không được vượt quá 4 MB.');
+      return;
+    }
+    if (!athleteId) {
+      setPendingDocuments((current) => ({ ...current, [type]: file }));
+      return;
+    }
+
+    setDocumentUploading(type);
+    try {
+      await sendDocument(athleteId, type, file);
+      await mutateDocuments();
+      toast.success(`Đã tải lên ${documentLabel(type)}.`);
+    } catch (error: any) {
+      const message = error.response?.data?.message || error.message || 'Không thể tải giấy tờ';
+      toast.error(Array.isArray(message) ? message.join(', ') : message);
+    } finally {
+      setDocumentUploading(null);
+    }
+  };
+
+  const viewDocument = async (type: AthleteDocumentType) => {
+    const pendingFile = pendingDocuments[type];
+    if (pendingFile) {
+      const url = URL.createObjectURL(pendingFile);
+      window.open(url, '_blank', 'noopener,noreferrer');
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      return;
+    }
+    if (!athleteId) return;
+    try {
+      const response = await api.get(`/athletes/${athleteId}/documents/${type}`, {
+        responseType: 'blob',
+      });
+      const url = URL.createObjectURL(response.data);
+      window.open(url, '_blank', 'noopener,noreferrer');
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (error: any) {
+      const message = error.response?.data?.message || error.message || 'Không thể mở giấy tờ';
+      toast.error(Array.isArray(message) ? message.join(', ') : message);
+    }
+  };
+
+  const deleteDocument = async (type: AthleteDocumentType) => {
+    if (pendingDocuments[type]) {
+      setPendingDocuments((current) => {
+        const next = { ...current };
+        delete next[type];
+        return next;
+      });
+      return;
+    }
+    if (!athleteId) return;
+    try {
+      await api.delete(`/athletes/${athleteId}/documents/${type}`);
+      await mutateDocuments();
+      toast.success(`Đã xóa ${documentLabel(type)}.`);
+    } catch (error: any) {
+      const message = error.response?.data?.message || error.message || 'Không thể xóa giấy tờ';
+      toast.error(Array.isArray(message) ? message.join(', ') : message);
+    }
+  };
+
+  const canEditDocuments = ['ADMIN', 'CONTENT', 'GAMES_ADMIN'].includes(currentUser?.role);
+
   return (
     <>
       <Form layout="vertical" requiredMark={false} onFinish={handleSubmit(onSubmit)}>
+      <div className="grid gap-6">
       <Card className="cms-surface" title="Thông tin vận động viên">
         <Row gutter={[20, 2]}>
           <ControlledField name="firstName" control={control} label="Họ" error={errors.firstName?.message}>
@@ -246,6 +370,12 @@ export function AthleteForm({ athleteId, initialData }: { athleteId?: string; in
           </ControlledField>
           <ControlledField name="fullName" control={control} label="Tên hiển thị" error={errors.fullName?.message} wide>
             {(field) => <Input {...field} size="large" placeholder="Ví dụ: Nguyễn Minh Anh" />}
+          </ControlledField>
+          <ControlledField name="email" control={control} label="Email" error={errors.email?.message}>
+            {(field) => <Input {...field} size="large" type="email" placeholder="email@example.com" />}
+          </ControlledField>
+          <ControlledField name="phone" control={control} label="Số điện thoại" error={errors.phone?.message}>
+            {(field) => <Input {...field} size="large" type="tel" placeholder="0901234567" />}
           </ControlledField>
           <ControlledField name="gender" control={control} label="Giới tính" error={errors.gender?.message}>
             {(field) => <Select size="large" className="w-full" value={field.value} onChange={field.onChange} options={[{ value: 'MALE', label: 'Nam' }, { value: 'FEMALE', label: 'Nữ' }, { value: 'MIXED', label: 'Hỗn hợp' }]} />}
@@ -310,9 +440,6 @@ export function AthleteForm({ athleteId, initialData }: { athleteId?: string; in
           <ControlledField name="weight" control={control} label="Cân nặng (kg)" error={errors.weight?.message}>
             {(field) => <Input {...field} size="large" type="number" min={0} step={0.1} placeholder="65" />}
           </ControlledField>
-          <ControlledField name="photoUrl" control={control} label="URL ảnh đại diện" error={errors.photoUrl?.message} wide>
-            {(field) => <Input {...field} size="large" type="url" placeholder="https://..." />}
-          </ControlledField>
           {athleteId && (
             <Col span={24}>
               <Form.Item label="Tải ảnh đại diện trực tiếp">
@@ -339,7 +466,89 @@ export function AthleteForm({ athleteId, initialData }: { athleteId?: string; in
           )}
         </Row>
       </Card>
-      <Card className="cms-surface mt-6" title="Nội dung thi đấu">
+      <Card className="cms-surface" title="Giấy tờ định danh">
+          <Typography.Paragraph type="secondary" className="mb-5">
+            Tải ảnh CCCD hai mặt và hộ chiếu nếu có. {athleteId
+              ? 'Tệp mới sẽ thay thế tệp cùng loại và chuyển về trạng thái chờ xác minh.'
+              : 'Các tệp sẽ được tải lên tự động ngay sau khi tạo hồ sơ.'}
+          </Typography.Paragraph>
+          <Row gutter={[24, 24]}>
+            {athleteDocumentOptions.map((option) => {
+              const document = athleteDocuments.find((item) => item.type === option.type);
+              const pendingFile = pendingDocuments[option.type];
+              const hasFile = Boolean(document || pendingFile);
+              return (
+                <Col xs={24} md={8} key={option.type}>
+                  <div className="flex h-full flex-col rounded-xl border border-sdark-700 bg-sdark-950/35 p-4">
+                    <div className="mb-3 flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        <FileText className="h-5 w-5 text-sblue-300" />
+                        <Typography.Text strong>{option.label}</Typography.Text>
+                      </div>
+                      {pendingFile
+                        ? <Tag color="blue">Sẵn sàng tải</Tag>
+                        : document && <DocumentStatusTag status={document.verificationStatus} />}
+                    </div>
+                    <Typography.Text type="secondary" className="mb-4 block text-xs">
+                      {option.description}
+                    </Typography.Text>
+                    {(document || pendingFile) && (
+                      <Typography.Text type="secondary" className="mb-3 block text-xs">
+                        {pendingFile
+                          ? `${pendingFile.name} · ${formatBytes(pendingFile.size)}`
+                          : `${formatBytes(document!.size)} · cập nhật ${new Date(document!.updatedAt).toLocaleString('vi-VN')}`}
+                      </Typography.Text>
+                    )}
+                    <Space wrap className="mt-auto">
+                      {canEditDocuments && (
+                        <Upload
+                          accept="image/jpeg,image/png,image/webp,application/pdf"
+                          showUploadList={false}
+                          customRequest={async (options) => {
+                            await selectDocument(option.type, options.file as File);
+                            options.onSuccess?.({});
+                          }}
+                        >
+                          <Button
+                            htmlType="button"
+                            loading={documentUploading === option.type}
+                            icon={<UploadCloud className="h-4 w-4" />}
+                          >
+                            {hasFile ? 'Thay tệp' : 'Chọn tệp'}
+                          </Button>
+                        </Upload>
+                      )}
+                      {hasFile && (
+                        <Button
+                          htmlType="button"
+                          icon={<Eye className="h-4 w-4" />}
+                          onClick={() => void viewDocument(option.type)}
+                        >
+                          Xem
+                        </Button>
+                      )}
+                      {hasFile && canEditDocuments && (
+                        <Popconfirm
+                          title={`Xóa ${option.label}?`}
+                          okText="Xóa"
+                          cancelText="Hủy"
+                          okButtonProps={{ danger: true }}
+                          onConfirm={() => deleteDocument(option.type)}
+                        >
+                          <Button htmlType="button" danger icon={<Trash2 className="h-4 w-4" />} />
+                        </Popconfirm>
+                      )}
+                    </Space>
+                    <Typography.Text type="secondary" className="mt-3 text-xs">
+                      JPG, PNG, WebP hoặc PDF · tối đa 4 MB
+                    </Typography.Text>
+                  </div>
+                </Col>
+              );
+            })}
+          </Row>
+      </Card>
+      <Card className="cms-surface" title="Nội dung thi đấu">
         <Typography.Paragraph type="secondary" className="mb-5">
           Một vận động viên có thể đăng ký nhiều bộ môn và nhiều hạng thi đấu.
         </Typography.Paragraph>
@@ -406,7 +615,8 @@ export function AthleteForm({ athleteId, initialData }: { athleteId?: string; in
           </ControlledField>
         </Row>
       </Card>
-      <FormActions pending={isSubmitting} label={athleteId ? 'Lưu thay đổi' : 'Tạo vận động viên'} cancelHref="/cms/athletes" />
+      </div>
+      <FormActions pending={isSubmitting} label={athleteId ? 'Lưu thay đổi' : 'Tạo vận động viên'} cancelHref={athleteId ? returnTo : '/cms/athletes'} />
       </Form>
 
       <FederationManager
@@ -740,6 +950,22 @@ function FederationManager({
 function getRequestError(error: any, fallback: string) {
   const message = error.response?.data?.message || error.message || fallback;
   return Array.isArray(message) ? message.join(', ') : message;
+}
+
+function DocumentStatusTag({ status }: { status?: AthleteDocument['verificationStatus'] }) {
+  if (status === 'VERIFIED') return <Tag color="success">Đã xác minh</Tag>;
+  if (status === 'REJECTED') return <Tag color="error">Bị từ chối</Tag>;
+  return <Tag color="processing">Chờ xác minh</Tag>;
+}
+
+function documentLabel(type: AthleteDocumentType) {
+  return athleteDocumentOptions.find((option) => option.type === type)?.label || 'giấy tờ';
+}
+
+function formatBytes(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function uniqueCategories(categories: any[]) {

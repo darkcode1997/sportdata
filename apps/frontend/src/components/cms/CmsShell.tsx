@@ -3,9 +3,10 @@
 import { useEffect, useMemo, useState, type MouseEvent } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import useSWR, { SWRConfig } from 'swr';
-import { clearAuthToken, fetcher, getAuthToken } from '@/lib/api';
+import { api, clearAuthToken, fetcher, getAuthToken } from '@/lib/api';
 import {
   Avatar,
+  Badge,
   Button,
   ConfigProvider,
   Drawer,
@@ -13,12 +14,14 @@ import {
   Flex,
   Layout,
   Menu as AntMenu,
+  Popover,
   Spin,
   Tooltip,
   Typography,
 } from 'antd';
 import {
   Building2,
+  Bell,
   CalendarDays,
   ChevronDown,
   ChevronsLeft,
@@ -65,10 +68,21 @@ type CmsNavGroup = {
   children: CmsNavLeaf[];
 };
 
+type CmsNotification = {
+  id: string;
+  type: string;
+  title: string;
+  message: string;
+  href?: string | null;
+  readAt?: string | null;
+  createdAt: string;
+};
+
 const navItems: Array<CmsNavLeaf | CmsNavGroup> = [
   { label: 'Dashboard', key: '/cms', icon: <LayoutDashboard className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms'] },
   { label: 'Sự kiện', key: '/cms/events', icon: <CalendarDays className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/events'] },
   { label: 'Bộ môn & hạng đấu', key: '/cms/sports', icon: <Trophy className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/sports'] },
+  { label: 'Liên hệ', key: '/cms/contacts', icon: <Mail className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/contacts'] },
   {
     label: 'Đơn vị & vận động viên',
     key: 'cms-participants',
@@ -85,7 +99,6 @@ const navItems: Array<CmsNavLeaf | CmsNavGroup> = [
     children: [
       { label: 'Banner trang chủ', key: '/cms/banners', icon: <Images className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/banners'] },
       { label: 'Tin tức', key: '/cms/news', icon: <Newspaper className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/news'] },
-      { label: 'Liên hệ', key: '/cms/contacts', icon: <Mail className="h-5 w-5" />, roles: CMS_PAGE_ACCESS['/cms/contacts'] },
     ],
   },
   {
@@ -119,6 +132,10 @@ function CmsChrome({ children }: { children: React.ReactNode }) {
   const userRole = profile?.role || null;
   const userLabel = profile?.username || profile?.email || null;
   const authenticated = Boolean(profile && isCmsRole(userRole));
+  const { data: notifications, mutate: mutateNotifications } = useSWR<{
+    items: CmsNotification[];
+    unreadCount: number;
+  }>(authenticated ? '/notifications?limit=20' : null, fetcher, { refreshInterval: 10_000 });
 
   const isLight = colorMode === 'light';
   const cmsTheme = useMemo(() => createSportdataTheme(colorMode), [colorMode]);
@@ -223,6 +240,49 @@ function CmsChrome({ children }: { children: React.ReactNode }) {
       return next;
     });
   };
+
+  const openNotification = async (notification: CmsNotification) => {
+    if (!notification.readAt) await api.patch(`/notifications/${notification.id}/read`);
+    await mutateNotifications();
+    if (notification.href) router.push(notification.href);
+  };
+
+  const markAllNotificationsRead = async () => {
+    await api.patch('/notifications/read-all');
+    await mutateNotifications();
+  };
+
+  const notificationContent = (
+    <div className="w-[min(380px,calc(100vw-32px))]">
+      <div className="flex items-center justify-between border-b border-slate-200/15 px-1 pb-3">
+        <Typography.Text strong>Thông báo CMS</Typography.Text>
+        <Button type="link" size="small" disabled={!notifications?.unreadCount} onClick={() => void markAllNotificationsRead()}>
+          Đánh dấu đã đọc
+        </Button>
+      </div>
+      <div className="max-h-[420px] overflow-y-auto py-2">
+        {notifications?.items?.length ? notifications.items.map((notification) => (
+          <button
+            type="button"
+            key={notification.id}
+            className={`block w-full rounded-lg px-3 py-3 text-left transition hover:bg-slate-500/10 ${notification.readAt ? 'opacity-65' : 'bg-sky-500/[0.07]'}`}
+            onClick={() => void openNotification(notification)}
+          >
+            <span className="flex items-start gap-2">
+              {!notification.readAt && <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-sky-500" />}
+              <span className="min-w-0">
+                <Typography.Text strong className="block text-sm">{notification.title}</Typography.Text>
+                <Typography.Text type="secondary" className="mt-1 block text-xs leading-5">{notification.message}</Typography.Text>
+                <Typography.Text type="secondary" className="mt-1 block text-[11px]">
+                  {new Date(notification.createdAt).toLocaleString('vi-VN')}
+                </Typography.Text>
+              </span>
+            </span>
+          </button>
+        )) : <div className="px-4 py-8 text-center text-sm text-slate-500">Chưa có thông báo</div>}
+      </div>
+    </div>
+  );
 
   const renderThemeToggle = () => (
     <Tooltip title={isLight ? 'Chuyển sang giao diện tối' : 'Chuyển sang giao diện sáng'}>
@@ -371,6 +431,11 @@ function CmsChrome({ children }: { children: React.ReactNode }) {
 
             <Flex align="center" gap={8} className="h-full">
               {renderThemeToggle()}
+              <Popover content={notificationContent} trigger="click" placement="bottomRight">
+                <Badge count={notifications?.unreadCount || 0} overflowCount={99} size="small">
+                  <Button type="text" shape="circle" aria-label="Mở thông báo CMS" icon={<Bell className="h-5 w-5" />} />
+                </Badge>
+              </Popover>
               <Dropdown
                 trigger={['click']}
                 placement="bottomRight"

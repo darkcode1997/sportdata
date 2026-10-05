@@ -23,6 +23,7 @@ import { BannersModule } from './banners/banners.module';
 import { ParticipantsModule } from './participants/participants.module';
 import { PaymentsModule } from './payments/payments.module';
 import { SystemSettingsModule } from './system-settings/system-settings.module';
+import { NotificationsModule } from './notifications/notifications.module';
 
 @Module({
   imports: [
@@ -50,6 +51,7 @@ import { SystemSettingsModule } from './system-settings/system-settings.module';
     ParticipantsModule,
     PaymentsModule,
     SystemSettingsModule,
+    NotificationsModule,
   ],
 })
 export class AppModule {}

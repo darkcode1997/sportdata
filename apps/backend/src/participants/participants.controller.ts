@@ -23,6 +23,7 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { UserRole } from '../common/enums/user-role.enum';
 import {
   CreatePublicRegistrationDto,
+  AdminCreateRegistrationDto,
   ConfirmIdentityOcrDto,
   DownloadSubmissionTicketsDto,
   FederationAccountRegisterDto,
@@ -195,6 +196,26 @@ export class ParticipantsController {
   @Roles(UserRole.ADMIN, UserRole.GAMES_ADMIN, UserRole.READ_ONLY)
   adminRegistrations(@Query('eventId') eventId?: string) {
     return this.service.listAllRegistrations(eventId);
+  }
+
+  @Post('admin/registrations/eligibility')
+  @UseGuards(JwtAuthGuard)
+  @Roles(UserRole.ADMIN, UserRole.GAMES_ADMIN)
+  checkAdminRegistrationEligibility(@Body() dto: AdminCreateRegistrationDto) {
+    return this.service.checkAdminRegistrationEligibility(dto);
+  }
+
+  @Post('admin/registrations')
+  @UseGuards(JwtAuthGuard)
+  @Roles(UserRole.ADMIN, UserRole.GAMES_ADMIN)
+  createAdminRegistration(
+    @Req() request: Request & { user?: { email?: string; username?: string; sub?: string } },
+    @Body() dto: AdminCreateRegistrationDto,
+  ) {
+    return this.service.createAdminRegistration(
+      dto,
+      request.user?.email || request.user?.username || request.user?.sub || 'CMS',
+    );
   }
 
   @Get('admin/federation-accounts')

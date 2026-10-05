@@ -283,6 +283,7 @@ model User {
   updatedAt                DateTime   @updatedAt
   permissions              Permission[] @default([])
   auditLogs                AuditLog[] @relation("AuditActor")
+  cmsNotifications         CmsNotification[]
 
   @@index([isActive, role])
 }
@@ -510,6 +511,7 @@ model Event {
   bankAccountNumber        String?
   bankAccountName          String?
   registrations            EventRegistration[]
+  cmsNotifications         CmsNotification[]
   registrationSubmissions  RegistrationSubmission[]
   statistics               Statistic[]
   venues                   Venue[]                  @relation("EventVenues")
@@ -534,6 +536,8 @@ model Athlete {
   firstName            String
   lastName             String
   fullName             String
+  email                String?
+  phone                String?
   gender               Gender
   birthDate            DateTime?
   weight               Float?
@@ -563,6 +567,7 @@ model Athlete {
   @@index([countryId])
   @@index([federationId])
   @@index([fullName])
+  @@index([email])
 }
 
 model AthleteMedia {
@@ -637,6 +642,7 @@ model EventRegistration {
   paymentTransactions    PaymentTransaction[]
   statusHistory          RegistrationStatusHistory[]
   paymentStatusHistory   PaymentStatusHistory[]
+  cmsNotifications       CmsNotification[]
   createdAt              DateTime                    @default(now())
   updatedAt              DateTime                    @updatedAt
 
@@ -646,6 +652,26 @@ model EventRegistration {
   @@index([eventId, status])
   @@index([categoryId])
   @@index([paymentStatus, createdAt])
+}
+
+model CmsNotification {
+  id             String             @id @default(cuid())
+  userId         String
+  user           User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  eventId        String?
+  event          Event?             @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  registrationId String?
+  registration   EventRegistration? @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+  type           String
+  title          String
+  message        String
+  href           String?
+  readAt         DateTime?
+  createdAt      DateTime           @default(now())
+
+  @@index([userId, readAt, createdAt])
+  @@index([eventId, createdAt])
+  @@index([registrationId])
 }
 
 model RegistrationStatusHistory {

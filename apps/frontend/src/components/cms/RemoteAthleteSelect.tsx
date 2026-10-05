@@ -34,6 +34,7 @@ type RemoteAthleteSelectProps = {
   maxTagCount?: number | 'responsive';
   selectionLabel?: string;
   showPageControls?: boolean;
+  allAthletes?: boolean;
 };
 
 export function RemoteAthleteSelect({
@@ -57,6 +58,7 @@ export function RemoteAthleteSelect({
   maxTagCount,
   selectionLabel = 'VĐV',
   showPageControls = false,
+  allAthletes = false,
 }: RemoteAthleteSelectProps) {
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -85,6 +87,9 @@ export function RemoteAthleteSelect({
     if (federationId) parameters.set('federationId', federationId);
     else if (federationIdsKey) parameters.set('federationIds', federationIdsKey);
     if (includeIndependent) parameters.set('includeIndependent', 'true');
+    if (allAthletes) {
+      return `/athletes?${parameters}`;
+    }
     if (eventId && categoryId) {
       return `/events/${eventId}/categories/${categoryId}/eligible-athletes?${parameters}`;
     }
@@ -97,7 +102,7 @@ export function RemoteAthleteSelect({
       return `/athletes?${parameters}`;
     }
     return null;
-  }, [categoryId, categoryIdsKey, countryId, debouncedSearch, eventId, federationId, federationIdsKey, includeIndependent, page]);
+  }, [allAthletes, categoryId, categoryIdsKey, countryId, debouncedSearch, eventId, federationId, federationIdsKey, includeIndependent, page]);
 
   const { data, isLoading } = useSWR<any>(disabled ? null : endpoint, fetcher, {
     keepPreviousData: true,

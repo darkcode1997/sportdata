@@ -6,11 +6,12 @@ import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import dayjs from 'dayjs';
-import { Alert, Card, Col, DatePicker, Form, Input, Row, Select } from 'antd';
+import { Alert, Button, Card, Col, DatePicker, Form, Input, Row, Select, Tag } from 'antd';
 import { api, fetcher } from '@/lib/api';
 import { FormActions } from './AthleteForm';
 import { RemoteAthleteSelect } from './RemoteAthleteSelect';
 import { useSportDataToast } from '@/hooks/useSportDataToast';
+import { MATCH_STATUS_META, RESULT_STATUS_META, WIN_METHOD_LABELS } from '@/lib/vi-labels';
 
 const matchSchema = z.object({
   eventId: z.string().min(1, 'Vui lòng chọn sự kiện'),
@@ -128,17 +129,54 @@ export function MatchForm({ matchId, initialData, returnTo = '/cms/events' }: { 
     label: `${category.name}${category.sport?.name ? ` · ${category.sport.name}` : ''}`,
   }));
   const initialAthletes = [initialData?.athlete1, initialData?.athlete2].filter(Boolean);
+  const winnerName = initialData?.winner?.fullName
+    || (initialData?.winnerId === initialData?.athlete1Id ? initialData?.athlete1?.fullName : null)
+    || (initialData?.winnerId === initialData?.athlete2Id ? initialData?.athlete2?.fullName : null);
 
   return (
     <Form layout="vertical" requiredMark={false} onFinish={handleSubmit(onSubmit)}>
+      {matchId && (
+        <Card
+          className="cms-surface mb-5"
+          title="Kết quả từ bảng điểm"
+          extra={<Button href={`/cms/matches/${matchId}/scoreboard`} target="sportdata-scoreboard">Mở bảng điểm</Button>}
+        >
+          <div className="grid gap-4 md:grid-cols-2">
+            {[
+              {
+                athlete: initialData?.athlete1,
+                score: initialData?.athlete1Score,
+                advantages: initialData?.athlete1Advantages,
+                penalties: initialData?.athlete1Penalties,
+              },
+              {
+                athlete: initialData?.athlete2,
+                score: initialData?.athlete2Score,
+                advantages: initialData?.athlete2Advantages,
+                penalties: initialData?.athlete2Penalties,
+              },
+            ].map((side, index) => (
+              <div key={side.athlete?.id || index} className="rounded-xl border border-slate-700/80 bg-slate-950/30 p-4">
+                <div className="truncate text-sm text-slate-400">VĐV {index + 1} · {side.athlete?.fullName || 'Chờ xác định'}</div>
+                <div className="mt-2 text-4xl font-bold tabular-nums text-slate-100">{formatMatchScore(side.score)}</div>
+                <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-400">
+                  <span>Lợi thế: <strong className="text-slate-200">{side.advantages || 0}</strong></span>
+                  <span>·</span>
+                  <span>Lỗi phạt: <strong className="text-slate-200">{side.penalties || 0}</strong></span>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="mt-4 flex flex-wrap items-center gap-2 text-sm">
+            <Tag color={MATCH_STATUS_META[initialData?.status]?.color}>{MATCH_STATUS_META[initialData?.status]?.label || initialData?.status}</Tag>
+            {initialData?.resultStatus && <Tag color={RESULT_STATUS_META[initialData.resultStatus]?.color}>{RESULT_STATUS_META[initialData.resultStatus]?.label || initialData.resultStatus}</Tag>}
+            {winnerName && <span>Người thắng: <strong>{winnerName}</strong></span>}
+            {initialData?.winMethod && <span>· {WIN_METHOD_LABELS[initialData.winMethod] || initialData.winMethod}</span>}
+          </div>
+          <div className="mt-2 text-xs text-slate-500">Dữ liệu tự động làm mới từ bảng điểm sau mỗi thao tác chấm điểm.</div>
+        </Card>
+      )}
       <Card className="cms-surface" title="Thông tin trận đấu">
-        <Alert
-          className="mb-5"
-          showIcon
-          type="info"
-          message="Trang này chỉ quản lý cấu trúc và lịch thi đấu"
-          description="Điểm số, người thắng và trạng thái hoàn thành được quản lý tại mục Trận đấu để có lịch sử và người chịu trách nhiệm."
-        />
         <Row gutter={[20, 2]}>
           <ControlledField name="eventId" control={control} label="Sự kiện" error={errors.eventId?.message} required>
             {(field) => <Select size="large" showSearch optionFilterProp="label" className="w-full" placeholder="Chọn sự kiện" value={field.value || undefined} onChange={(value) => { field.onChange(value); setValue('categoryId', ''); setValue('athlete1Id', ''); setValue('athlete2Id', ''); setValue('fopId', ''); }} options={eventOptions} />}
@@ -192,6 +230,11 @@ export function MatchForm({ matchId, initialData, returnTo = '/cms/events' }: { 
       <FormActions pending={isSubmitting} label={matchId ? 'Lưu thay đổi' : 'Tạo trận đấu'} cancelHref={returnTo} />
     </Form>
   );
+}
+
+function formatMatchScore(value: unknown) {
+  const score = Number(value || 0);
+  return Number.isInteger(score) ? String(score) : score.toLocaleString('vi-VN', { maximumFractionDigits: 2 });
 }
 
 function ControlledField({ name, control, label, error, children, required = false }: { name: keyof MatchFormValues; control: any; label: string; error?: string; children: (field: any) => React.ReactElement; required?: boolean }) {

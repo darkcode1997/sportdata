@@ -7,9 +7,12 @@ import {
   IsOptional,
   IsString,
   IsBoolean,
+  IsIn,
   MaxLength,
   Min,
   MinLength,
+  ValidateIf,
+  ValidateNested,
 } from 'class-validator';
 import {
   AccountVerificationStatus,
@@ -131,6 +134,77 @@ export class CreatePublicRegistrationDto {
 
   @IsString()
   categoryId: string;
+}
+
+export class AdminRegistrationAthleteDto {
+  @IsString()
+  @MinLength(1)
+  firstName: string;
+
+  @IsString()
+  @MinLength(1)
+  lastName: string;
+
+  @IsString()
+  @MinLength(2)
+  fullName: string;
+
+  @IsEmail()
+  email: string;
+
+  @IsString()
+  @MinLength(8)
+  phone: string;
+
+  @IsEnum(Gender)
+  gender: Gender;
+
+  @IsDateString()
+  birthDate: string;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  weight: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  height?: number;
+
+  @IsString()
+  countryId: string;
+
+  @IsOptional()
+  @IsString()
+  federationId?: string;
+}
+
+export class AdminCreateRegistrationDto {
+  @IsString()
+  eventId: string;
+
+  @IsString()
+  categoryId: string;
+
+  @ValidateIf((value: AdminCreateRegistrationDto) => !value.athlete)
+  @IsString()
+  athleteId?: string;
+
+  @ValidateIf((value: AdminCreateRegistrationDto) => !value.athleteId)
+  @ValidateNested()
+  @Type(() => AdminRegistrationAthleteDto)
+  athlete?: AdminRegistrationAthleteDto;
+
+  @IsOptional()
+  @IsIn([PaymentStatus.PENDING, PaymentStatus.PAID])
+  paymentStatus?: PaymentStatus;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  paymentNote?: string;
 }
 
 export class UpdateRegistrationStatusDto {

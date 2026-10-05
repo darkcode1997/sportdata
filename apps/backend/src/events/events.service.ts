@@ -638,6 +638,7 @@ export class EventsService {
         select: {
           matches: true,
           athletes: true,
+          registrations: true,
         },
       },
     };
