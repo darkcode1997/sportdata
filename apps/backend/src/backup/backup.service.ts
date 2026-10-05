@@ -13,6 +13,7 @@ export const MAX_BACKUP_FILE_SIZE = 2 * 1024 * 1024 * 1024;
 
 const BACKUP_FORMAT = 'sportdata-jsonl';
 const BACKUP_VERSION = 1;
+const BACKUP_BYTES_KEY = '$sportdataBytes';
 const MAX_BATCH_ROWS = 500;
 const MAX_BATCH_BYTES = 4 * 1024 * 1024;
 
@@ -105,7 +106,7 @@ export class BackupService {
         const stream = client.query(query);
 
         for await (const data of stream) {
-          const row: BackupRow = { type: 'row', table: table.table, data };
+          const row: BackupRow = { type: 'row', table: table.table, data: serializeRowData(data) };
           const line = await writeLine(row);
           hash.update(line);
           tableRows += 1;
@@ -191,7 +192,8 @@ export class BackupService {
           const record = JSON.parse(line) as BackupMetadata | BackupRow | BackupEnd;
           if (record.type !== 'row') continue;
 
-          const rowBytes = Buffer.byteLength(JSON.stringify(record.data));
+          const restoredData = deserializeRowData(record.data);
+          const rowBytes = Buffer.byteLength(JSON.stringify(restoredData));
           if (
             batch.length &&
             (record.table !== batchTable ||
@@ -201,7 +203,7 @@ export class BackupService {
             await flushBatch();
           }
           batchTable = record.table;
-          batch.push(record.data);
+          batch.push(restoredData);
           batchBytes += rowBytes;
         }
         await flushBatch();
@@ -322,7 +324,7 @@ export class BackupService {
           ) {
             throw new BadRequestException('Đây không phải file backup SportData được hỗ trợ');
           }
-          if (JSON.stringify(record.schema) !== JSON.stringify(schema)) {
+          if (!schemasAreCompatible(record.schema, schema)) {
             throw new BadRequestException(
               'Cấu trúc file backup không tương thích với phiên bản hệ thống hiện tại',
             );
@@ -411,4 +413,44 @@ export class BackupService {
 
 function quoteIdentifier(identifier: string) {
   return `"${identifier.replace(/"/g, '""')}"`;
+}
+
+function schemasAreCompatible(backupSchema: SchemaTable[], currentSchema: SchemaTable[]) {
+  if (backupSchema.length !== currentSchema.length) return false;
+
+  const backupTables = new Map(backupSchema.map(({ table, columns }) => [table, new Set(columns)]));
+  return currentSchema.every(({ table, columns }) => {
+    const backupColumns = backupTables.get(table);
+    return backupColumns?.size === columns.length && columns.every((column) => backupColumns.has(column));
+  });
+}
+
+function serializeRowData(data: Record<string, unknown>) {
+  return Object.fromEntries(Object.entries(data).map(([column, value]) => [
+    column,
+    Buffer.isBuffer(value) ? { [BACKUP_BYTES_KEY]: value.toString('base64') } : value,
+  ]));
+}
+
+function deserializeRowData(data: Record<string, unknown>) {
+  return Object.fromEntries(Object.entries(data).map(([column, value]) => [
+    column,
+    deserializeBinaryValue(value),
+  ]));
+}
+
+function deserializeBinaryValue(value: unknown) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+
+  const encoded = value as Record<string, unknown>;
+  if (typeof encoded[BACKUP_BYTES_KEY] === 'string') {
+    return `\\x${Buffer.from(encoded[BACKUP_BYTES_KEY], 'base64').toString('hex')}`;
+  }
+  if (encoded.type === 'Buffer' && Array.isArray(encoded.data)) {
+    const bytes = encoded.data;
+    if (bytes.every((byte) => Number.isInteger(byte) && byte >= 0 && byte <= 255)) {
+      return `\\x${Buffer.from(bytes).toString('hex')}`;
+    }
+  }
+  return value;
 }

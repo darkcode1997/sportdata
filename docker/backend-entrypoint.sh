@@ -2,7 +2,7 @@
 set -eu
 
 echo "Preparing SportData database..."
-npx prisma db push --schema=apps/backend/prisma/schema.prisma --skip-generate
+npx prisma migrate deploy --schema=apps/backend/prisma/schema.prisma
 npx prisma db execute --schema=apps/backend/prisma/schema.prisma --file=apps/backend/prisma/sql/match-schedule-constraints.sql
 
 if [ "${SEED_DATABASE:-false}" = "true" ]; then

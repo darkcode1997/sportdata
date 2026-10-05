@@ -29,11 +29,11 @@ export function AthleteCompetitionHistory({ athleteId, athlete }: AthleteCompeti
     fetcher,
   );
   const matches = data?.items || [];
-  const finishedMatches = finishedData?.items || [];
-  const statistics = athlete.statistics || [];
-  const careerStatistics = statistics.some((item: any) => !item.eventId)
+  const finishedMatches = useMemo(() => finishedData?.items || [], [finishedData?.items]);
+  const statistics = useMemo(() => athlete.statistics || [], [athlete.statistics]);
+  const careerStatistics = useMemo(() => statistics.some((item: any) => !item.eventId)
     ? statistics.filter((item: any) => !item.eventId)
-    : statistics;
+    : statistics, [statistics]);
   const summary = useMemo(() => careerStatistics.reduce((total: any, item: any) => ({
     totalMatches: total.totalMatches + (item.totalMatches || 0),
     totalWins: total.totalWins + (item.totalWins || 0),

@@ -8,6 +8,9 @@ COPY apps/frontend/package.json ./apps/frontend/package.json
 RUN npm ci
 
 COPY apps/frontend ./apps/frontend
+# The frontend re-exports the shared ticket layout contract from the backend.
+# Keep that source available in the frontend build image as well.
+COPY apps/backend/src/events/ticket-design.ts ./apps/backend/src/events/ticket-design.ts
 
 ARG API_INTERNAL_URL=http://backend:4000/api
 ARG IMAGE_HOSTNAMES=images.unsplash.com,flagcdn.com
