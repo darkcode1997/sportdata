@@ -1,7 +1,9 @@
-import { createApplication } from "./create-application";
+import { NestFactory } from "@nestjs/core";
+import { AppModule } from "./app.module";
+import { configureApplication } from "./create-application";
 
 async function bootstrap() {
-  const app = await createApplication();
+  const app = await configureApplication(await NestFactory.create(AppModule));
 
   const port = parseInt(process.env.PORT || "4000", 10) || 4000;
   const net = await import("net");

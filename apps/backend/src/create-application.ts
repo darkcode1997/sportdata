@@ -1,5 +1,5 @@
 import { ValidationPipe } from "@nestjs/common";
-import { NestFactory } from "@nestjs/core";
+import type { INestApplication } from "@nestjs/common";
 import { SwaggerModule, DocumentBuilder } from "@nestjs/swagger";
 import compression from "compression";
 import { rateLimit } from "express-rate-limit";
@@ -7,11 +7,8 @@ import helmet from "helmet";
 import { raw } from "express";
 import type { NextFunction, Request, Response } from "express";
 import { constants as zlibConstants } from "zlib";
-import { AppModule } from "./app.module";
 
-export async function createApplication() {
-  const app = await NestFactory.create(AppModule);
-
+export async function configureApplication(app: INestApplication) {
   app.getHttpAdapter().getInstance().set("trust proxy", 1);
   app.use(
     "/api/system-backup/import/uploads",
