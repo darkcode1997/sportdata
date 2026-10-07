@@ -4,7 +4,7 @@
   "fluid": true,
   "regions": ["sin1"],
   "functions": {
-    "src/main.ts": {
+    "api/*.ts": {
       "maxDuration": 60,
       "includeFiles": "prisma/**"
     }
