@@ -8,6 +8,7 @@ import {
   IsString,
   IsBoolean,
   IsIn,
+  Max,
   MaxLength,
   Min,
   MinLength,
@@ -56,6 +57,7 @@ export class ParticipantRegisterDto {
   @Type(() => Number)
   @IsNumber()
   @Min(1)
+  @Max(500)
   weight?: number;
 }
 
@@ -143,7 +145,15 @@ export class UpdateParticipantProfileDto {
   @Type(() => Number)
   @IsNumber()
   @Min(1)
+  @Max(500)
   weight?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  @Max(300)
+  height?: number;
 }
 
 export class CreatePublicRegistrationDto {

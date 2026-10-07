@@ -4,14 +4,16 @@ import { useEffect, useMemo, useState, type ComponentProps } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import useSWR from 'swr';
-import { Avatar, Button, Card, Empty, Image as AntImage, Segmented, Spin, Tag, Upload } from 'antd';
-import { CreditCard, Download, Eye, FileCheck2, FileText, ImagePlus, ScanText, TicketCheck, UploadCloud, UserRound } from 'lucide-react';
+import dayjs, { type Dayjs } from 'dayjs';
+import { Avatar, Button, Card, Col, DatePicker, Empty, Form, Image as AntImage, Input, InputNumber, Modal, Row, Segmented, Select, Spin, Tag, Upload } from 'antd';
+import { CreditCard, Download, Eye, FileCheck2, FileText, ImagePlus, Pencil, Save, ScanText, TicketCheck, UploadCloud, UserRound } from 'lucide-react';
 import { CameraCaptureButton } from '@/components/CameraCaptureButton';
 import { EventParticipationCard } from '@/components/EventParticipationCard';
 import type { TicketDesign } from '@/lib/ticket-design';
 import { IdentityOcrReviewModal, type IdentityOcrFields, type IdentityOcrResult } from '@/components/IdentityOcrReviewModal';
 import { useSportDataToast } from '@/hooks/useSportDataToast';
-import { clearParticipantSession, getParticipantAccount, getParticipantToken, participantApi, participantError } from '@/lib/participant-auth';
+import { fetcher } from '@/lib/api';
+import { clearParticipantSession, getParticipantAccount, getParticipantToken, participantApi, participantError, setParticipantSession } from '@/lib/participant-auth';
 import type { ParticipationTicket, TicketStatistics } from '@/lib/ticket-types';
 
 type MediaType = 'AVATAR' | 'CCCD_FRONT' | 'CCCD_BACK' | 'PASSPORT';
@@ -28,9 +30,10 @@ type Profile = {
     birthDate?: string | null;
     gender: string;
     weight?: number | null;
+    height?: number | null;
     photoUrl?: string | null;
-    country: { name: string; code: string };
-    federation?: { name: string } | null;
+    country: { id: string; name: string; code: string };
+    federation?: { id: string; name: string } | null;
     media: {
       type: MediaType;
       mimeType: string;
@@ -44,6 +47,18 @@ type Profile = {
       updatedAt: string;
     }[];
   };
+};
+type Country = { id: string; code: string; name: string };
+type Federation = { id: string; name: string; countryId: string };
+type ProfileFormValues = {
+  displayName: string;
+  phone?: string;
+  birthDate: Dayjs;
+  gender: string;
+  countryId: string;
+  federationId?: string;
+  weight?: number;
+  height?: number;
 };
 type MediaAsset = { url: string; mimeType: string };
 type Registration = {
@@ -84,6 +99,7 @@ type Registration = {
 };
 
 const authFetcher = (url: string) => participantApi.get(url).then((response) => response.data);
+const emptyMediaItems: Profile['athlete']['media'] = [];
 const mediaLabels: Record<MediaType, string> = {
   AVATAR: 'Ảnh đại diện',
   CCCD_FRONT: 'CCCD mặt trước',
@@ -145,15 +161,21 @@ function registrationTicket(registration: Registration): ParticipationTicket {
 export default function ParticipantAccountPage() {
   const router = useRouter();
   const toast = useSportDataToast();
+  const [profileForm] = Form.useForm<ProfileFormValues>();
   const [tab, setTab] = useState<'profile' | 'tickets'>('profile');
   const [mediaAssets, setMediaAssets] = useState<Partial<Record<MediaType, MediaAsset>>>({});
   const [ocrReview, setOcrReview] = useState<{ type: MediaType; result: IdentityOcrResult }>();
   const [confirmingOcr, setConfirmingOcr] = useState(false);
+  const [editingProfile, setEditingProfile] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
   const sessionAccount = getParticipantAccount();
   const isAthleteAccount = sessionAccount?.accountType !== 'FEDERATION';
   const { data: profile, error, isLoading, mutate } = useSWR<Profile>(getParticipantToken() && isAthleteAccount ? '/participant-auth/me' : null, authFetcher);
   const { data: registrations = [], mutate: mutateRegistrations } = useSWR<Registration[]>(getParticipantToken() && isAthleteAccount ? '/participant-auth/registrations' : null, authFetcher);
-  const mediaItems = useMemo(() => profile?.athlete.media || [], [profile?.athlete.media]);
+  const { data: countries = [] } = useSWR<Country[]>('/countries', fetcher);
+  const { data: federations = [] } = useSWR<Federation[]>('/federations', fetcher);
+  const selectedCountryId = Form.useWatch('countryId', profileForm);
+  const mediaItems = profile?.athlete.media ?? emptyMediaItems;
   const uploadedTypes = useMemo(() => new Set(mediaItems.map((item) => item.type)), [mediaItems]);
   const mediaByType = useMemo(() => new Map(mediaItems.map((item) => [item.type, item])), [mediaItems]);
   const cccdComplete = uploadedTypes.has('CCCD_FRONT') && uploadedTypes.has('CCCD_BACK');
@@ -242,6 +264,43 @@ export default function ParticipantAccountPage() {
     options.onSuccess?.({});
   };
 
+  const openProfileEditor = () => {
+    profileForm.setFieldsValue({
+      displayName: profile!.athlete.fullName,
+      phone: profile!.phone || undefined,
+      birthDate: profile!.athlete.birthDate ? dayjs(profile!.athlete.birthDate) : undefined,
+      gender: profile!.athlete.gender,
+      countryId: profile!.athlete.country.id,
+      federationId: profile!.athlete.federation?.id,
+      weight: profile!.athlete.weight ?? undefined,
+      height: profile!.athlete.height ?? undefined,
+    });
+    setEditingProfile(true);
+  };
+
+  const saveProfile = async (values: ProfileFormValues) => {
+    setSavingProfile(true);
+    try {
+      const { data } = await participantApi.patch<Profile>('/participant-auth/me', {
+        ...values,
+        phone: values.phone?.trim() || '',
+        birthDate: values.birthDate.format('YYYY-MM-DD'),
+        federationId: values.federationId || null,
+      });
+      const token = getParticipantToken();
+      if (token && sessionAccount) {
+        setParticipantSession(token, { ...sessionAccount, displayName: data.displayName });
+      }
+      await Promise.all([mutate(data, false), mutateRegistrations()]);
+      setEditingProfile(false);
+      toast.success('Đã cập nhật thông tin tài khoản.');
+    } catch (requestError) {
+      toast.error(participantError(requestError, 'Không thể cập nhật thông tin tài khoản'));
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
   if (isLoading || !profile) {
     return <main className="grid min-h-[60vh] place-items-center"><Spin size="large" /></main>;
   }
@@ -276,7 +335,10 @@ export default function ParticipantAccountPage() {
 
         {tab === 'profile' ? (
           <div className="grid gap-6 lg:grid-cols-[1fr_1.5fr]">
-            <Card title="Thông tin chi tiết tài khoản">
+            <Card
+              title="Thông tin chi tiết tài khoản"
+              extra={<Button type="text" icon={<Pencil className="h-4 w-4" />} onClick={openProfileEditor}>Chỉnh sửa</Button>}
+            >
               <dl className="space-y-4 text-sm">
                 <div><dt className="text-slate-500">Họ và tên</dt><dd className="font-semibold text-slate-100">{profile.athlete.fullName}</dd></div>
                 <div><dt className="text-slate-500">Email</dt><dd className="break-all font-semibold text-slate-100">{profile.email}</dd></div>
@@ -290,6 +352,7 @@ export default function ParticipantAccountPage() {
                   <dd className="font-semibold text-slate-100">{profile.athlete.federation?.name || 'Chưa liên kết'}</dd>
                 </div>
                 <div><dt className="text-slate-500">Cân nặng đăng ký</dt><dd className="font-semibold text-slate-100">{profile.athlete.weight ? `${profile.athlete.weight} kg` : 'Chưa cập nhật'}</dd></div>
+                <div><dt className="text-slate-500">Chiều cao</dt><dd className="font-semibold text-slate-100">{profile.athlete.height ? `${profile.athlete.height} cm` : 'Chưa cập nhật'}</dd></div>
               </dl>
             </Card>
             <Card
@@ -425,6 +488,84 @@ export default function ParticipantAccountPage() {
           <Card><Empty description="Bạn chưa có vé tham dự nào" /></Card>
         )}
       </div>
+      <Modal
+        open={editingProfile}
+        title="Chỉnh sửa thông tin tài khoản"
+        footer={null}
+        destroyOnHidden
+        onCancel={() => setEditingProfile(false)}
+      >
+        <Form<ProfileFormValues>
+          form={profileForm}
+          layout="vertical"
+          requiredMark={false}
+          onFinish={saveProfile}
+        >
+          <Row gutter={16}>
+            <Col span={24}>
+              <Form.Item name="displayName" label="Họ và tên" rules={[{ required: true, min: 2, message: 'Vui lòng nhập họ và tên' }]}>
+                <Input autoComplete="name" />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={12}>
+              <Form.Item name="phone" label="Số điện thoại">
+                <Input autoComplete="tel" />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={12}>
+              <Form.Item name="birthDate" label="Ngày sinh" rules={[{ required: true, message: 'Vui lòng chọn ngày sinh' }]}>
+                <DatePicker className="w-full" format="DD/MM/YYYY" disabledDate={(date) => date.isAfter(dayjs(), 'day')} />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={12}>
+              <Form.Item name="gender" label="Giới tính" rules={[{ required: true, message: 'Vui lòng chọn giới tính' }]}>
+                <Select options={[
+                  { value: 'MALE', label: 'Nam' },
+                  { value: 'FEMALE', label: 'Nữ' },
+                  { value: 'OTHER', label: 'Khác' },
+                ]} />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={12}>
+              <Form.Item name="countryId" label="Quốc gia" rules={[{ required: true, message: 'Vui lòng chọn quốc gia' }]}>
+                <Select
+                  showSearch
+                  optionFilterProp="label"
+                  onChange={() => profileForm.setFieldValue('federationId', undefined)}
+                  options={countries.map((item) => ({ value: item.id, label: `${item.code} · ${item.name}` }))}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={24}>
+              <Form.Item name="federationId" label="Đơn vị / CLB tham gia">
+                <Select
+                  allowClear
+                  showSearch
+                  optionFilterProp="label"
+                  placeholder="Để trống nếu chưa liên kết"
+                  options={federations
+                    .filter((item) => item.countryId === selectedCountryId)
+                    .map((item) => ({ value: item.id, label: item.name }))}
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={12}>
+              <Form.Item name="weight" label="Cân nặng (kg)" rules={[{ type: 'number', min: 1, max: 500, message: 'Cân nặng phải từ 1 đến 500 kg' }]}>
+                <InputNumber className="w-full" min={1} max={500} step={0.1} />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={12}>
+              <Form.Item name="height" label="Chiều cao (cm)" rules={[{ type: 'number', min: 1, max: 300, message: 'Chiều cao phải từ 1 đến 300 cm' }]}>
+                <InputNumber className="w-full" min={1} max={300} step={0.1} />
+              </Form.Item>
+            </Col>
+          </Row>
+          <div className="flex justify-end gap-2">
+            <Button onClick={() => setEditingProfile(false)}>Hủy</Button>
+            <Button type="primary" htmlType="submit" loading={savingProfile} icon={<Save className="h-4 w-4" />}>Lưu thay đổi</Button>
+          </div>
+        </Form>
+      </Modal>
       <IdentityOcrReviewModal
         open={Boolean(ocrReview)}
         result={ocrReview?.result}

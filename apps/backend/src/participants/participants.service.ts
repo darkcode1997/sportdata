@@ -398,6 +398,7 @@ export class ParticipantsService {
           ...(dto.countryId ? { countryId: dto.countryId } : {}),
           ...(dto.federationId !== undefined ? { federationId } : {}),
           ...(dto.weight !== undefined ? { weight: dto.weight } : {}),
+          ...(dto.height !== undefined ? { height: dto.height } : {}),
         },
       }),
     ]);
