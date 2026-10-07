@@ -43,9 +43,10 @@ async function bootstrap() {
     if (publicGet) {
       const isLiveData = request.originalUrl.startsWith('/api/matches');
       const maxAge = isLiveData ? 5 : 30;
+      response.setHeader('Cache-Control', `public, max-age=${maxAge}`);
       response.setHeader(
-        'Cache-Control',
-        `public, max-age=${maxAge}, s-maxage=${maxAge}, stale-while-revalidate=${maxAge * 2}`,
+        'Vercel-CDN-Cache-Control',
+        `public, s-maxage=${maxAge}, stale-while-revalidate=${maxAge * 4}`,
       );
       response.vary('Accept-Encoding');
       response.vary('Authorization');
@@ -53,8 +54,18 @@ async function bootstrap() {
     next();
   });
 
+  const allowedOrigins = (process.env.FRONTEND_URLS || process.env.FRONTEND_URL || 'http://localhost:3000')
+    .split(',')
+    .map((origin) => origin.trim().replace(/\/$/, ''))
+    .filter(Boolean);
   app.enableCors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    origin(origin, callback) {
+      if (!origin) return callback(null, true);
+      const normalizedOrigin = origin.replace(/\/$/, '');
+      const isAllowedPreview = process.env.ALLOW_VERCEL_PREVIEWS === 'true'
+        && /^https:\/\/[a-z0-9-]+\.vercel\.app$/i.test(normalizedOrigin);
+      callback(null, allowedOrigins.includes(normalizedOrigin) || isAllowedPreview);
+    },
     credentials: true,
   });
 

@@ -1,4 +1,12 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "node scripts/deploy-migrations.cjs && npm run build"
+  "buildCommand": "npm run vercel-build",
+  "fluid": true,
+  "regions": ["sin1"],
+  "functions": {
+    "src/main.ts": {
+      "maxDuration": 60,
+      "includeFiles": "prisma/**"
+    }
+  }
 }

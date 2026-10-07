@@ -4,6 +4,8 @@ SportData là nền tảng tổ chức, vận hành và công bố dữ liệu s
 
 Kiến trúc sản phẩm và lộ trình phát triển được mô tả tại [`docs/product-roadmap.md`](docs/product-roadmap.md).
 
+Hướng dẫn triển khai tiết kiệm tài nguyên trên Vercel Hobby nằm tại [`docs/vercel-hobby.md`](docs/vercel-hobby.md).
+
 ## Môi trường chạy
 
 Ba môi trường được cấu hình độc lập:

@@ -31,6 +31,7 @@ import { fetcher } from '@/lib/api';
 import { getParticipantAccount, getParticipantToken, participantApi, participantError, type SportDataAccount } from '@/lib/participant-auth';
 import type { ParticipationTicket } from '@/lib/ticket-types';
 import { vietnamCountryId } from '@/lib/countries';
+import { optimizeRegistrationMedia } from '@/lib/registration-media';
 
 type RegistrationMode = 'INDIVIDUAL' | 'GROUP';
 type IdentityType = 'CCCD' | 'PASSPORT';
@@ -96,6 +97,7 @@ type ParticipantSessionProfile = {
   displayName: string;
   phone?: string | null;
 };
+type MediaUploadReference = { id: string; token: string; expiresAt: string };
 
 const emptyAthlete = (key: string): AthleteDraft => ({
   key,
@@ -285,15 +287,26 @@ export default function GuestEventRegistrationPage() {
     fileField: 'cccdFront' | 'cccdBack' | 'passport',
     mediaType: 'CCCD_FRONT' | 'CCCD_BACK' | 'PASSPORT',
   ) => {
-    updateAthlete(athleteKey, { [fileField]: file, ...(fileField !== 'cccdBack' ? { identityOcr: undefined } : {}) });
-    if (!file || mediaType === 'CCCD_BACK') return;
-    if (!file.type.startsWith('image/')) {
+    if (!file) {
+      updateAthlete(athleteKey, { [fileField]: undefined, ...(fileField !== 'cccdBack' ? { identityOcr: undefined } : {}) });
+      return;
+    }
+    let optimizedFile: File;
+    try {
+      optimizedFile = await optimizeRegistrationMedia(file);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Không thể tối ưu tệp đã chọn.');
+      return;
+    }
+    updateAthlete(athleteKey, { [fileField]: optimizedFile, ...(fileField !== 'cccdBack' ? { identityOcr: undefined } : {}) });
+    if (mediaType === 'CCCD_BACK') return;
+    if (!optimizedFile.type.startsWith('image/')) {
       toast.warning('OCR cần ảnh JPG, PNG hoặc WebP. Tệp PDF vẫn có thể gửi để CMS kiểm duyệt thủ công.');
       return;
     }
     const form = new FormData();
     form.append('type', mediaType);
-    form.append('file', file);
+    form.append('file', optimizedFile);
     setOcrReadingKey(athleteKey);
     if (isFederationAccount && federationProfile?.verificationStatus !== 'VERIFIED') {
       toast.warning('Tài khoản đơn vị phải được SportData duyệt trước khi gửi danh sách vận động viên.');
@@ -376,42 +389,50 @@ export default function GuestEventRegistrationPage() {
       return;
     }
 
-    const formData = new FormData();
-    formData.append('payload', JSON.stringify({
-      eventId,
-      type: mode,
-      contactName,
-      contactEmail,
-      contactPhone,
-      organizationName: mode === 'GROUP' ? organizationName : undefined,
-      athletes: activeAthletes.map((athlete) => ({
-        fullName: athlete.fullName,
-        birthDate: athlete.birthDate!.format('YYYY-MM-DD'),
-        gender: athlete.gender,
-        countryId: athlete.countryId,
-        federationId: athlete.federationId || undefined,
-        categoryId: athlete.categoryId,
-        weight: athlete.weight,
-        identityType: athlete.identityType,
-        identityOcr: athlete.identityOcr,
-      })),
-    }));
-    activeAthletes.forEach((athlete, index) => {
-      if (athlete.avatar) formData.append(`athlete_${index}_avatar`, athlete.avatar);
-      if (athlete.cccdFront) formData.append(`athlete_${index}_cccdFront`, athlete.cccdFront);
-      if (athlete.cccdBack) formData.append(`athlete_${index}_cccdBack`, athlete.cccdBack);
-      if (athlete.passport) formData.append(`athlete_${index}_passport`, athlete.passport);
-    });
-
     setSubmitting(true);
     try {
+      const uploadMedia = async (file: File, type: 'AVATAR' | 'CCCD_FRONT' | 'CCCD_BACK' | 'PASSPORT') => {
+        const optimizedFile = await optimizeRegistrationMedia(file);
+        const upload = new FormData();
+        upload.append('type', type);
+        upload.append('file', optimizedFile);
+        const response = await participantApi.post<MediaUploadReference>('/participant-auth/media-uploads', upload);
+        return response.data;
+      };
+      const athletesWithUploads = [];
+      for (const athlete of activeAthletes) {
+        const [avatar, cccdFront, cccdBack, passport] = await Promise.all([
+          uploadMedia(athlete.avatar!, 'AVATAR'),
+          athlete.cccdFront ? uploadMedia(athlete.cccdFront, 'CCCD_FRONT') : undefined,
+          athlete.cccdBack ? uploadMedia(athlete.cccdBack, 'CCCD_BACK') : undefined,
+          athlete.passport ? uploadMedia(athlete.passport, 'PASSPORT') : undefined,
+        ]);
+        athletesWithUploads.push({
+          fullName: athlete.fullName,
+          birthDate: athlete.birthDate!.format('YYYY-MM-DD'),
+          gender: athlete.gender,
+          countryId: athlete.countryId,
+          federationId: athlete.federationId || undefined,
+          categoryId: athlete.categoryId,
+          weight: athlete.weight,
+          identityType: athlete.identityType,
+          identityOcr: athlete.identityOcr,
+          mediaUploads: { avatar, cccdFront, cccdBack, passport },
+        });
+      }
       const endpoint = isFederationAccount
         ? '/participant-auth/federation/registrations'
         : isAthleteAccount
           ? '/participant-auth/assisted-registrations'
           : '/participant-auth/guest-registrations';
-      const response = await participantApi.post<SubmissionResult>(endpoint, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+      const response = await participantApi.post<SubmissionResult>(endpoint, {
+        eventId,
+        type: mode,
+        contactName,
+        contactEmail,
+        contactPhone,
+        organizationName: mode === 'GROUP' ? organizationName : undefined,
+        athletes: athletesWithUploads,
       });
       const payableRegistration = response.data.registrations.length === 1
         ? response.data.registrations[0]

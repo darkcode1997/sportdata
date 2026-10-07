@@ -22,10 +22,15 @@ export class ParticipantAuthGuard implements CanActivate {
       if (payload.type !== 'participant') throw new Error('wrong token type');
       const account = await this.prisma.participantAccount.findUnique({
         where: { id: payload.sub },
-        select: { id: true, email: true, isActive: true, accountType: true, verificationStatus: true, federationId: true },
+        select: { id: true, email: true, isActive: true, accountType: true, verificationStatus: true, federationId: true, passwordChangedAt: true },
       });
       if (!account?.isActive) throw new Error('inactive');
-      request.participant = account;
+      if (account.passwordChangedAt) {
+        const issuedAt = payload.sessionIssuedAt ?? (payload.iat ? payload.iat * 1000 : 0);
+        if (issuedAt < account.passwordChangedAt.getTime()) throw new Error('password changed');
+      }
+      const { passwordChangedAt, ...safeAccount } = account;
+      request.participant = safeAccount;
       return true;
     } catch {
       throw new UnauthorizedException('Phiên đăng nhập đã hết hạn hoặc không hợp lệ');

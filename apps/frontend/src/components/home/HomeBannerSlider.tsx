@@ -99,22 +99,6 @@ export function HomeBannerSlider() {
         })}
       </div>
 
-      <div className="home-banner-overlay">
-        <div className="home-banner-copy">
-          <h1>
-            Tối ưu sự kiện thể thao,
-            <span> đơn giản hóa công tác quản lý</span>
-          </h1>
-          <p>
-            Tập trung dữ liệu và mở rộng dễ dàng với giải pháp toàn diện, xuyên suốt
-            được các tổ chức thể thao hàng đầu tin dùng.
-          </p>
-          <Button type="primary" size="large" href="/events" className="home-banner-cta">
-            Sự kiện
-          </Button>
-        </div>
-      </div>
-
       {banners.length > 1 && (
         <>
           <Button

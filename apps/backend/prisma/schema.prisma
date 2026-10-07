@@ -315,6 +315,10 @@ model ParticipantAccount {
   federationId           String?
   federation             Federation?               @relation(fields: [federationId], references: [id], onDelete: SetNull)
   isActive               Boolean                   @default(true)
+  resetPasswordTokenHash String?                   @unique
+  resetPasswordExpiresAt DateTime?
+  resetPasswordRequestedAt DateTime?
+  passwordChangedAt      DateTime?
   athlete                Athlete?
   registrations          EventRegistration[]
   submissions            RegistrationSubmission[]
@@ -591,6 +595,19 @@ model AthleteMedia {
 
   @@unique([athleteId, type])
   @@index([athleteId])
+}
+
+model ParticipantMediaUpload {
+  id        String           @id @default(cuid())
+  tokenHash String           @unique
+  type      AthleteMediaType
+  data      Bytes
+  mimeType  String
+  size      Int
+  expiresAt DateTime
+  createdAt DateTime         @default(now())
+
+  @@index([expiresAt])
 }
 
 model RegistrationSubmission {

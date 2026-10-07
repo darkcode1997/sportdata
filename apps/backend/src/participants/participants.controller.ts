@@ -28,6 +28,8 @@ import {
   DownloadSubmissionTicketsDto,
   FederationAccountRegisterDto,
   ParticipantLoginDto,
+  ParticipantForgotPasswordDto,
+  ParticipantResetPasswordDto,
   ParticipantRegisterDto,
   UpdateParticipantProfileDto,
   UpdateDocumentVerificationDto,
@@ -61,13 +63,32 @@ export class ParticipantsController {
     return this.service.login(dto);
   }
 
+  @Post('forgot-password')
+  forgotPassword(@Body() dto: ParticipantForgotPasswordDto) {
+    return this.service.forgotPassword(dto);
+  }
+
+  @Post('reset-password')
+  resetPassword(@Body() dto: ParticipantResetPasswordDto) {
+    return this.service.resetPassword(dto);
+  }
+
+  @Post('media-uploads')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 3_500_000, files: 1 } }))
+  createMediaUpload(
+    @Body('type') type: string,
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
+    return this.service.createMediaUpload(type, file);
+  }
+
   @Post('guest-registrations')
   @UseInterceptors(AnyFilesInterceptor({ limits: { fileSize: 8 * 1024 * 1024, files: 120 } }))
   createGuestRegistrations(
-    @Body('payload') payload: string,
+    @Body() body: Record<string, unknown>,
     @UploadedFiles() files: Express.Multer.File[] = [],
   ) {
-    return this.service.createGuestRegistrations(payload, files);
+    return this.service.createGuestRegistrations(this.registrationPayload(body), files);
   }
 
   @Post('federation/registrations')
@@ -75,10 +96,10 @@ export class ParticipantsController {
   @UseInterceptors(AnyFilesInterceptor({ limits: { fileSize: 8 * 1024 * 1024, files: 120 } }))
   createFederationRegistrations(
     @Req() request: ParticipantRequest,
-    @Body('payload') payload: string,
+    @Body() body: Record<string, unknown>,
     @UploadedFiles() files: Express.Multer.File[] = [],
   ) {
-    return this.service.createGuestRegistrations(payload, files, request.participant.id, SportDataAccountType.FEDERATION);
+    return this.service.createGuestRegistrations(this.registrationPayload(body), files, request.participant.id, SportDataAccountType.FEDERATION);
   }
 
   @Post('assisted-registrations')
@@ -86,10 +107,14 @@ export class ParticipantsController {
   @UseInterceptors(AnyFilesInterceptor({ limits: { fileSize: 8 * 1024 * 1024, files: 120 } }))
   createAssistedRegistrations(
     @Req() request: ParticipantRequest,
-    @Body('payload') payload: string,
+    @Body() body: Record<string, unknown>,
     @UploadedFiles() files: Express.Multer.File[] = [],
   ) {
-    return this.service.createGuestRegistrations(payload, files, request.participant.id, SportDataAccountType.ATHLETE);
+    return this.service.createGuestRegistrations(this.registrationPayload(body), files, request.participant.id, SportDataAccountType.ATHLETE);
+  }
+
+  private registrationPayload(body: Record<string, unknown>) {
+    return typeof body?.payload === 'string' ? body.payload : JSON.stringify(body || {});
   }
 
   @Get('federation/me')

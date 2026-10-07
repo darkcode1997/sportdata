@@ -3,7 +3,9 @@ import axios from 'axios';
 const TOKEN_KEY = 'participant_token';
 const ACCOUNT_KEY = 'participant_account';
 
-export const participantApi = axios.create({ baseURL: '/api' });
+export const participantApi = axios.create({
+  baseURL: process.env.NEXT_PUBLIC_BROWSER_API_URL || '/api',
+});
 
 participantApi.interceptors.request.use((config) => {
   const token = getParticipantToken();

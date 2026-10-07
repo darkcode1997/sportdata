@@ -26,7 +26,8 @@ import {
 } from '@prisma/client';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
-import { randomBytes } from 'crypto';
+import { createHash, randomBytes } from 'crypto';
+import * as nodemailer from 'nodemailer';
 import type { SignOptions } from 'jsonwebtoken';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -35,6 +36,8 @@ import {
   CreatePublicRegistrationDto,
   FederationAccountRegisterDto,
   ParticipantLoginDto,
+  ParticipantForgotPasswordDto,
+  ParticipantResetPasswordDto,
   ParticipantRegisterDto,
   UpdateParticipantProfileDto,
 } from './dto/participant.dto';
@@ -74,7 +77,20 @@ type GuestAthleteInput = {
     fieldConfidence?: Record<string, number>;
     userConfirmed?: boolean;
   };
+  mediaUploads?: {
+    avatar?: GuestMediaUploadReference;
+    cccdFront?: GuestMediaUploadReference;
+    cccdBack?: GuestMediaUploadReference;
+    passport?: GuestMediaUploadReference;
+  };
 };
+
+type GuestMediaUploadReference = {
+  id?: string;
+  token?: string;
+};
+
+type RegistrationMediaFile = Pick<Express.Multer.File, 'buffer' | 'mimetype' | 'size'>;
 
 type GuestRegistrationPayload = {
   eventId?: string;
@@ -191,6 +207,80 @@ export class ParticipantsService {
       },
       accessToken: this.sign(account.id, account.email),
     };
+  }
+
+  async forgotPassword(dto: ParticipantForgotPasswordDto) {
+    const account = await this.prisma.participantAccount.findUnique({
+      where: { email: dto.email.trim().toLowerCase() },
+    });
+    let resetUrl: string | undefined;
+
+    if (account?.isActive) {
+      const requestedRecently = account.resetPasswordRequestedAt
+        && Date.now() - account.resetPasswordRequestedAt.getTime() < 60 * 1000;
+
+      if (!requestedRecently) {
+        const token = randomBytes(32).toString('hex');
+        const ttlMinutes = Math.max(5, Number(process.env.PASSWORD_RESET_TTL_MINUTES || 30));
+        await this.prisma.participantAccount.update({
+          where: { id: account.id },
+          data: {
+            resetPasswordTokenHash: this.hashResetToken(token),
+            resetPasswordExpiresAt: new Date(Date.now() + ttlMinutes * 60 * 1000),
+            resetPasswordRequestedAt: new Date(),
+          },
+        });
+
+        const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, '');
+        resetUrl = `${frontendUrl}/account/reset-password?token=${encodeURIComponent(token)}`;
+        try {
+          await this.sendResetEmail(account.email, resetUrl, ttlMinutes);
+        } catch (error: any) {
+          this.logger.warn(`Không thể gửi email đặt lại mật khẩu tài khoản SportData: ${error?.message || error}`);
+        }
+      }
+    }
+
+    return {
+      message: 'Nếu tài khoản tồn tại, hướng dẫn đặt lại mật khẩu sẽ được gửi tới email đã đăng ký.',
+      ...(process.env.NODE_ENV !== 'production' && resetUrl ? { resetUrl } : {}),
+    };
+  }
+
+  async resetPassword(dto: ParticipantResetPasswordDto) {
+    const tokenHash = this.hashResetToken(dto.token);
+    const now = new Date();
+    const account = await this.prisma.participantAccount.findFirst({
+      where: {
+        resetPasswordTokenHash: tokenHash,
+        resetPasswordExpiresAt: { gt: now },
+        isActive: true,
+      },
+      select: { id: true },
+    });
+    if (!account) {
+      throw new BadRequestException('Liên kết đặt lại mật khẩu không hợp lệ hoặc đã hết hạn');
+    }
+
+    const result = await this.prisma.participantAccount.updateMany({
+      where: {
+        id: account.id,
+        resetPasswordTokenHash: tokenHash,
+        resetPasswordExpiresAt: { gt: now },
+        isActive: true,
+      },
+      data: {
+        password: await bcrypt.hash(dto.password, 12),
+        passwordChangedAt: now,
+        resetPasswordTokenHash: null,
+        resetPasswordExpiresAt: null,
+        resetPasswordRequestedAt: null,
+      },
+    });
+    if (result.count !== 1) {
+      throw new BadRequestException('Liên kết đặt lại mật khẩu không hợp lệ hoặc đã hết hạn');
+    }
+    return { message: 'Mật khẩu đã được cập nhật. Bạn có thể đăng nhập ngay.' };
   }
 
   async getFederationProfile(accountId: string) {
@@ -459,6 +549,39 @@ export class ParticipantsService {
     return media;
   }
 
+  async createMediaUpload(typeText: string, file?: Express.Multer.File) {
+    if (!file) throw new BadRequestException('Chưa chọn tệp cần tải lên');
+    const type = Object.values(AthleteMediaType).includes(typeText as AthleteMediaType)
+      ? typeText as AthleteMediaType
+      : null;
+    if (!type || ![
+      AthleteMediaType.AVATAR,
+      AthleteMediaType.CCCD_FRONT,
+      AthleteMediaType.CCCD_BACK,
+      AthleteMediaType.PASSPORT,
+    ].includes(type)) {
+      throw new BadRequestException('Loại tệp đăng ký không hợp lệ');
+    }
+    this.validateFile(type, file);
+
+    const now = new Date();
+    await this.prisma.participantMediaUpload.deleteMany({ where: { expiresAt: { lte: now } } });
+    const token = randomBytes(32).toString('hex');
+    const expiresAt = new Date(now.getTime() + 60 * 60 * 1000);
+    const upload = await this.prisma.participantMediaUpload.create({
+      data: {
+        tokenHash: this.hashResetToken(token),
+        type,
+        data: file.buffer,
+        mimeType: file.mimetype,
+        size: file.size,
+        expiresAt,
+      },
+      select: { id: true, expiresAt: true },
+    });
+    return { ...upload, token };
+  }
+
   async createGuestRegistrations(
     payloadText: string,
     files: Express.Multer.File[],
@@ -552,6 +675,36 @@ export class ParticipantsService {
     const allowedFederations = new Set(event.participatingFederations.map((item) => item.id));
     const categoryMap = new Map(event.categories.map((category) => [category.id, category]));
     const fileMap = new Map(files.map((file) => [file.fieldname, file]));
+    const mediaReferences = athletes.flatMap((athlete) => Object.values(athlete.mediaUploads || {}))
+      .filter((reference): reference is GuestMediaUploadReference => Boolean(reference?.id));
+    const stagedUploads = mediaReferences.length
+      ? await this.prisma.participantMediaUpload.findMany({
+          where: {
+            id: { in: mediaReferences.map((reference) => reference.id!) },
+            expiresAt: { gt: new Date() },
+          },
+        })
+      : [];
+    const stagedUploadMap = new Map(stagedUploads.map((upload) => [upload.id, upload]));
+    const consumedUploadIds = new Set<string>();
+    const stagedFile = (
+      reference: GuestMediaUploadReference | undefined,
+      expectedType: AthleteMediaType,
+      athleteIndex: number,
+    ): RegistrationMediaFile | undefined => {
+      if (!reference) return undefined;
+      const upload = reference.id ? stagedUploadMap.get(reference.id) : undefined;
+      if (
+        !upload
+        || !reference.token
+        || upload.tokenHash !== this.hashResetToken(reference.token)
+        || upload.type !== expectedType
+      ) {
+        throw new BadRequestException(`Vận động viên ${athleteIndex + 1}: tệp tải lên đã hết hạn hoặc không hợp lệ`);
+      }
+      consumedUploadIds.add(upload.id);
+      return { buffer: upload.data, mimetype: upload.mimeType, size: upload.size };
+    };
 
     const prepared = athletes.map((athlete, index) => {
       const fullName = athlete.fullName?.trim();
@@ -587,10 +740,14 @@ export class ParticipantsService {
       }
       this.validateAthleteForCategory({ gender: athlete.gender, birthDate, weight }, { ...category, ...resolveEventAgeLimits(event, category) }, event.startDate);
 
-      const cccdFront = fileMap.get(`athlete_${index}_cccdFront`);
-      const cccdBack = fileMap.get(`athlete_${index}_cccdBack`);
-      const passport = fileMap.get(`athlete_${index}_passport`);
-      const avatar = fileMap.get(`athlete_${index}_avatar`);
+      const cccdFront = fileMap.get(`athlete_${index}_cccdFront`)
+        || stagedFile(athlete.mediaUploads?.cccdFront, AthleteMediaType.CCCD_FRONT, index);
+      const cccdBack = fileMap.get(`athlete_${index}_cccdBack`)
+        || stagedFile(athlete.mediaUploads?.cccdBack, AthleteMediaType.CCCD_BACK, index);
+      const passport = fileMap.get(`athlete_${index}_passport`)
+        || stagedFile(athlete.mediaUploads?.passport, AthleteMediaType.PASSPORT, index);
+      const avatar = fileMap.get(`athlete_${index}_avatar`)
+        || stagedFile(athlete.mediaUploads?.avatar, AthleteMediaType.AVATAR, index);
       const identityType = athlete.identityType === 'PASSPORT' ? 'PASSPORT' : 'CCCD';
       if (!avatar) {
         throw new BadRequestException(`Vận động viên ${index + 1}: cần ảnh đại diện`);
@@ -692,6 +849,12 @@ export class ParticipantsService {
         });
       }
 
+      if (consumedUploadIds.size) {
+        await transaction.participantMediaUpload.deleteMany({
+          where: { id: { in: [...consumedUploadIds] } },
+        });
+      }
+
       return {
         submissionId: submission.id,
         referenceCode,
@@ -702,17 +865,36 @@ export class ParticipantsService {
         registrations,
       };
     });
-    await Promise.all(result.registrations.map((registration) => this.notifications.notifyRegistration(
-      this.prisma,
-      registration.id,
-      'REGISTRATION_CREATED',
-      'Có hồ sơ đăng ký mới',
-      registration.status === RegistrationStatus.CONFIRMED ? 'Đã xác nhận tham dự' : 'Đang chờ duyệt',
+    const notificationResults = await Promise.allSettled(result.registrations.map((registration) => (
+      this.notifications.notifyRegistration(
+        this.prisma,
+        registration.id,
+        'REGISTRATION_CREATED',
+        'Có hồ sơ đăng ký mới',
+        registration.status === RegistrationStatus.CONFIRMED ? 'Đã xác nhận tham dự' : 'Đang chờ duyệt',
+      )
     )));
+    notificationResults.forEach((notificationResult, index) => {
+      if (notificationResult.status === 'rejected') {
+        this.logger.error(
+          `Không thể tạo thông báo cho hồ sơ ${result.registrations[index].id}`,
+          notificationResult.reason instanceof Error
+            ? notificationResult.reason.stack
+            : String(notificationResult.reason),
+        );
+      }
+    });
     let ticketEmailSent = false;
     if (result.status === RegistrationStatus.CONFIRMED) {
-      const batch = await this.getSubmissionTickets(referenceCode, contactEmail, true);
-      ticketEmailSent = await this.ticketEmail.send(contactEmail, batch.tickets, batch.meta);
+      try {
+        const batch = await this.getSubmissionTickets(referenceCode, contactEmail, true);
+        ticketEmailSent = await this.ticketEmail.send(contactEmail, batch.tickets, batch.meta);
+      } catch (error) {
+        this.logger.error(
+          `Không thể dựng hoặc gửi vé cho hồ sơ ${referenceCode}`,
+          error instanceof Error ? error.stack : String(error),
+        );
+      }
     }
     return { ...result, ticketEmailSent };
   }
@@ -1636,7 +1818,7 @@ export class ParticipantsService {
 
   private mediaCreate(
     type: AthleteMediaType,
-    file: Express.Multer.File,
+    file: RegistrationMediaFile,
     requiresVerification: boolean,
     previewOcr?: GuestAthleteInput['identityOcr'],
     autoVerify = false,
@@ -1750,7 +1932,7 @@ export class ParticipantsService {
     return age;
   }
 
-  private validateFile(type: AthleteMediaType, file: Express.Multer.File) {
+  private validateFile(type: AthleteMediaType, file: RegistrationMediaFile) {
     const imageTypes = ['image/jpeg', 'image/png', 'image/webp'];
     const allowed = type === AthleteMediaType.AVATAR ? imageTypes : [...imageTypes, 'application/pdf'];
     if (!allowed.includes(file.mimetype)) throw new BadRequestException('Chỉ hỗ trợ JPG, PNG, WebP hoặc PDF');
@@ -1760,7 +1942,7 @@ export class ParticipantsService {
     }
   }
 
-  private hasValidFileSignature(file: Express.Multer.File) {
+  private hasValidFileSignature(file: RegistrationMediaFile) {
     const bytes = file.buffer;
     if (file.mimetype === 'image/jpeg') {
       return bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
@@ -1810,11 +1992,34 @@ export class ParticipantsService {
 
   private sign(id: string, email: string) {
     return this.jwtService.sign(
-      { sub: id, email, type: 'participant' },
+      { sub: id, email, type: 'participant', sessionIssuedAt: Date.now() },
       {
         secret: process.env.JWT_SECRET || 'sportdata-dev-secret-change-me-please',
         expiresIn: (process.env.JWT_EXPIRES_IN || '7d') as SignOptions['expiresIn'],
       },
     );
+  }
+
+  private hashResetToken(token: string) {
+    return createHash('sha256').update(token).digest('hex');
+  }
+
+  private async sendResetEmail(email: string, resetUrl: string, ttlMinutes: number) {
+    if (!process.env.SMTP_HOST) return;
+    const transporter = nodemailer.createTransport({
+      host: process.env.SMTP_HOST,
+      port: Number(process.env.SMTP_PORT || 587),
+      secure: process.env.SMTP_SECURE === 'true',
+      ...(process.env.SMTP_USER
+        ? { auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASSWORD || '' } }
+        : {}),
+    });
+    await transporter.sendMail({
+      from: process.env.SMTP_FROM || 'SportData <no-reply@sportdata.local>',
+      to: email,
+      subject: 'Đặt lại mật khẩu tài khoản SportData',
+      text: `Mở liên kết sau để đặt lại mật khẩu SportData. Liên kết hết hạn sau ${ttlMinutes} phút và chỉ dùng được một lần:\n\n${resetUrl}`,
+      html: `<p>Bạn vừa yêu cầu đặt lại mật khẩu tài khoản SportData.</p><p><a href="${resetUrl}">Đặt lại mật khẩu</a></p><p>Liên kết hết hạn sau ${ttlMinutes} phút và chỉ dùng được một lần.</p>`,
+    });
   }
 }

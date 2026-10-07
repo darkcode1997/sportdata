@@ -3525,56 +3525,6 @@ h3,
   object-position: center;
 }
 
-.home-banner-overlay {
-  position: absolute;
-  z-index: 2;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  padding: clamp(36px, 6vw, 96px) clamp(72px, 10vw, 196px) clamp(70px, 7vw, 112px);
-  pointer-events: none;
-}
-
-.home-banner-copy {
-  width: min(900px, 65vw);
-  color: #ffffff;
-}
-
-.home-banner-copy h1 {
-  margin: 0;
-  color: #ffffff;
-  font-family: var(--font-display);
-  font-size: clamp(2.1rem, 4vw, 4.5rem);
-  font-weight: 900;
-  line-height: 1.04;
-  letter-spacing: -0.045em;
-  text-wrap: balance;
-  text-shadow: 0 4px 30px rgba(0, 0, 0, 0.46);
-}
-
-.home-banner-copy h1 span {
-  display: block;
-}
-
-.home-banner-copy p {
-  max-width: 760px;
-  margin: clamp(18px, 2vw, 28px) 0 0;
-  color: rgba(255, 255, 255, 0.9);
-  font-size: clamp(1rem, 1.3vw, 1.3rem);
-  line-height: 1.55;
-  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.55);
-}
-
-.home-banner-cta.ant-btn {
-  min-width: 180px;
-  height: 54px;
-  margin-top: clamp(24px, 2.5vw, 36px);
-  border-radius: 999px;
-  font-size: 1.05rem;
-  font-weight: 800;
-  pointer-events: auto;
-}
-
 .home-banner-arrow.ant-btn {
   position: absolute;
   top: 50%;
@@ -3673,33 +3623,6 @@ h3,
   .home-banner {
     min-height: 420px;
     aspect-ratio: 4 / 3;
-  }
-
-  .home-banner-overlay {
-    padding: 34px 20px 64px;
-  }
-
-  .home-banner-copy {
-    width: 100%;
-    padding: 0 34px;
-  }
-
-  .home-banner-copy h1 {
-    font-size: clamp(1.75rem, 8vw, 2.35rem);
-    line-height: 1.08;
-  }
-
-  .home-banner-copy p {
-    margin-top: 16px;
-    font-size: 0.92rem;
-    line-height: 1.5;
-  }
-
-  .home-banner-cta.ant-btn {
-    min-width: 132px;
-    height: 46px;
-    margin-top: 22px;
-    font-size: 0.95rem;
   }
 
   .home-banner-arrow.ant-btn {

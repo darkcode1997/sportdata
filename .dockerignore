@@ -9,3 +9,10 @@ dist
 *.log
 coverage
 README.md
+.vercel
+output
+tmp
+docs
+deploy
+tests
+debug.log

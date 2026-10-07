@@ -40,6 +40,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
 
   onModuleInit() {
     void this.runPaymentMaintenance();
+    if (process.env.VERCEL === '1') return;
     this.cleanupTimer = setInterval(() => {
       void this.runPaymentMaintenance();
     }, 60_000);

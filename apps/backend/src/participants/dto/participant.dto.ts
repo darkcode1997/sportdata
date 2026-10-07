@@ -71,6 +71,24 @@ export class ParticipantLoginDto {
   accountType?: SportDataAccountType;
 }
 
+export class ParticipantForgotPasswordDto {
+  @IsEmail()
+  @MaxLength(254)
+  email: string;
+}
+
+export class ParticipantResetPasswordDto {
+  @IsString()
+  @MinLength(64)
+  @MaxLength(128)
+  token: string;
+
+  @IsString()
+  @MinLength(8)
+  @MaxLength(128)
+  password: string;
+}
+
 export class FederationAccountRegisterDto {
   @IsEmail()
   email: string;
