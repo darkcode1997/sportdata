@@ -2,11 +2,5 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "npm run vercel-build",
   "fluid": true,
-  "regions": ["sin1"],
-  "functions": {
-    "api/*.ts": {
-      "maxDuration": 60,
-      "includeFiles": "prisma/**"
-    }
-  }
+  "regions": ["sin1"]
 }
