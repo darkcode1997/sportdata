@@ -47,7 +47,7 @@ services:
       SMTP_SECURE: ${SMTP_SECURE:-false}
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
-      SMTP_FROM: ${SMTP_FROM:-SportData CMS <no-reply@sportdata.local>}
+      SMTP_FROM: ${SMTP_FROM:-SportData}
       TICKET_EMAIL_ENABLED: ${TICKET_EMAIL_ENABLED:-true}
       IDENTITY_OCR_ENABLED: ${IDENTITY_OCR_ENABLED:-false}
       FPT_AI_API_KEY: ${FPT_AI_API_KEY:-}

@@ -283,7 +283,7 @@ export class AuthService {
     });
 
     await transporter.sendMail({
-      from: process.env.SMTP_FROM || 'SportData CMS <no-reply@sportdata.local>',
+      from: process.env.SMTP_FROM || process.env.SMTP_USER || 'SportData CMS',
       to: email,
       subject: 'Đặt lại mật khẩu SportCMS',
       text: `Mở liên kết sau để đặt lại mật khẩu SportCMS. Liên kết hết hạn sau ${ttlMinutes} phút và chỉ dùng được một lần:\n\n${resetUrl}`,

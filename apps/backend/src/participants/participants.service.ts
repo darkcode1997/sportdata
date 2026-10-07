@@ -2016,7 +2016,7 @@ export class ParticipantsService {
         : {}),
     });
     await transporter.sendMail({
-      from: process.env.SMTP_FROM || 'SportData <no-reply@sportdata.local>',
+      from: process.env.SMTP_FROM || process.env.SMTP_USER || 'SportData',
       to: email,
       subject: 'Đặt lại mật khẩu tài khoản SportData',
       text: `Mở liên kết sau để đặt lại mật khẩu SportData. Liên kết hết hạn sau ${ttlMinutes} phút và chỉ dùng được một lần:\n\n${resetUrl}`,
