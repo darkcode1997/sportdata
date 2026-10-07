@@ -461,8 +461,8 @@ export default function EventDetailPage() {
                     <Spin size="small" /> Đang kiểm tra trạng thái đăng ký của bạn...
                   </div>
                 ) : ownRegistrationError ? (
-                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3">
-                    <span className="text-sm text-amber-200">Chưa thể kiểm tra trạng thái đăng ký. Phần đăng ký chính chủ đang tạm khóa để tránh đăng ký trùng.</span>
+                  <div className="schedule-registration-warning flex flex-wrap items-center justify-between gap-3 rounded-xl px-4 py-3">
+                    <span className="text-sm">Chưa thể kiểm tra trạng thái đăng ký. Phần đăng ký chính chủ đang tạm khóa để tránh đăng ký trùng.</span>
                     <Button size="small" onClick={() => void mutateOwnRegistrationState()}>Kiểm tra lại</Button>
                   </div>
                 ) : ownRegistrationState?.registered && ownRegistrationState.registration ? (

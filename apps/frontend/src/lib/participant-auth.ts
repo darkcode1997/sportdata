@@ -13,6 +13,14 @@ participantApi.interceptors.request.use((config) => {
   return config;
 });
 
+participantApi.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) clearParticipantSession();
+    return Promise.reject(error);
+  },
+);
+
 export function getParticipantToken() {
   return typeof window === 'undefined' ? null : localStorage.getItem(TOKEN_KEY);
 }

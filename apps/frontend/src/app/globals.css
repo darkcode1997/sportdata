@@ -2267,6 +2267,12 @@ h3,
   color: #38bdf8;
 }
 
+.schedule-registration-warning {
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  background: rgba(245, 158, 11, 0.08);
+  color: #fde68a;
+}
+
 .schedule-registration-eyebrow {
   display: block;
   margin-bottom: 0.15rem;
@@ -5345,6 +5351,12 @@ html[data-app-theme="light"] .registration-document-empty {
   border-color: #bae6fd;
   background: #e0f2fe;
   color: #0369a1;
+}
+
+.public-theme-light .schedule-registration-warning {
+  border-color: #f6c96b;
+  background: #fff8e8;
+  color: #92400e;
 }
 
 .public-theme-light .schedule-match-card.ant-card {
