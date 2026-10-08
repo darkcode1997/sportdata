@@ -5,7 +5,7 @@
 ## Điều kiện trước khi chạy
 
 - Domain đã trỏ về máy chủ và hai file TLS nằm tại `deploy/certs/fullchain.pem`, `deploy/certs/privkey.pem`.
-- Sao chép `.env.production.example` thành `.env.production` và thay toàn bộ giá trị `replace-with-*`.
+- Sao chép `.env.example` thành `.env.production`, điền các biến trong phần **Docker production** và thay toàn bộ giá trị `replace-with-*` cùng `JWT_SECRET`. Compose tự đặt URL nội bộ, URL HTTPS và đường dẫn storage cho container.
 - Không dùng mật khẩu hoặc JWT secret của môi trường phát triển.
 - Máy chủ có Docker Compose, tối thiểu hai vùng lưu trữ độc lập cho database và backup.
 - Alertmanager đã có receiver email/webhook thực tế.

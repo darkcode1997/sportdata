@@ -16,7 +16,7 @@ Ba môi trường được cấu hình độc lập:
 | VPS | `.env.production` + `docker-compose.production.yml` | Làm theo `docs/production-runbook.md` |
 | Vercel | Biến môi trường cấu hình trên Vercel | Deploy qua Vercel, không dùng Docker Compose |
 
-Không dùng `docker-compose.production.yml` để chạy local. File `.env.production.example` chỉ là mẫu cho VPS và không được Docker local tự động nạp.
+Không dùng `docker-compose.production.yml` để chạy local. Sao chép `.env.example` thành `.env` cho local hoặc `.env.production` cho VPS; khi dùng VPS, điền phần Docker production và thay các mật khẩu cùng `JWT_SECRET`. Docker local không tự động nạp `.env.production`.
 
 Nền tảng quản lý bộ môn, quốc gia, đơn vị thể thao, sự kiện, đăng ký thi đấu, lịch, kết quả và thống kê thành tích. Dự án gồm:
 
