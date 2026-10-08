@@ -14,3 +14,5 @@ scripts/
 .vercel
 .env*
 **/static/uploads/
+output/backups/
+tmp/r2-recovered.jsonl

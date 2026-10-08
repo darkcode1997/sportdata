@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "if [ \"$VERCEL_ENV\" = \"production\" ]; then npm run prisma:deploy; fi && npm run vercel-build",
+  "buildCommand": "npm run vercel-build",
   "fluid": true,
   "regions": ["sin1"]
 }

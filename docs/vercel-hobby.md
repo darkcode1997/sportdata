@@ -26,11 +26,18 @@ JWT_SECRET=replace-with-at-least-64-random-characters
 
 Các biến SMTP, OCR và cổng thanh toán chỉ cần khai báo khi tính năng tương ứng được bật.
 
-Backend chạy thành một NestJS Vercel Function tại Singapore. Migration không chạy trong build để tránh preview deployment đồng thời thay đổi production database. Trước khi promote bản có migration mới, chạy từ môi trường tin cậy:
+Backend chạy thành một NestJS Vercel Function tại Singapore. Build production tự bảo toàn các cột file cũ, chạy Prisma migration rồi chuyển nguồn file còn đọc được sang R2. Preview/development không chạy các bước thay đổi database. Các lần chạy đồng thời được khóa bằng PostgreSQL advisory lock; file đã chuyển được bỏ qua.
 
 ```bash
-npm run prisma:deploy
+npm run storage:migrate:r2 --workspace=@sportdata/backend
+npm run storage:migrate:r2 --workspace=@sportdata/backend -- --apply
 ```
+
+Hai lệnh trên lần lượt chạy thử và chuyển dữ liệu thủ công; cần build backend trước khi dùng. Trên Vercel, giữ Build Command `npm run vercel-build` theo `apps/backend/vercel.json` và Root Directory `apps/backend`. Trong **Environment Variables → Production**, thêm `STORAGE_DRIVER=r2`, `STORAGE_R2_BUCKET`, `STORAGE_R2_ACCOUNT_ID` (hoặc `STORAGE_R2_ENDPOINT`), `STORAGE_R2_ACCESS_KEY_ID`, `STORAGE_R2_SECRET_ACCESS_KEY` và `SETTINGS_ENCRYPTION_KEY`. Dùng đúng khóa mã hóa của database hiện tại nếu đã lưu credential qua CMS. CMS vẫn ưu tiên hơn ENV.
+
+Build cần truy cập được database và nguồn file cũ. File local trong Docker/máy tính phải được chuyển từ máy đó trước; Vercel không đọc được Docker volume của máy khác. Có thể giữ credentials Cloudinary/S3 để build đọc nguồn cũ. Nguồn ảnh HTTPS được giới hạn bởi `STORAGE_MIGRATION_ALLOWED_HOSTS`. Database local không tự đồng bộ lên database production. Chỉ deploy frontend không chạy migration backend.
+
+Chạy build production lần đầu trong cửa sổ bảo trì để ứng dụng cũ không thay đổi file trong lúc bảo toàn cột legacy. Nếu chuyển một file thất bại, build thất bại và giữ nguyên nguồn/đường dẫn file đó; chạy lại sẽ tiếp tục các file còn lại. `_StorageMigrationFiles` giữ bản sao byte gốc để phục hồi sau migration, không xóa tự động. Những byte đã mất trước đó cần backup hoặc bản gốc; script không tạo ảnh thay thế từ metadata.
 
 ## Frontend
 

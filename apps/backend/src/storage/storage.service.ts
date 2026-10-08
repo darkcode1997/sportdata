@@ -208,7 +208,8 @@ export class StorageService {
     const separator = reference.indexOf(':');
     const driver = reference.slice(0, separator);
     const key = reference.slice(separator + 1);
-    if (separator < 0 || !/^[a-zA-Z0-9/_-]+$/.test(key) || key.startsWith('/')) {
+    if (separator < 0 || !/^[a-zA-Z0-9/_.-]+$/.test(key) || key.startsWith('/')
+      || key.split('/').some((part) => part === '.' || part === '..')) {
       throw new NotFoundException('Định danh tệp không hợp lệ');
     }
     const provider = driver === 'r2'

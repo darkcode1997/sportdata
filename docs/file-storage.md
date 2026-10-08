@@ -108,6 +108,26 @@ STORAGE_TIMEOUT_MS=30000
 
 ## Cloudflare R2
 
+### Chuyển file cũ và tự động deploy
+
+Sau khi build backend, chạy từ repository root:
+
+```bash
+npm run storage:migrate:r2 --workspace=@sportdata/backend
+npm run storage:migrate:r2 --workspace=@sportdata/backend -- --apply
+```
+
+Lệnh đầu chỉ thống kê. Lệnh `--apply` chuyển file local/S3/Cloudinary, ảnh URL và ảnh inline trong bài viết sang R2. Mỗi file được đọc lại từ R2 và đối chiếu SHA-256 trước khi cập nhật database bằng điều kiện nguồn chưa thay đổi. File gốc không bị xóa; key R2 dùng hash nội dung để tránh nhân đôi khi chạy lại. Ảnh URL công khai đi qua `/api/storage/public-images/<hash>.<extension>`; endpoint này chỉ đọc prefix `public/images`, không mở quyền đọc CCCD/hộ chiếu.
+
+Để khôi phục riêng dữ liệu file từ backup SportData `.jsonl.gz` đã xác minh checksum, không restore hồ sơ hoặc kết quả thi đấu:
+
+```bash
+node apps/backend/scripts/recover-storage-backup.cjs /path/to/backup.jsonl.gz
+npm run storage:migrate:r2 --workspace=@sportdata/backend -- --apply
+```
+
+Vercel production build tự bảo toàn cột binary legacy vào `_StorageMigrationFiles` trước `prisma migrate deploy`, rồi chạy chuyển R2. Preview không thay đổi dữ liệu. Xem `docs/vercel-hobby.md` để cấu hình ENV và giới hạn nguồn local. Backup hồi phục chứa dữ liệu nhạy cảm nằm trong `output/backups/`, không thêm vào Git.
+
 Có thể cấu hình tại **CMS → Cài đặt hệ thống → Cloudflare R2**. Lưu tên bucket, Cloudflare Account ID (hoặc S3 API endpoint), Access Key ID và Secret Access Key, sau đó chọn **Cloudflare R2** ở **Nơi lưu file mới** và bấm Lưu. Khóa được mã hóa bằng `SETTINGS_ENCRYPTION_KEY` (hoặc `JWT_SECRET` hợp lệ), không trả lại cho trình duyệt. Cấu hình CMS ưu tiên hơn ENV và áp dụng cho request tiếp theo, không cần restart. Xóa từng giá trị CMS để dùng lại ENV. Endpoint tùy chọn; không cần nhập nếu đã có Account ID. Backend vẫn khởi động khi R2 chưa đủ cấu hình để quản trị viên bổ sung trong CMS; thao tác R2 sẽ báo lỗi cho đến khi cấu hình hợp lệ.
 
 Đổi nơi lưu chỉ tác động file mới. Khi đổi bucket hoặc endpoint R2, cần chuyển object cũ sang bucket mới trước vì key hiện tại không chứa tên bucket. Giữ credential R2 khi chuyển sang driver khác để đọc file R2 cũ.
