@@ -8,7 +8,7 @@ const require = createRequire(import.meta.url);
 const { Module, NotFoundException } = require('@nestjs/common');
 const { NestFactory } = require('@nestjs/core');
 const { PrismaService } = require('../dist/src/prisma/prisma.service.js');
-const { TicketNotIssuedException } = require('../dist/src/participants/ticket-availability.exceptions.js');
+const { TicketNotFoundException, TicketNotIssuedException } = require('../dist/src/participants/ticket-availability.exceptions.js');
 const { ParticipantsService } = require('../dist/src/participants/participants.service.js');
 const { TicketEmailQueueService } = require('../dist/src/participants/ticket-email-queue.service.js');
 const { TicketEmailWorkerService } = require('../dist/src/participants/ticket-email-worker.service.js');
@@ -159,9 +159,9 @@ test('guest and group registration enqueue one batch without preparing assets', 
   for (const count of [1, 2]) {
     const { service, jobs } = fixture();
     service.systemSettings.get = async () => ({ values: { identityOcrEnabled: false } });
-    const athletes = Array.from({ length: count }, () => ({
+    const athletes = Array.from({ length: count }, (_, index) => ({
       fullName: 'Test Athlete', birthDate: '2000-01-01', gender: 'MALE',
-      countryId: 'country', categoryId: 'category', documentNumber: '012345678901',
+      countryId: 'country', categoryId: 'category', documentNumber: `${index + 1}`.padStart(12, '0'),
     }));
     const files = athletes.flatMap((_, index) => ['avatar', 'cccdFront', 'cccdBack'].map((type) => ({
       fieldname: `athlete_${index}_${type}`, mimetype: 'image/png', size: 8,
@@ -185,8 +185,110 @@ test('queue insert failure rolls back the registration transaction', async () =>
   assert.equal(jobs.length, 0);
 });
 
+test('paid registration finalization enqueues email atomically and skips repeated confirmations', async () => {
+  for (const failEnqueue of [false, true]) {
+    const { service, jobs, registrations } = fixture({ failEnqueue });
+    const registration = {
+      id: 'paid-registration', ticketCode: 'PAID-TICKET', status: 'SUBMITTED', paymentStatus: 'PAID',
+      eventId: 'event', categoryId: 'category', athleteId: 'athlete',
+      submission: { contactEmail: 'guest@example.test' },
+      athlete: { countryId: 'country', email: 'athlete@example.test', media: [
+        { type: 'PASSPORT', verificationStatus: 'VERIFIED' },
+      ] },
+    };
+    const transaction = service.prisma.$transaction.bind(service.prisma);
+    service.prisma.$transaction = (callback) => transaction((database) => {
+      database.eventRegistration.findUnique = async () => registration;
+      database.eventRegistration.updateMany = async ({ data }) => {
+        await database.eventRegistration.update({ data });
+        return { count: 1 };
+      };
+      return callback(database);
+    });
+    if (failEnqueue) {
+      await assert.rejects(service.finalizePaidRegistration(registration.id), /queue insert failed/);
+      assert.equal(registrations.length, 0, 'confirmation must roll back if email job cannot be saved');
+      assert.equal(jobs.length, 0);
+    } else {
+      const result = await service.finalizePaidRegistration(registration.id);
+      assert.equal(result.ticketCode, 'PAID-TICKET');
+      assert.deepEqual(jobs, [{ to: 'guest@example.test', ticketCode: 'PAID-TICKET' }]);
+      registration.status = 'CONFIRMED';
+      assert.equal(await service.finalizePaidRegistration(registration.id), null);
+      assert.equal(jobs.length, 1, 'an already confirmed registration must not enqueue again');
+    }
+  }
+});
+
+test('reuse of an existing registration does not enqueue a nonexistent submission', async () => {
+  const { service, jobs } = fixture();
+  const athlete = { id: 'existing-athlete', fullName: 'Existing Athlete', birthDate: new Date('2000-01-01'),
+    gender: 'MALE', countryId: 'country', media: ['AVATAR', 'CCCD_FRONT', 'CCCD_BACK'].map((type) => ({
+      type, verificationStatus: 'VERIFIED',
+    })) };
+  service.resolveReuse = async () => athlete;
+  const transaction = service.prisma.$transaction.bind(service.prisma);
+  service.prisma.$transaction = (callback) => transaction((database) => {
+    database.eventRegistration.findFirst = async () => ({
+      id: 'existing-registration', ticketCode: 'EXISTING-TICKET', status: 'CONFIRMED', paymentStatus: 'NOT_REQUIRED',
+    });
+    return callback(database);
+  });
+  const result = await service.createGuestRegistrations(JSON.stringify({
+    eventId: 'event', contactName: 'Test Contact', contactEmail: 'guest@example.test', contactPhone: '0123456789',
+    athletes: [{ reuseToken: 'reuse-token', categoryId: 'category' }],
+  }), []);
+  assert.equal(result.referenceCode, null);
+  assert.equal(result.ticketEmailQueued, false);
+  assert.equal(jobs.length, 0);
+});
+
+test('a deleted registration raises the dedicated unavailable-ticket exception', async () => {
+  const { service } = fixture();
+  delete service.getIssuedTicket;
+  delete service.getTicket;
+  service.prisma.eventRegistration.findUnique = async () => null;
+  await assert.rejects(service.getIssuedTicket('DELETED-TICKET'), TicketNotFoundException);
+});
+
+test('a mixed submission queues only its new confirmed registrations', async () => {
+  const { service, jobs } = fixture();
+  service.systemSettings.get = async () => ({ values: { identityOcrEnabled: false } });
+  service.resolveReuse = async () => ({
+    id: 'existing-athlete', fullName: 'Existing Athlete', birthDate: new Date('2000-01-01'),
+    gender: 'MALE', countryId: 'country', media: ['AVATAR', 'CCCD_FRONT', 'CCCD_BACK'].map((type) => ({
+      type, verificationStatus: 'VERIFIED',
+    })),
+  });
+  const transaction = service.prisma.$transaction.bind(service.prisma);
+  service.prisma.$transaction = (callback) => transaction((database) => {
+    database.eventRegistration.findFirst = async () => ({
+      id: 'existing-registration', ticketCode: 'EXISTING-TICKET', status: 'SUBMITTED', paymentStatus: 'PENDING',
+      createdAt: new Date(),
+    });
+    return callback(database);
+  });
+  const files = ['avatar', 'cccdFront', 'cccdBack'].map((type) => ({
+    fieldname: `athlete_1_${type}`, mimetype: 'image/png', size: 8,
+    buffer: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+  }));
+  const result = await service.createGuestRegistrations(JSON.stringify({
+    eventId: 'event', contactName: 'Test Contact', contactEmail: 'guest@example.test',
+    contactPhone: '0123456789', organizationName: 'Test Club', athletes: [
+      { reuseToken: 'reuse-token', categoryId: 'category' },
+      { fullName: 'New Athlete', birthDate: '2000-01-01', gender: 'MALE', countryId: 'country',
+        categoryId: 'category', documentNumber: '012345678901' },
+    ],
+  }), files);
+  assert.equal(result.hasExistingRegistrations, true);
+  assert.equal(result.registrations[0].status, 'SUBMITTED');
+  assert.equal(result.registrations[1].status, 'CONFIRMED');
+  assert.equal(result.ticketEmailQueued, true);
+  assert.deepEqual(jobs, [{ to: 'guest@example.test', referenceCode: result.referenceCode }]);
+});
+
 test('worker retries asset/PDF/SMTP errors and skips revoked tickets or disabled email', async () => {
-  for (const failure of ['assets', 'missing-asset', 'pdf', 'smtp', 'revoked', 'disabled']) {
+  for (const failure of ['assets', 'missing-asset', 'pdf', 'smtp', 'revoked', 'deleted', 'disabled']) {
     const job = { id: 'job', ticketCode: 'SD-TICKET', to: 'recipient@example.test', attempts: 1 };
     const outcomes = [];
     const worker = new TicketEmailWorkerService(
@@ -200,6 +302,7 @@ test('worker retries asset/PDF/SMTP errors and skips revoked tickets or disabled
           if (failure === 'assets') throw new Error('asset read failed');
           if (failure === 'missing-asset') throw new NotFoundException('asset not found');
           if (failure === 'revoked') throw new TicketNotIssuedException('ticket revoked');
+          if (failure === 'deleted') throw new TicketNotFoundException('ticket deleted');
           return { isValid: true };
         },
       },
@@ -210,7 +313,7 @@ test('worker retries asset/PDF/SMTP errors and skips revoked tickets or disabled
     );
     worker.logger.error = () => {};
     await worker.processNext();
-    assert.deepEqual(outcomes, failure === 'revoked' || failure === 'disabled'
+    assert.deepEqual(outcomes, failure === 'revoked' || failure === 'deleted' || failure === 'disabled'
       ? [['finish', false]]
       : [['retry', failure === 'assets' ? 'asset read failed' : failure === 'missing-asset' ? 'asset not found' : `${failure} failed`]]);
   }
@@ -261,8 +364,6 @@ test('paid registration finalization queues one email inside its transaction', a
 
 test('SMTP errors propagate to the worker for retries', async () => {
   const original = nodemailer.createTransport;
-  const originalHost = process.env.SMTP_HOST;
-  process.env.SMTP_HOST = 'smtp.example.test';
   nodemailer.createTransport = () => ({ sendMail: async () => { throw new Error('SMTP timeout'); } });
   try {
     const email = new TicketEmailService(
@@ -275,8 +376,6 @@ test('SMTP errors propagate to the worker for retries', async () => {
     }]), /SMTP timeout/);
   } finally {
     nodemailer.createTransport = original;
-    if (originalHost === undefined) delete process.env.SMTP_HOST;
-    else process.env.SMTP_HOST = originalHost;
   }
 });
 
