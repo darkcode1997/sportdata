@@ -44,7 +44,8 @@ import {
   UpdateParticipantProfileDto,
 } from './dto/participant.dto';
 import { IdentityOcrService, type IdentityOcrFields, type IdentityOcrResult } from './identity-ocr.service';
-import { TicketEmailService } from './ticket-email.service';
+import { TicketEmailQueueService } from './ticket-email-queue.service';
+import { TicketNotFoundException, TicketNotIssuedException } from './ticket-availability.exceptions';
 import { SystemSettingsService } from '../system-settings/system-settings.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { AthleteIdentityService } from '../athletes/athlete-identity.service';
@@ -125,7 +126,7 @@ export class ParticipantsService {
     private readonly storage: StorageService,
     private readonly jwtService: JwtService,
     private readonly identityOcr: IdentityOcrService,
-    private readonly ticketEmail: TicketEmailService,
+    private readonly ticketEmailQueue: TicketEmailQueueService,
     private readonly systemSettings: SystemSettingsService,
     private readonly notifications: NotificationsService,
     private readonly athleteIdentity: AthleteIdentityService,
@@ -1091,6 +1092,12 @@ export class ParticipantsService {
         }
       }
 
+      const ticketEmailQueued = Boolean(submission) && registrations.some((registration) => !registration.existing)
+        && registrations.every((registration) => registration.status === RegistrationStatus.CONFIRMED);
+      if (ticketEmailQueued) {
+        await this.ticketEmailQueue.enqueueSubmission(transaction, contactEmail, referenceCode);
+      }
+
       return {
         submissionId: submission?.id ?? null,
         referenceCode: submission ? referenceCode : null,
@@ -1100,6 +1107,7 @@ export class ParticipantsService {
           ? RegistrationStatus.CONFIRMED
           : RegistrationStatus.SUBMITTED,
         registrations,
+        ticketEmailQueued,
       };
     }, { maxWait: 10000, timeout: 30000 });
     const newlyStored: string[] = [];
@@ -1143,19 +1151,7 @@ export class ParticipantsService {
         );
       }
     });
-    let ticketEmailSent = false;
-    if (result.status === RegistrationStatus.CONFIRMED && result.referenceCode && !result.hasExistingRegistrations) {
-      try {
-        const batch = await this.getSubmissionTickets(referenceCode, contactEmail, true);
-        ticketEmailSent = await this.ticketEmail.send(contactEmail, batch.tickets, batch.meta);
-      } catch (error) {
-        this.logger.error(
-          `Không thể dựng hoặc gửi vé cho hồ sơ ${referenceCode}`,
-          error instanceof Error ? error.stack : String(error),
-        );
-      }
-    }
-    return { ...result, ticketEmailSent };
+    return { ...result, ticketEmailSent: false };
   }
 
   async createRegistration(accountId: string, dto: CreatePublicRegistrationDto) {
@@ -1228,6 +1224,7 @@ export class ParticipantsService {
             countryId: profile.athlete.countryId,
             confirmed: true,
           });
+          await this.ticketEmailQueue.enqueueTicket(transaction, profile.email, registration.ticketCode);
         }
         return transaction.eventRegistration.findUniqueOrThrow({
           where: { id: registration.id },
@@ -1241,12 +1238,11 @@ export class ParticipantsService {
         'Có hồ sơ đăng ký mới',
         registration.status === RegistrationStatus.CONFIRMED ? 'Đã xác nhận tham dự' : 'Đang chờ duyệt',
       );
-      let ticketEmailSent = false;
-      if (registration.status === RegistrationStatus.CONFIRMED) {
-        const ticket = await this.getIssuedTicket(registration.ticketCode, true);
-        ticketEmailSent = await this.ticketEmail.send(profile.email, [ticket]);
-      }
-      return { ...registration, ticketEmailSent };
+      return {
+        ...registration,
+        ticketEmailSent: false,
+        ticketEmailQueued: canConfirmImmediately,
+      };
     } catch (error: any) {
       if (error?.code === 'P2002') throw new ConflictException('Bạn đã đăng ký hạng đấu này');
       throw error;
@@ -1336,7 +1332,7 @@ export class ParticipantsService {
         },
       },
     });
-    if (!registration) throw new NotFoundException('Không tìm thấy thẻ tham dự');
+    if (!registration) throw new TicketNotFoundException('Không tìm thấy thẻ tham dự');
     if (registration.status === RegistrationStatus.SUBMITTED && registration.paymentStatus === PaymentStatus.PAID) {
       const finalized = await this.finalizePaidRegistration(registration.id);
       if (finalized) registration = { ...registration, status: RegistrationStatus.CONFIRMED,
@@ -1455,7 +1451,7 @@ export class ParticipantsService {
   async getIssuedTicket(ticketCode: string, includeAssets = false) {
     const ticket = await this.getTicket(ticketCode, includeAssets);
     if (!ticket.isValid) {
-      throw new BadRequestException(
+      throw new TicketNotIssuedException(
         'Vé A6 chỉ được phát hành sau khi hồ sơ được duyệt và thanh toán đã hoàn tất',
       );
     }
@@ -1473,14 +1469,14 @@ export class ParticipantsService {
       },
     });
     if (!submission || submission.contactEmail.toLowerCase() !== contactEmail.trim().toLowerCase()) {
-      throw new NotFoundException('Không tìm thấy bộ vé với mã hồ sơ và email này');
+      throw new TicketNotFoundException('Không tìm thấy bộ vé với mã hồ sơ và email này');
     }
     const hasUnissuedTicket = submission.registrations.some((item) => (
       item.status !== RegistrationStatus.CONFIRMED
       || (item.paymentStatus !== PaymentStatus.PAID && item.paymentStatus !== PaymentStatus.NOT_REQUIRED)
     ));
     if (hasUnissuedTicket) {
-      throw new BadRequestException(
+      throw new TicketNotIssuedException(
         'Bộ vé A6 chỉ được phát hành sau khi tất cả hồ sơ được duyệt và thanh toán đã hoàn tất',
       );
     }
@@ -1856,6 +1852,10 @@ export class ParticipantsService {
         countryId: athlete.countryId,
         confirmed: status === RegistrationStatus.CONFIRMED,
       });
+      const email = registration.account?.email || registration.submission?.contactEmail;
+      if (status === RegistrationStatus.CONFIRMED && email) {
+        await this.ticketEmailQueue.enqueueTicket(transaction, email, registration.ticketCode);
+      }
       return transaction.eventRegistration.findUniqueOrThrow({
         where: { id },
         include: this.registrationInclude(),
@@ -1868,17 +1868,6 @@ export class ParticipantsService {
       'Trạng thái đăng ký đã thay đổi',
       `${registration.status} → ${status}${normalizedReason ? ` · ${normalizedReason}` : ''}`,
     );
-    if (status === RegistrationStatus.CONFIRMED) {
-      const email = registration.account?.email || registration.submission?.contactEmail;
-      if (email) {
-        try {
-          const ticket = await this.getIssuedTicket(registration.ticketCode, true);
-          await this.ticketEmail.send(email, [ticket]);
-        } catch (error) {
-          this.logger.error('Không thể gửi lại vé sau khi duyệt hồ sơ', error instanceof Error ? error.stack : String(error));
-        }
-      }
-    }
     return updated;
   }
 
@@ -1966,13 +1955,10 @@ export class ParticipantsService {
         registrationId: id, fromStatus: RegistrationStatus.SUBMITTED, toStatus: RegistrationStatus.CONFIRMED,
         reason: 'Hồ sơ đã xác thực và thanh toán thành công', changedBy: 'SYSTEM:PAYMENT_CONFIRMED',
       } });
-      return { ticketCode: registration.ticketCode, statusChangedAt,
-        email: registration.submission?.contactEmail || registration.athlete.email };
+      const email = registration.submission?.contactEmail || registration.athlete.email;
+      if (email) await this.ticketEmailQueue.enqueueTicket(transaction, email, registration.ticketCode);
+      return { ticketCode: registration.ticketCode, statusChangedAt, email };
     });
-    if (finalized?.email) {
-      try { await this.ticketEmail.send(finalized.email, [await this.getTicket(finalized.ticketCode, true)]); }
-      catch { this.logger.warn('Vé đã được phát hành; chưa gửi được email thông báo.'); }
-    }
     return finalized;
   }
 

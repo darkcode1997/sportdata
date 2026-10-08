@@ -12,7 +12,9 @@ import {
   HttpStatus,
   UseGuards,
   Req,
+  Sse,
 } from '@nestjs/common';
+import { defer, switchMap } from 'rxjs';
 import { ApiOperation, ApiParam, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { MatchesService } from './matches.service';
 import { CreateMatchDto } from './dto/create-match.dto';
@@ -26,11 +28,21 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../auth/optional-jwt-auth.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { UserRole } from '../common/enums/user-role.enum';
+import { PublicEventStreamService } from './public-event-stream.service';
 
 @ApiTags('matches')
 @Controller('matches')
 export class MatchesController {
-  constructor(private readonly matchesService: MatchesService) {}
+  constructor(
+    private readonly matchesService: MatchesService,
+    private readonly publicEventStream: PublicEventStreamService,
+  ) {}
+
+  @Sse('event/:eventId/stream')
+  @ApiOperation({ summary: 'Subscribe to public event schedule changes' })
+  streamSchedule(@Param('eventId') eventId: string) {
+    return defer(() => this.publicEventStream.stream(eventId)).pipe(switchMap((stream) => stream));
+  }
 
   @Get()
   @ApiOperation({

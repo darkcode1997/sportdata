@@ -97,6 +97,7 @@ type SubmissionResult = {
   hasExistingRegistrations?: boolean;
   referenceCode: string | null;
   ticketEmailSent?: boolean;
+  ticketEmailQueued?: boolean;
   registrations: { id: string; athleteId: string; athleteName: string; ticketCode: string; status: string; paymentStatus: string; feeAmount: number; currency: string; paymentDueAt?: string | null }[];
 };
 type FederationSessionProfile = {
@@ -553,7 +554,9 @@ export default function GuestEventRegistrationPage() {
       toast.success(allTicketsIssued
         ? response.data.ticketEmailSent
           ? 'Hồ sơ đã được duyệt. Bộ vé A6 đã được gửi về email và đang được tải xuống.'
-          : 'Hồ sơ đã được duyệt. Bộ vé A6 đã sẵn sàng; email chưa gửi được.'
+          : response.data.ticketEmailQueued
+            ? 'Hồ sơ đã được duyệt. Bộ vé A6 đã sẵn sàng và sẽ được gửi về email.'
+            : 'Hồ sơ đã được duyệt. Bộ vé A6 đã sẵn sàng để tải.'
         : 'Đã tiếp nhận hồ sơ. Vé A6 sẽ được phát hành và gửi email sau khi hồ sơ được duyệt.');
       setResult(response.data);
       window.scrollTo({ top: 0, behavior: 'smooth' });

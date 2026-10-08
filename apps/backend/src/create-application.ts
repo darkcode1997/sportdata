@@ -9,6 +9,7 @@ import type { NextFunction, Request, Response } from "express";
 import { constants as zlibConstants } from "zlib";
 
 export async function configureApplication(app: INestApplication) {
+  const isEventStream = (request: Request) => /^\/api\/matches\/event\/[^/]+\/stream$/.test(request.path);
   app.getHttpAdapter().getInstance().set("trust proxy", 1);
   app.use(
     "/api/system-backup/import/uploads",
@@ -23,6 +24,7 @@ export async function configureApplication(app: INestApplication) {
   );
   app.use(
     compression({
+      filter: (request, response) => !isEventStream(request) && compression.filter(request, response),
       threshold: 1_024,
       brotli: { params: { [zlibConstants.BROTLI_PARAM_QUALITY]: 4 } },
     }),
@@ -39,6 +41,12 @@ export async function configureApplication(app: INestApplication) {
     }),
   );
   app.use((request: Request, response: Response, next: NextFunction) => {
+    if (isEventStream(request)) {
+      response.setHeader("Cache-Control", "no-store, no-transform");
+      response.setHeader("Vercel-CDN-Cache-Control", "no-store");
+      response.setHeader("X-Accel-Buffering", "no");
+      return next();
+    }
     const publicGet =
       request.method === "GET" &&
       !request.headers.authorization &&

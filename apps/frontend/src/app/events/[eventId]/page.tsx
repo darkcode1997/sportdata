@@ -10,6 +10,7 @@ import { ArrowRight, Building2, LogIn, Radio, ShieldCheck, TicketCheck, Trophy, 
 import { MatchCard } from '@/components/MatchCard';
 import { MATCH_STATUS_META } from '@/lib/vi-labels';
 import { useSportDataToast } from '@/hooks/useSportDataToast';
+import { useEventScheduleStream } from '@/hooks/useEventScheduleStream';
 import { fetcher } from '@/lib/api';
 import { getParticipantAccount, getParticipantToken, participantApi, participantError, type SportDataAccount } from '@/lib/participant-auth';
 
@@ -186,14 +187,25 @@ export default function EventDetailPage() {
   const toast = useSportDataToast();
   const params = useParams<{ eventId: string }>();
   const eventId = params.eventId;
+  const refreshScheduleRef = useRef<() => Promise<unknown>>(async () => undefined);
+  const scheduleRevisionRef = useRef('');
+  const scheduleFetcher = useCallback((url: string) => {
+    // An SSE invalidation must not reuse a browser/CDN response cached before
+    // the change; keep SWR keys stable while requesting a fresh HTTP snapshot.
+    if (!scheduleRevisionRef.current) return fetcher(url);
+    return fetcher(`${url}${url.includes('?') ? '&' : '?'}_scheduleSync=${scheduleRevisionRef.current}`);
+  }, []);
+  const refreshSchedule = useCallback(() => refreshScheduleRef.current(), []);
+  const { connected: scheduleConnected } = useEventScheduleStream(eventId, refreshSchedule);
+  const scheduleRefreshInterval = scheduleConnected ? 0 : 30_000;
   const { data: eventResponse, isLoading: eventLoading } = useSWR<EventData>(
     eventId ? `/events/${eventId}` : null,
     fetcher,
   );
-  const { data: scheduleSummary, isLoading: summaryLoading } = useSWR<ScheduleSummary>(
+  const { data: scheduleSummary, isLoading: summaryLoading, mutate: mutateScheduleSummary } = useSWR<ScheduleSummary>(
     eventId ? `/matches/event/${eventId}/schedule-summary` : null,
-    fetcher,
-    { refreshInterval: 5000 },
+    scheduleFetcher,
+    { refreshInterval: scheduleRefreshInterval },
   );
 
   const event = eventResponse || (eventId === demoEvent.id ? demoEvent : undefined);
@@ -274,12 +286,19 @@ export default function EventDetailPage() {
     isLoading: matchesLoading,
     isValidating: matchesValidating,
     setSize,
-  } = useSWRInfinite<MatchPage>(getMatchesKey, fetcher, {
+    mutate: mutateMatches,
+  } = useSWRInfinite<MatchPage>(getMatchesKey, scheduleFetcher, {
     persistSize: false,
     revalidateFirstPage: true,
     revalidateAll: true,
-    refreshInterval: 5000,
+    refreshInterval: scheduleRefreshInterval,
   });
+  useEffect(() => {
+    refreshScheduleRef.current = () => {
+      scheduleRevisionRef.current = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      return Promise.allSettled([mutateScheduleSummary(), mutateMatches()]);
+    };
+  }, [mutateScheduleSummary, mutateMatches]);
   const activeMatches = useMemo(() => {
     const uniqueMatches = new Map<string, Match>();
     matchPages?.forEach((page) => page.items.forEach((match) => uniqueMatches.set(match.id, match)));
@@ -386,7 +405,7 @@ export default function EventDetailPage() {
       });
       toast.success({
         content: data.status === 'CONFIRMED'
-          ? `Đăng ký đã được xác nhận. Vé A6 ${data.ticketCode}${data.ticketEmailSent ? ' đã được gửi về email.' : ' đã sẵn sàng để tải.'}`
+          ? `Đăng ký đã được xác nhận. Vé A6 ${data.ticketCode}${data.ticketEmailSent ? ' đã được gửi về email.' : data.ticketEmailQueued ? ' đã sẵn sàng và sẽ được gửi về email.' : ' đã sẵn sàng để tải.'}`
           : `Đã tiếp nhận hồ sơ ${data.ticketCode}.${data.paymentStatus === 'PENDING' ? ' Mở trang hồ sơ để thanh toán lệ phí.' : ''} Vé A6 sẽ được phát hành và gửi email sau khi hồ sơ được duyệt.`,
         duration: 6,
       });

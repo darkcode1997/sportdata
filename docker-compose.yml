@@ -108,6 +108,7 @@ services:
       retries: 12
       start_period: 20s
     restart: unless-stopped
+    stop_grace_period: 2m
 
   frontend:
     build:

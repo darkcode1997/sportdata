@@ -12,12 +12,16 @@ export class TicketEmailService {
     private readonly settings: SystemSettingsService,
   ) {}
 
+  isEnabled() {
+    return this.settings.enabled('ticketEmailEnabled');
+  }
+
   async send(to: string, tickets: TicketPayload[], batch?: TicketBatchMeta) {
     if (!tickets.length || tickets.some((ticket) => ticket.isValid !== true)) {
       this.logger.warn('Bỏ qua gửi email vì hồ sơ chưa đủ điều kiện phát hành vé');
       return false;
     }
-    if (!await this.settings.enabled('ticketEmailEnabled')) {
+    if (!await this.isEnabled()) {
       this.logger.warn('Bỏ qua gửi vé email vì tính năng email đang tắt hoặc SMTP chưa được cấu hình');
       return false;
     }
@@ -61,7 +65,7 @@ export class TicketEmailService {
       return true;
     } catch (error) {
       this.logger.error(`Không thể gửi vé đến ${to}`, error instanceof Error ? error.stack : String(error));
-      return false;
+      throw error;
     }
   }
 

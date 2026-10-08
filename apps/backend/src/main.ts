@@ -4,6 +4,7 @@ import { configureApplication } from "./create-application";
 
 async function bootstrap() {
   const app = await configureApplication(await NestFactory.create(AppModule));
+  app.enableShutdownHooks();
 
   const port = parseInt(process.env.PORT || "4000", 10) || 4000;
   const net = await import("net");

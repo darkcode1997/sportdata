@@ -1,7 +1,7 @@
 import {
   Injectable,
   OnModuleInit,
-  OnModuleDestroy,
+  BeforeApplicationShutdown,
   Logger,
 } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
@@ -9,7 +9,7 @@ import { PrismaClient } from "@prisma/client";
 @Injectable()
 export class PrismaService
   extends PrismaClient
-  implements OnModuleInit, OnModuleDestroy
+  implements OnModuleInit, BeforeApplicationShutdown
 {
   private readonly logger = new Logger(PrismaService.name);
   private connected = false;
@@ -35,7 +35,8 @@ export class PrismaService
     return this.connected;
   }
 
-  async onModuleDestroy() {
+  async beforeApplicationShutdown() {
+    // Background services drain their active jobs in onModuleDestroy first.
     if (this.connected) {
       try {
         await this.$disconnect();
