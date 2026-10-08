@@ -27,6 +27,7 @@ services:
       BACKEND_PUBLIC_URL: http://localhost:${BACKEND_HOST_PORT:-4000}
       JWT_SECRET: ${JWT_SECRET:-sportdata-dev-secret-change-me-please}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      SETTINGS_ENCRYPTION_KEY: ${SETTINGS_ENCRYPTION_KEY:-}
       # Seed is an explicit data operation. A normal restart must never rebuild
       # draws, matches or schedules that operators may already have edited.
       SEED_DATABASE: ${SEED_DATABASE:-false}

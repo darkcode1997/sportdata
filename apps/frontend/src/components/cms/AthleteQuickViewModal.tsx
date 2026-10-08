@@ -69,7 +69,7 @@ function ProtectedDocumentPreview({ athleteId, document }: { athleteId: string; 
   useEffect(() => {
     let active = true;
     let objectUrl: string | undefined;
-    void api.get(`/participant-auth/admin/athletes/${athleteId}/media/${document.type}`, { responseType: 'blob' })
+    void api.get(`/athletes/${athleteId}/documents/${document.type}`, { responseType: 'blob' })
       .then((response) => {
         if (!active) return;
         const blob = response.data instanceof Blob
@@ -115,6 +115,7 @@ export function AthleteQuickViewModal({ athleteId, open, onClose }: AthleteQuick
   const { data: currentUser } = useSWR<any>('/auth/profile', fetcher);
   const { data: athlete, isLoading } = useSWR<any>(open && athleteId ? `/athletes/${athleteId}` : null, fetcher);
   const { data: documents = [], isLoading: documentsLoading } = useSWR<AthleteDocument[]>(open && athleteId ? `/athletes/${athleteId}/documents` : null, fetcher);
+  const { data: identity, error: identityError } = useSWR<{ cccd: string | null; passport: string | null }>(open && athleteId ? `/athletes/${athleteId}/identity-details` : null, fetcher);
   const statistics = athlete?.statistics || [];
   useEffect(() => {
     if (open) setReturnTo(`${window.location.pathname}${window.location.search}`);
@@ -154,8 +155,10 @@ export function AthleteQuickViewModal({ athleteId, open, onClose }: AthleteQuick
           <Descriptions column={{ xs: 1, sm: 2 }} bordered size="small">
             <Descriptions.Item label="Ngày sinh">{athlete.birthDate ? new Date(athlete.birthDate).toLocaleDateString('vi-VN') : '—'}</Descriptions.Item>
             <Descriptions.Item label="Giới tính">{athlete.gender === 'MALE' ? 'Nam' : athlete.gender === 'FEMALE' ? 'Nữ' : 'Khác'}</Descriptions.Item>
-            <Descriptions.Item label="Cân nặng">{athlete.weight ? `${athlete.weight} kg` : '—'}</Descriptions.Item>
-            <Descriptions.Item label="Chiều cao">{athlete.height ? `${athlete.height} cm` : '—'}</Descriptions.Item>
+            {athlete.weight != null && <Descriptions.Item label="Cân nặng">{athlete.weight} kg</Descriptions.Item>}
+            {athlete.height != null && <Descriptions.Item label="Chiều cao">{athlete.height} cm</Descriptions.Item>}
+            {identity?.cccd && <Descriptions.Item label="Số CCCD"><Typography.Text copyable>{identity.cccd}</Typography.Text></Descriptions.Item>}
+            {identity?.passport && <Descriptions.Item label="Số hộ chiếu"><Typography.Text copyable>{identity.passport}</Typography.Text></Descriptions.Item>}
             <Descriptions.Item label="Họ">{athlete.firstName || '—'}</Descriptions.Item>
             <Descriptions.Item label="Tên">{athlete.lastName || '—'}</Descriptions.Item>
             <Descriptions.Item label="Email">{athlete.email || '—'}</Descriptions.Item>
@@ -166,6 +169,7 @@ export function AthleteQuickViewModal({ athleteId, open, onClose }: AthleteQuick
 
           <div>
             <Typography.Title level={5}>Giấy tờ định danh</Typography.Title>
+            {identityError && <Typography.Paragraph type="warning">Chưa tải được số giấy tờ định danh.</Typography.Paragraph>}
             {documentsLoading ? <Skeleton active paragraph={{ rows: 3 }} /> : documents.length ? (
               <div className="grid gap-3 md:grid-cols-3">
                 {documents.map((document) => <ProtectedDocumentPreview key={document.id} athleteId={athlete.id} document={document} />)}

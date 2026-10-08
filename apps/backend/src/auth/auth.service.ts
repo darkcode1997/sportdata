@@ -1,3 +1,4 @@
+import { SystemSettingsService } from '../system-settings/system-settings.service';
 import {
   BadRequestException,
   ConflictException,
@@ -32,6 +33,7 @@ export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
+    private readonly settings: SystemSettingsService,
   ) {}
 
   async hashPassword(password: string): Promise<string> {
@@ -266,24 +268,26 @@ export class AuthService {
   }
 
   private async sendResetEmail(email: string, resetUrl: string, ttlMinutes: number) {
-    if (!process.env.SMTP_HOST) return;
+    const integration = await this.settings.integrationValues();
+
+    if (!integration.SMTP_HOST) return;
 
     const transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: Number(process.env.SMTP_PORT || 587),
-      secure: process.env.SMTP_SECURE === 'true',
-      ...(process.env.SMTP_USER
+      host: integration.SMTP_HOST,
+      port: Number(integration.SMTP_PORT || 587),
+      secure: integration.SMTP_SECURE === 'true',
+      ...(integration.SMTP_USER
         ? {
             auth: {
-              user: process.env.SMTP_USER,
-              pass: process.env.SMTP_PASSWORD || '',
+              user: integration.SMTP_USER,
+              pass: integration.SMTP_PASSWORD || '',
             },
           }
         : {}),
     });
 
     await transporter.sendMail({
-      from: process.env.SMTP_FROM || process.env.SMTP_USER || 'SportData CMS',
+      from: integration.SMTP_FROM || integration.SMTP_USER || 'SportData CMS',
       to: email,
       subject: 'Đặt lại mật khẩu SportCMS',
       text: `Mở liên kết sau để đặt lại mật khẩu SportCMS. Liên kết hết hạn sau ${ttlMinutes} phút và chỉ dùng được một lần:\n\n${resetUrl}`,

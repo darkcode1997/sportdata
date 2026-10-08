@@ -45,6 +45,9 @@ import { IdentityOcrService, type IdentityOcrFields, type IdentityOcrResult } fr
 import { TicketEmailService } from './ticket-email.service';
 import { SystemSettingsService } from '../system-settings/system-settings.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { AthleteIdentityService } from '../athletes/athlete-identity.service';
+import { CheckAthleteIdentityDto } from './dto/check-athlete-identity.dto';
+import { LookupAthleteDto } from './dto/lookup-athlete.dto';
 
 const mediaSelect = {
   id: true,
@@ -62,6 +65,11 @@ const mediaSelect = {
 } as const;
 
 type GuestAthleteInput = {
+  reuseToken?: string;
+  profileConfirmed?: boolean;
+  documentNumber?: string;
+  address?: string;
+  phone?: string;
   fullName?: string;
   birthDate?: string;
   gender?: Gender;
@@ -69,6 +77,7 @@ type GuestAthleteInput = {
   federationId?: string;
   categoryId?: string;
   weight?: number;
+  height?: number;
   identityType?: 'CCCD' | 'PASSPORT';
   identityOcr?: {
     provider?: string;
@@ -113,7 +122,79 @@ export class ParticipantsService {
     private readonly ticketEmail: TicketEmailService,
     private readonly systemSettings: SystemSettingsService,
     private readonly notifications: NotificationsService,
+    private readonly athleteIdentity: AthleteIdentityService,
   ) {}
+
+  async checkAthleteIdentity(dto: CheckAthleteIdentityDto) {
+    await this.prisma.$transaction(async (transaction) => {
+      await this.athleteIdentity.assertNew(transaction, {
+        ...dto, birthDate: dto.birthDate ? new Date(dto.birthDate) : undefined,
+      });
+    });
+    return { available: true };
+  }
+
+  private normalizedContactPhone(value?: string | null) {
+    const digits = (value || '').replace(/\D/g, '');
+    return digits.length === 11 && digits.startsWith('84') ? `0${digits.slice(2)}` : digits;
+  }
+
+  async lookupAthlete(dto: LookupAthleteDto) {
+    const event = await this.prisma.event.findUnique({ where: { id: dto.eventId }, select: { isPublished: true } });
+    if (!event?.isPublished) throw new NotFoundException('Sự kiện không tồn tại hoặc chưa công khai');
+    const input = { ...dto, birthDate: dto.birthDate ? new Date(dto.birthDate) : undefined,
+      fullName: dto.fullName || '', gender: Gender.MIXED, countryId: dto.countryId || '' };
+    const matches = await this.prisma.$transaction((transaction) => this.athleteIdentity.findDocumentMatches(transaction, input));
+    if (!matches.length) return { status: 'NEW' as const };
+    const phone = this.normalizedContactPhone(dto.phone);
+    const normalizedName = (value: string) => value.normalize('NFC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('vi');
+    const authorized = matches.filter((athlete) => {
+      const phones = [athlete.phone, athlete.participantAccount?.phone,
+        ...athlete.publicRegistrations.map((registration) => registration.submission?.contactPhone)];
+      const matchesPhone = phone && phones.some((value) => this.normalizedContactPhone(value) === phone);
+      const matchesPersonal = dto.fullName && dto.birthDate && normalizedName(dto.fullName) === normalizedName(athlete.fullName)
+        && athlete.birthDate?.toISOString().slice(0, 10) === new Date(dto.birthDate).toISOString().slice(0, 10);
+      return matchesPhone || matchesPersonal;
+    });
+    if (!authorized.length) return { status: 'VERIFY_CONTACT' as const,
+      message: 'Đã có hồ sơ theo số giấy tờ này. Nhập SĐT liên hệ đã dùng trước đây hoặc họ tên và ngày sinh để xác nhận hồ sơ.' };
+    const athlete = authorized.find((item) => item.publicRegistrations.some((registration) => registration.eventId === dto.eventId)) || authorized[0];
+    const registration = athlete.publicRegistrations.find((item) => item.eventId === dto.eventId);
+    const keys = this.athleteIdentity.normalize(input);
+    const reuseToken = this.jwtService.sign({ purpose: 'reuse-athlete', athleteId: athlete.id,
+      eventId: dto.eventId, documentHash: keys.documentHash, phone }, { expiresIn: '30m' });
+    return {
+      status: registration ? 'REGISTERED' as const : 'FOUND' as const,
+      reuseToken,
+      athlete: { fullName: athlete.fullName, birthDate: athlete.birthDate?.toISOString().slice(0, 10),
+        gender: athlete.gender, countryId: athlete.countryId, federationId: athlete.federationId,
+        countryName: athlete.country.name, federationName: athlete.federation?.name,
+        weight: athlete.weight, height: athlete.height,
+        hasAvatar: athlete.media.some((media) => media.type === AthleteMediaType.AVATAR),
+        hasIdentity: this.identityDocumentState(athlete.media).complete },
+      registration: registration ? { ticketCode: registration.ticketCode, status: registration.status,
+        paymentStatus: registration.paymentStatus, categoryId: registration.categoryId,
+        feeAmount: registration.feeAmount } : undefined,
+    };
+  }
+
+  private async resolveReuse(athlete: GuestAthleteInput, eventId: string, contactPhone: string) {
+    if (!athlete.reuseToken || athlete.profileConfirmed !== true) throw new BadRequestException('Vui lòng xác nhận thông tin hồ sơ.');
+    let token: { purpose?: string; athleteId?: string; eventId?: string; documentHash?: string; phone?: string };
+    try { token = this.jwtService.verify(athlete.reuseToken); }
+    catch { throw new BadRequestException('Phiên xác nhận đã hết hạn. Vui lòng kiểm tra lại số giấy tờ.'); }
+    const input = { ...athlete, birthDate: athlete.birthDate ? new Date(athlete.birthDate) : undefined,
+      fullName: athlete.fullName || '', gender: athlete.gender || Gender.MIXED, countryId: athlete.countryId || '' };
+    const keys = this.athleteIdentity.normalize(input);
+    if (token.purpose !== 'reuse-athlete' || token.eventId !== eventId || token.documentHash !== keys.documentHash
+      || token.phone !== this.normalizedContactPhone(athlete.phone || contactPhone)) {
+      throw new BadRequestException('Thông tin xác nhận đã thay đổi. Vui lòng kiểm tra lại số giấy tờ.');
+    }
+    const matches = await this.prisma.$transaction((transaction) => this.athleteIdentity.findDocumentMatches(transaction, input));
+    const existing = matches.find((item) => item.id === token.athleteId);
+    if (!existing) throw new BadRequestException('Hồ sơ đã thay đổi. Vui lòng kiểm tra lại số giấy tờ.');
+    return existing;
+  }
 
   async register(dto: ParticipantRegisterDto) {
     const email = dto.email.trim().toLowerCase();
@@ -122,10 +203,17 @@ export class ParticipantsService {
     }
     await this.validateAffiliation(dto.countryId, dto.federationId);
     const name = this.splitName(dto.displayName);
-    const account = await this.prisma.participantAccount.create({
+    const password = await bcrypt.hash(dto.password, 12);
+    const account = await this.prisma.$transaction(async (transaction) => {
+      await this.athleteIdentity.lock(transaction);
+      await this.athleteIdentity.assertNew(transaction, {
+        fullName: dto.displayName, birthDate: new Date(dto.birthDate), gender: dto.gender,
+        countryId: dto.countryId, federationId: dto.federationId, phone: dto.phone,
+      });
+      return transaction.participantAccount.create({
       data: {
         email,
-        password: await bcrypt.hash(dto.password, 12),
+        password,
         displayName: dto.displayName.trim(),
         phone: dto.phone?.trim() || null,
         accountType: SportDataAccountType.ATHLETE,
@@ -146,6 +234,7 @@ export class ParticipantsService {
         },
       },
       select: { id: true, email: true, displayName: true, accountType: true, verificationStatus: true },
+      });
     });
     return { account, accessToken: this.sign(account.id, account.email) };
   }
@@ -357,6 +446,7 @@ export class ParticipantsService {
         displayName: true,
         phone: true,
         createdAt: true,
+        accountType: true,
         athlete: {
           include: {
             country: true,
@@ -366,7 +456,25 @@ export class ParticipantsService {
         },
       },
     });
-    if (!account?.athlete) throw new NotFoundException('Không tìm thấy hồ sơ vận động viên');
+    if (!account) throw new NotFoundException('Không tìm thấy tài khoản SportData');
+    if (!account.athlete && account.accountType === SportDataAccountType.ATHLETE) {
+      const candidates = await this.prisma.athlete.findMany({
+        where: {
+          email: { equals: account.email, mode: 'insensitive' },
+          participantAccountId: null,
+        },
+        select: { id: true },
+        take: 2,
+      });
+      if (candidates.length === 1) {
+        await this.prisma.athlete.update({
+          where: { id: candidates[0].id },
+          data: { participantAccountId: accountId },
+        });
+        return this.getProfile(accountId);
+      }
+    }
+    if (!account.athlete) throw new NotFoundException('Tài khoản chưa được liên kết với hồ sơ vận động viên');
     return account;
   }
 
@@ -379,15 +487,22 @@ export class ParticipantsService {
     await this.validateAffiliation(countryId, federationId || undefined);
     const displayName = dto.displayName?.trim() || account.displayName;
     const name = this.splitName(displayName);
-    await this.prisma.$transaction([
-      this.prisma.participantAccount.update({
+    await this.prisma.$transaction(async (transaction) => {
+      await this.athleteIdentity.lock(transaction);
+      await this.athleteIdentity.assertNew(transaction, {
+        ...account.athlete, fullName: displayName,
+        birthDate: dto.birthDate ? new Date(dto.birthDate) : account.athlete.birthDate,
+        gender: dto.gender || account.athlete.gender, countryId, federationId,
+        phone: dto.phone !== undefined ? dto.phone : account.phone,
+      }, account.athlete.id);
+      await transaction.participantAccount.update({
         where: { id: accountId },
         data: {
           ...(dto.displayName ? { displayName } : {}),
           ...(dto.phone !== undefined ? { phone: dto.phone?.trim() || null } : {}),
         },
-      }),
-      this.prisma.athlete.update({
+      });
+      await transaction.athlete.update({
         where: { id: account.athlete.id },
         data: {
           email: account.email,
@@ -400,8 +515,8 @@ export class ParticipantsService {
           ...(dto.weight !== undefined ? { weight: dto.weight } : {}),
           ...(dto.height !== undefined ? { height: dto.height } : {}),
         },
-      }),
-    ]);
+      });
+    });
     return this.getProfile(accountId);
   }
 
@@ -481,6 +596,27 @@ export class ParticipantsService {
       ? media.ocrData as Record<string, unknown>
       : {};
     await this.prisma.$transaction(async (transaction) => {
+      await this.athleteIdentity.lock(transaction);
+      const identity = await this.athleteIdentity.assertNew(transaction, {
+        fullName: applyToProfile && confirmedFields.fullName ? confirmedFields.fullName : profile.athlete.fullName,
+        birthDate: applyToProfile && confirmedFields.dateOfBirth ? new Date(confirmedFields.dateOfBirth) : profile.athlete.birthDate,
+        gender: applyToProfile ? this.ocrGender(confirmedFields.sex) || profile.athlete.gender : profile.athlete.gender,
+        countryId: profile.athlete.countryId, federationId: profile.athlete.federationId,
+        phone: profile.athlete.phone, identityType: type === AthleteMediaType.PASSPORT ? 'PASSPORT' : 'CCCD',
+        documentNumber: confirmedFields.documentNumber, address: confirmedFields.address,
+      }, profile.athlete.id);
+      await transaction.athleteIdentity.upsert({
+        where: { athleteId: profile.athlete.id },
+        create: { athleteId: profile.athlete.id, ...identity },
+        update: {
+          ...(identity.documentHash ? { documentHash: identity.documentHash } : {}),
+          cccdHash: identity.cccdHash,
+          cccdEncrypted: identity.cccdEncrypted,
+          passportHash: identity.passportHash,
+          passportEncrypted: identity.passportEncrypted,
+          ...(identity.addressHash ? { addressHash: identity.addressHash } : {}),
+        },
+      });
       await transaction.athleteMedia.update({
         where: { athleteId_type: { athleteId: profile.athlete.id, type } },
         data: {
@@ -659,6 +795,17 @@ export class ParticipantsService {
     this.validateRegistrationWindow(event);
     const systemSettings = await this.systemSettings.get();
     const autoVerifyIdentity = !systemSettings.values.identityOcrEnabled;
+    const reusableAthletes = new Map<string, Awaited<ReturnType<ParticipantsService['resolveReuse']>>>();
+    for (const athlete of athletes) {
+      if (!athlete.reuseToken) continue;
+      const existing = await this.resolveReuse(athlete, eventId, contactPhone);
+      reusableAthletes.set(athlete.reuseToken, existing);
+      Object.assign(athlete, {
+        fullName: existing.fullName, birthDate: existing.birthDate?.toISOString().slice(0, 10),
+        gender: existing.gender, countryId: existing.countryId, federationId: existing.federationId || undefined,
+        weight: existing.weight ?? undefined, height: existing.height ?? undefined,
+      });
+    }
 
     const countries = await this.prisma.country.findMany({
       where: { id: { in: athletes.map((athlete) => athlete.countryId || '').filter(Boolean) } },
@@ -708,6 +855,7 @@ export class ParticipantsService {
     };
 
     const prepared = athletes.map((athlete, index) => {
+      const existingAthlete = athlete.reuseToken ? reusableAthletes.get(athlete.reuseToken) : undefined;
       const fullName = athlete.fullName?.trim();
       if (!fullName || fullName.length < 2) throw new BadRequestException(`Vận động viên ${index + 1}: thiếu họ tên`);
       const birthDate = athlete.birthDate ? new Date(athlete.birthDate) : null;
@@ -739,6 +887,11 @@ export class ParticipantsService {
       if (weight !== null && (!Number.isFinite(weight) || weight <= 0 || weight > 500)) {
         throw new BadRequestException(`Vận động viên ${index + 1}: cân nặng không hợp lệ`);
       }
+      const height = athlete.height === undefined || athlete.height === null || athlete.height === ('' as unknown as number)
+        ? null : Number(athlete.height);
+      if (height !== null && (!Number.isFinite(height) || height <= 0 || height > 300)) {
+        throw new BadRequestException(`Vận động viên ${index + 1}: chiều cao không hợp lệ`);
+      }
       this.validateAthleteForCategory({ gender: athlete.gender, birthDate, weight }, { ...category, ...resolveEventAgeLimits(event, category) }, event.startDate);
 
       const cccdFront = fileMap.get(`athlete_${index}_cccdFront`)
@@ -749,15 +902,17 @@ export class ParticipantsService {
         || stagedFile(athlete.mediaUploads?.passport, AthleteMediaType.PASSPORT, index);
       const avatar = fileMap.get(`athlete_${index}_avatar`)
         || stagedFile(athlete.mediaUploads?.avatar, AthleteMediaType.AVATAR, index);
-      const identityType = athlete.identityType === 'PASSPORT' ? 'PASSPORT' : 'CCCD';
-      if (!avatar) {
+      const identityType: 'CCCD' | 'PASSPORT' = athlete.identityType === 'PASSPORT' ? 'PASSPORT' : 'CCCD';
+      if (!avatar && !existingAthlete?.media.some((media) => media.type === AthleteMediaType.AVATAR)) {
         throw new BadRequestException(`Vận động viên ${index + 1}: cần ảnh đại diện`);
       }
+      if (!existingAthlete || !this.identityDocumentState(existingAthlete.media).complete) {
       if (identityType === 'CCCD' && (!cccdFront || !cccdBack)) {
         throw new BadRequestException(`Vận động viên ${index + 1}: cần đủ CCCD mặt trước và mặt sau`);
       }
       if (identityType === 'PASSPORT' && !passport) {
         throw new BadRequestException(`Vận động viên ${index + 1}: cần ảnh hộ chiếu`);
+      }
       }
       if (cccdFront) this.validateFile(AthleteMediaType.CCCD_FRONT, cccdFront);
       if (cccdBack) this.validateFile(AthleteMediaType.CCCD_BACK, cccdBack);
@@ -766,17 +921,28 @@ export class ParticipantsService {
 
       return {
         athlete,
+        existingAthlete,
         category,
         fullName,
         birthDate,
         weight,
+        height,
+        identityInput: {
+          fullName, birthDate, gender: athlete.gender!, countryId: athlete.countryId!,
+          federationId: athlete.federationId, phone: athlete.phone || contactPhone,
+          identityType,
+          documentNumber: athlete.documentNumber || athlete.identityOcr?.fields?.documentNumber,
+          address: athlete.address || athlete.identityOcr?.fields?.address,
+        },
         files: { cccdFront, cccdBack, passport, avatar },
       };
     });
 
     const referenceCode = this.submissionReference();
     const result = await this.prisma.$transaction(async (transaction) => {
-      const submission = await transaction.registrationSubmission.create({
+      await this.athleteIdentity.lock(transaction);
+      let submission: { id: string; type: RegistrationSubmissionType } | null = null;
+      const ensureSubmission = async () => submission || (submission = await transaction.registrationSubmission.create({
         data: {
           eventId: event.id,
           type: submissionType,
@@ -787,10 +953,30 @@ export class ParticipantsService {
           referenceCode,
           accountId: submittingAccount?.id,
         },
-      });
+      }));
 
       const registrations = [];
       for (const item of prepared) {
+        if (item.existingAthlete) {
+          const registered = await transaction.eventRegistration.findFirst({
+            where: { eventId: event.id, athleteId: item.existingAthlete.id },
+            orderBy: { createdAt: 'asc' },
+          });
+          if (registered) {
+            registrations.push({ id: registered.id, athleteId: item.existingAthlete.id,
+              athleteName: item.existingAthlete.fullName, ticketCode: registered.ticketCode,
+              status: registered.status, paymentStatus: registered.paymentStatus,
+              feeAmount: registered.feeAmount, currency: registered.currency,
+              paymentDueAt: registered.paymentStatus === PaymentStatus.PENDING ? this.paymentDueAt(registered.createdAt) : null,
+              existing: true });
+            continue;
+          }
+        }
+        if (!item.identityInput.documentNumber) {
+          throw new BadRequestException('Vui lòng nhập số CCCD hoặc hộ chiếu của từng VĐV.');
+        }
+        const identity = item.existingAthlete ? undefined : await this.athleteIdentity.assertNew(transaction, item.identityInput);
+        const currentSubmission = await ensureSubmission();
         const name = this.splitName(item.fullName);
         const media = [
           item.files.avatar && this.mediaCreate(AthleteMediaType.AVATAR, item.files.avatar, false, undefined, autoVerifyIdentity),
@@ -798,25 +984,42 @@ export class ParticipantsService {
           item.files.cccdBack && this.mediaCreate(AthleteMediaType.CCCD_BACK, item.files.cccdBack, true, undefined, autoVerifyIdentity),
           item.files.passport && this.mediaCreate(AthleteMediaType.PASSPORT, item.files.passport, true, item.athlete.identityOcr, autoVerifyIdentity),
         ].filter(Boolean) as Prisma.AthleteMediaCreateWithoutAthleteInput[];
-        const createdAthlete = await transaction.athlete.create({
+        const createdAthlete = item.existingAthlete
+          ? await transaction.athlete.findUniqueOrThrow({ where: { id: item.existingAthlete.id } })
+          : await transaction.athlete.create({
           data: {
             ...name,
             fullName: item.fullName,
             gender: item.athlete.gender!,
             birthDate: item.birthDate,
             weight: item.weight,
+            height: item.height,
             countryId: item.athlete.countryId!,
             federationId: item.athlete.federationId || null,
+            phone: item.identityInput.phone,
+            identity: { create: identity! },
             media: { create: media },
           },
         });
-        const canConfirmImmediately = autoVerifyIdentity && event.paymentMode === PaymentMode.FREE;
+        if (item.existingAthlete) {
+          for (const document of media) {
+            await transaction.athleteMedia.upsert({
+              where: { athleteId_type: { athleteId: createdAthlete.id, type: document.type } },
+              create: { ...document, athleteId: createdAthlete.id }, update: document,
+            });
+          }
+        }
+        const existingMedia = item.existingAthlete ? await transaction.athleteMedia.findMany({
+          where: { athleteId: createdAthlete.id }, select: { type: true, verificationStatus: true },
+        }) : undefined;
+        const canConfirmImmediately = event.paymentMode === PaymentMode.FREE
+          && (existingMedia ? this.identityDocumentState(existingMedia).verified : autoVerifyIdentity);
         const registration = await transaction.eventRegistration.create({
           data: {
             eventId: event.id,
             athleteId: createdAthlete.id,
             accountId: submittingAccount?.id,
-            submissionId: submission.id,
+            submissionId: currentSubmission.id,
             categoryId: item.category.id,
             federationId: item.athlete.federationId || null,
             status: canConfirmImmediately ? RegistrationStatus.CONFIRMED : RegistrationStatus.SUBMITTED,
@@ -836,6 +1039,7 @@ export class ParticipantsService {
           });
         }
         registrations.push({
+          existing: false,
           id: registration.id,
           athleteId: createdAthlete.id,
           athleteName: createdAthlete.fullName,
@@ -857,16 +1061,18 @@ export class ParticipantsService {
       }
 
       return {
-        submissionId: submission.id,
-        referenceCode,
-        type: submission.type,
+        submissionId: submission?.id ?? null,
+        referenceCode: submission ? referenceCode : null,
+        type: submission?.type ?? submissionType,
+        hasExistingRegistrations: registrations.some((registration) => registration.existing),
         status: registrations.every((registration) => registration.status === RegistrationStatus.CONFIRMED)
           ? RegistrationStatus.CONFIRMED
           : RegistrationStatus.SUBMITTED,
         registrations,
       };
-    });
-    const notificationResults = await Promise.allSettled(result.registrations.map((registration) => (
+    }, { maxWait: 10000, timeout: 30000 });
+    const newRegistrations = result.registrations.filter((registration) => !registration.existing);
+    const notificationResults = await Promise.allSettled(newRegistrations.map((registration) => (
       this.notifications.notifyRegistration(
         this.prisma,
         registration.id,
@@ -878,7 +1084,7 @@ export class ParticipantsService {
     notificationResults.forEach((notificationResult, index) => {
       if (notificationResult.status === 'rejected') {
         this.logger.error(
-          `Không thể tạo thông báo cho hồ sơ ${result.registrations[index].id}`,
+          `Không thể tạo thông báo cho hồ sơ ${newRegistrations[index].id}`,
           notificationResult.reason instanceof Error
             ? notificationResult.reason.stack
             : String(notificationResult.reason),
@@ -886,7 +1092,7 @@ export class ParticipantsService {
       }
     });
     let ticketEmailSent = false;
-    if (result.status === RegistrationStatus.CONFIRMED) {
+    if (result.status === RegistrationStatus.CONFIRMED && result.referenceCode && !result.hasExistingRegistrations) {
       try {
         const batch = await this.getSubmissionTickets(referenceCode, contactEmail, true);
         ticketEmailSent = await this.ticketEmail.send(contactEmail, batch.tickets, batch.meta);
@@ -1079,6 +1285,11 @@ export class ParticipantsService {
       },
     });
     if (!registration) throw new NotFoundException('Không tìm thấy thẻ tham dự');
+    if (registration.status === RegistrationStatus.SUBMITTED && registration.paymentStatus === PaymentStatus.PAID) {
+      const finalized = await this.finalizePaidRegistration(registration.id);
+      if (finalized) registration = { ...registration, status: RegistrationStatus.CONFIRMED,
+        statusChangedAt: finalized.statusChangedAt, statusChangedBy: 'SYSTEM:PAYMENT_CONFIRMED' };
+    }
     if (
       registration.paymentStatus === PaymentStatus.PENDING
       && registration.feeAmount === 0
@@ -1320,6 +1531,12 @@ export class ParticipantsService {
 
     try {
       const created = await this.prisma.$transaction(async (transaction) => {
+        await this.athleteIdentity.lock(transaction);
+        if (!context.athleteId) {
+          await this.athleteIdentity.assertNew(transaction, {
+            ...dto.athlete!, birthDate: new Date(dto.athlete!.birthDate),
+          });
+        }
         const athlete = context.athleteId
           ? await transaction.athlete.findUniqueOrThrow({
               where: { id: context.athleteId },
@@ -1330,6 +1547,7 @@ export class ParticipantsService {
                 firstName: dto.athlete!.firstName.trim(),
                 lastName: dto.athlete!.lastName.trim(),
                 fullName: dto.athlete!.fullName.trim(),
+                identity: { create: this.athleteIdentity.normalize({ ...dto.athlete!, birthDate: new Date(dto.athlete!.birthDate) }) },
                 email: dto.athlete!.email.trim().toLowerCase(),
                 phone: dto.athlete!.phone.trim(),
                 gender: dto.athlete!.gender,
@@ -1656,6 +1874,10 @@ export class ParticipantsService {
         include: this.registrationInclude(),
       });
     });
+    if (status === PaymentStatus.PAID) {
+      const finalized = await this.finalizePaidRegistration(id);
+      if (finalized) Object.assign(updated, { status: RegistrationStatus.CONFIRMED, statusChangedAt: finalized.statusChangedAt });
+    }
     await this.notifications.notifyRegistration(
       this.prisma,
       id,
@@ -1664,6 +1886,38 @@ export class ParticipantsService {
       `${registration.paymentStatus} → ${status}${normalizedReason ? ` · ${normalizedReason}` : ''}`,
     );
     return updated;
+  }
+
+  async finalizePaidRegistration(id: string) {
+    const finalized = await this.prisma.$transaction(async (transaction) => {
+      const registration = await transaction.eventRegistration.findUnique({
+        where: { id }, include: { submission: true, athlete: { include: {
+          media: { select: { type: true, verificationStatus: true } },
+        } } },
+      });
+      if (!registration || registration.status !== RegistrationStatus.SUBMITTED || registration.paymentStatus !== PaymentStatus.PAID
+        || !this.identityDocumentState(registration.athlete.media).verified) return null;
+      const statusChangedAt = new Date();
+      const changed = await transaction.eventRegistration.updateMany({
+        where: { id, status: RegistrationStatus.SUBMITTED, paymentStatus: PaymentStatus.PAID },
+        data: { status: RegistrationStatus.CONFIRMED, statusChangedAt, statusChangedBy: 'SYSTEM:PAYMENT_CONFIRMED',
+          statusReason: 'Hồ sơ đã xác thực và thanh toán thành công' },
+      });
+      if (!changed.count) return null;
+      await this.syncCompetitionEntry(transaction, { eventId: registration.eventId, categoryId: registration.categoryId,
+        athleteId: registration.athleteId, countryId: registration.athlete.countryId, confirmed: true });
+      await transaction.registrationStatusHistory.create({ data: {
+        registrationId: id, fromStatus: RegistrationStatus.SUBMITTED, toStatus: RegistrationStatus.CONFIRMED,
+        reason: 'Hồ sơ đã xác thực và thanh toán thành công', changedBy: 'SYSTEM:PAYMENT_CONFIRMED',
+      } });
+      return { ticketCode: registration.ticketCode, statusChangedAt,
+        email: registration.submission?.contactEmail || registration.athlete.email };
+    });
+    if (finalized?.email) {
+      try { await this.ticketEmail.send(finalized.email, [await this.getTicket(finalized.ticketCode, true)]); }
+      catch { this.logger.warn('Vé đã được phát hành; chưa gửi được email thông báo.'); }
+    }
+    return finalized;
   }
 
   private async syncCompetitionEntry(
@@ -1899,7 +2153,7 @@ export class ParticipantsService {
   }
 
   private validateAthleteForCategory(
-    athlete: { gender: Gender; birthDate: Date | null; weight: number | null },
+    athlete: { gender: Gender; birthDate: Date | null; weight?: number | null },
     category: { gender: Gender; minAge: number | null; maxAge: number | null; minWeight: number | null; maxWeight: number | null },
     eventDate: Date,
   ) {
@@ -1913,9 +2167,6 @@ export class ParticipantsService {
     }
     if (category.maxAge !== null && age > category.maxAge) {
       throw new BadRequestException(`Hạng đấu chỉ nhận vận động viên tối đa ${category.maxAge} tuổi`);
-    }
-    if ((category.minWeight !== null || category.maxWeight !== null) && !athlete.weight) {
-      throw new BadRequestException('Hồ sơ chưa có cân nặng');
     }
     if (athlete.weight && category.minWeight !== null && athlete.weight < category.minWeight) {
       throw new BadRequestException(`Cân nặng tối thiểu của hạng đấu là ${category.minWeight} kg`);
@@ -2006,17 +2257,19 @@ export class ParticipantsService {
   }
 
   private async sendResetEmail(email: string, resetUrl: string, ttlMinutes: number) {
-    if (!process.env.SMTP_HOST) return;
+    const integration = await this.systemSettings.integrationValues();
+
+    if (!integration.SMTP_HOST) return;
     const transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: Number(process.env.SMTP_PORT || 587),
-      secure: process.env.SMTP_SECURE === 'true',
-      ...(process.env.SMTP_USER
-        ? { auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASSWORD || '' } }
+      host: integration.SMTP_HOST,
+      port: Number(integration.SMTP_PORT || 587),
+      secure: integration.SMTP_SECURE === 'true',
+      ...(integration.SMTP_USER
+        ? { auth: { user: integration.SMTP_USER, pass: integration.SMTP_PASSWORD || '' } }
         : {}),
     });
     await transporter.sendMail({
-      from: process.env.SMTP_FROM || process.env.SMTP_USER || 'SportData',
+      from: integration.SMTP_FROM || integration.SMTP_USER || 'SportData',
       to: email,
       subject: 'Đặt lại mật khẩu tài khoản SportData',
       text: `Mở liên kết sau để đặt lại mật khẩu SportData. Liên kết hết hạn sau ${ttlMinutes} phút và chỉ dùng được một lần:\n\n${resetUrl}`,

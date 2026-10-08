@@ -56,7 +56,9 @@ export class IdentityOcrService {
       };
     }
 
-    const apiKey = process.env.FPT_AI_API_KEY?.trim();
+
+    const integration = await this.settings.integrationValues();
+    const apiKey = integration.FPT_AI_API_KEY?.trim();
     if (!systemSettings.configured.identityOcrEnabled || !apiKey) {
       return {
         status: 'NOT_CONFIGURED',
@@ -69,8 +71,8 @@ export class IdentityOcrService {
     }
 
     const endpoint = type === AthleteMediaType.PASSPORT
-      ? (process.env.FPT_AI_PASSPORT_ENDPOINT || 'https://api.fpt.ai/vision/passport/vnm')
-      : (process.env.FPT_AI_ID_ENDPOINT || 'https://api.fpt.ai/vision/idr/vnm/');
+      ? (integration.FPT_AI_PASSPORT_ENDPOINT || 'https://api.fpt.ai/vision/passport/vnm')
+      : (integration.FPT_AI_ID_ENDPOINT || 'https://api.fpt.ai/vision/idr/vnm/');
     const body = new FormData();
     body.append('image', new Blob([Uint8Array.from(file.buffer)], { type: file.mimetype }), file.originalname || 'document.jpg');
 

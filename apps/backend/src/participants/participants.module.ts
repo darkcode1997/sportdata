@@ -8,10 +8,12 @@ import { TicketPdfService } from './ticket-pdf.service';
 import { TicketEmailService } from './ticket-email.service';
 import { SystemSettingsModule } from '../system-settings/system-settings.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { AthletesModule } from '../athletes/athletes.module';
 
 @Module({
-  imports: [AuthModule, SystemSettingsModule, NotificationsModule],
+  imports: [AuthModule, SystemSettingsModule, NotificationsModule, AthletesModule],
   controllers: [ParticipantsController],
   providers: [ParticipantsService, ParticipantAuthGuard, IdentityOcrService, TicketPdfService, TicketEmailService],
+  exports: [ParticipantsService],
 })
 export class ParticipantsModule {}

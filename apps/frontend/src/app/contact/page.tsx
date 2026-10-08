@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { Button, Card, Col, Form, Input, Result, Row } from 'antd';
-import { CheckCircle2, Clock3, Mail, MapPin, MessageSquareText, Send } from 'lucide-react';
+import { ArrowUpRight, CheckCircle2, Clock3, Mail, MapPin, MessageSquareText, Send } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useSportDataToast } from '@/hooks/useSportDataToast';
 
@@ -36,28 +36,44 @@ export default function ContactPage() {
   };
 
   return (
-    <main className="contact-page min-h-screen pb-20">
-      <section className="contact-hero border-b border-white/10">
-        <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8 lg:py-20">
-          <span className="contact-eyebrow"><MessageSquareText className="h-4 w-4" /> Liên hệ</span>
-          <h1>Kết nối với SportData</h1>
-          <p>Gửi câu hỏi, yêu cầu hỗ trợ hoặc đề xuất hợp tác. Đội ngũ của chúng tôi sẽ phản hồi qua email.</p>
+    <main className="contact-page contact-studio min-h-screen pb-20">
+      <section className="contact-hero">
+        <div className="editorial-container editorial-heading">
+          <div>
+            <span className="contact-eyebrow"><MessageSquareText size={16} /> Đồng hành cùng bạn</span>
+            <h1>Cùng tạo nên <span>sự kiện tốt hơn.</span></h1>
+          </div>
+          <div className="editorial-heading-intro">
+            <p>Từ câu hỏi đầu tiên đến kế hoạch tổ chức giải đấu, SportData luôn sẵn sàng lắng nghe.</p>
+            <a href="mailto:contact@sportdata.vn">contact@sportdata.vn <ArrowUpRight size={16} /></a>
+          </div>
         </div>
       </section>
 
-      <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8 lg:py-14">
+      <div className="editorial-container editorial-content">
         <div className="contact-layout">
-          <div className="space-y-5">
+          <div className="contact-support space-y-5">
             <div>
-              <h2 className="text-2xl font-extrabold text-slate-100">Thông tin liên hệ</h2>
-              <p className="mt-2 max-w-lg text-sm leading-6 text-slate-400">Mọi nội dung gửi từ biểu mẫu đều được lưu trong CMS để đội ngũ phụ trách theo dõi và phản hồi.</p>
+              <span className="editorial-kicker">Kết nối với SportData</span>
+              <h2>Bạn cần hỗ trợ gì?</h2>
+              <p>Chọn chủ đề và chia sẻ thêm thông tin để chúng tôi hỗ trợ bạn đúng nhu cầu.</p>
             </div>
+            <div className="contact-topic-list">
+              {['Đăng ký & thi đấu', 'Tổ chức sự kiện', 'Hợp tác cùng SportData'].map((topic) => (
+                <button key={topic} type="button" onClick={() => {
+                  form.setFieldValue('subject', topic);
+                  setSubmitted(false);
+                  document.getElementById('contact-message-form')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }}>{topic}<ArrowUpRight size={16} /></button>
+              ))}
+            </div>
+            <div className="contact-support-divider" />
             <ContactInfo icon={Mail} label="Email" value="contact@sportdata.vn" href="mailto:contact@sportdata.vn" />
             <ContactInfo icon={Clock3} label="Thời gian phản hồi" value="Trong vòng 1–2 ngày làm việc" />
             <ContactInfo icon={MapPin} label="Khu vực hỗ trợ" value="Việt Nam và Đông Nam Á" />
           </div>
 
-          <Card className="contact-form-card public-surface">
+          <Card className="contact-form-card public-surface" id="contact-message-form">
             {submitted ? (
               <Result
                 icon={<CheckCircle2 className="mx-auto h-16 w-16 text-emerald-400" />}
@@ -66,25 +82,28 @@ export default function ContactPage() {
                 extra={<Button type="primary" onClick={() => setSubmitted(false)}>Gửi liên hệ khác</Button>}
               />
             ) : (
-              <Form form={form} layout="vertical" requiredMark={false} onFinish={submit}>
-                <div className="mb-6">
-                  <h2 className="text-xl font-extrabold text-slate-100">Gửi lời nhắn</h2>
-                  <p className="mt-1 text-sm text-slate-500">Các trường có dấu * là bắt buộc.</p>
+              <Form form={form} layout="vertical" requiredMark onFinish={submit}>
+                <div className="contact-form-heading">
+                  <span className="contact-form-icon"><MessageSquareText size={22} /></span>
+                  <div>
+                    <h2>Gửi lời nhắn</h2>
+                    <p>Chúng tôi sẽ phản hồi qua email bạn cung cấp.</p>
+                  </div>
                 </div>
                 <Row gutter={16}>
                   <Col xs={24} md={12}>
                     <Form.Item name="fullName" label="Họ và tên" rules={[{ required: true, message: 'Vui lòng nhập họ và tên' }, { min: 2, max: 120 }]}>
-                      <Input size="large" placeholder="Nguyễn Văn A" />
+                      <Input size="large" autoComplete="name" placeholder="Nguyễn Văn A" />
                     </Form.Item>
                   </Col>
                   <Col xs={24} md={12}>
                     <Form.Item name="email" label="Email" rules={[{ required: true, message: 'Vui lòng nhập email' }, { type: 'email', message: 'Email không hợp lệ' }]}>
-                      <Input size="large" type="email" placeholder="email@example.com" />
+                      <Input size="large" type="email" autoComplete="email" placeholder="email@example.com" />
                     </Form.Item>
                   </Col>
                   <Col xs={24} md={12}>
                     <Form.Item name="phone" label="Số điện thoại" rules={[{ max: 30 }]}>
-                      <Input size="large" placeholder="Không bắt buộc" />
+                      <Input size="large" type="tel" autoComplete="tel" placeholder="Không bắt buộc" />
                     </Form.Item>
                   </Col>
                   <Col xs={24} md={12}>

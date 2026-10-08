@@ -21,21 +21,23 @@ export class TicketEmailService {
       this.logger.warn('Bỏ qua gửi vé email vì tính năng email đang tắt hoặc SMTP chưa được cấu hình');
       return false;
     }
-    if (!process.env.SMTP_HOST) {
+
+    const integration = await this.settings.integrationValues();
+    if (!integration.SMTP_HOST) {
       this.logger.warn('Bỏ qua gửi vé email vì chưa cấu hình SMTP_HOST');
       return false;
     }
     try {
-      const port = Number(process.env.SMTP_PORT || 587);
+      const port = Number(integration.SMTP_PORT || 587);
       const transporter = nodemailer.createTransport({
-        host: process.env.SMTP_HOST,
+        host: integration.SMTP_HOST,
         port,
-        secure: process.env.SMTP_SECURE === 'true' || port === 465,
+        secure: integration.SMTP_SECURE === 'true' || port === 465,
         connectionTimeout: 10_000,
         greetingTimeout: 10_000,
         socketTimeout: 20_000,
-        auth: process.env.SMTP_USER
-          ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASSWORD }
+        auth: integration.SMTP_USER
+          ? { user: integration.SMTP_USER, pass: integration.SMTP_PASSWORD }
           : undefined,
       });
       const pdf = await this.ticketPdf.generate(tickets, batch);
@@ -45,7 +47,7 @@ export class TicketEmailService {
         ? tickets[0].athlete.fullName
         : `${tickets.length} vận động viên`;
       await transporter.sendMail({
-        from: process.env.SMTP_FROM || process.env.SMTP_USER || 'SportData',
+        from: integration.SMTP_FROM || integration.SMTP_USER || 'SportData',
         to,
         subject: `[SportData] Vé tham dự ${eventName}`,
         text: `Hồ sơ ${athleteSummary} đã được SportData duyệt. Vé A6 chính thức được đính kèm trong email này và có thể dùng để check-in sự kiện.`,

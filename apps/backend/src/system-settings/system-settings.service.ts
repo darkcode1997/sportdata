@@ -1,4 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, ServiceUnavailableException } from '@nestjs/common';
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'crypto';
+import { INTEGRATION_FIELDS } from './integration-config';
 import { AthleteMediaType, DocumentVerificationStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { UpdateSystemSettingsDto } from './dto/update-system-settings.dto';
@@ -17,7 +19,92 @@ const SETTINGS_ID = 'global';
 export class SystemSettingsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  private encryptionKey() {
+    const key = process.env.SETTINGS_ENCRYPTION_KEY || process.env.JWT_SECRET;
+    if (!key || key.length < 32 || /change-me/i.test(key)) {
+      throw new ServiceUnavailableException('Cần SETTINGS_ENCRYPTION_KEY tối thiểu 32 ký tự để lưu khóa bí mật.');
+    }
+    return createHash('sha256').update(key).digest();
+  }
+
+  private encrypt(name: string, value: string) {
+    const iv = randomBytes(12);
+    const cipher = createCipheriv('aes-256-gcm', this.encryptionKey(), iv);
+    cipher.setAAD(Buffer.from(name));
+    const data = Buffer.concat([cipher.update(value, 'utf8'), cipher.final()]);
+    return [iv, cipher.getAuthTag(), data].map((part) => part.toString('base64')).join('.');
+  }
+
+  private decrypt(name: string, value: string) {
+    try {
+      const [iv, tag, data] = value.split('.').map((part) => Buffer.from(part, 'base64'));
+      const cipher = createDecipheriv('aes-256-gcm', this.encryptionKey(), iv);
+      cipher.setAAD(Buffer.from(name));
+      cipher.setAuthTag(tag);
+      return Buffer.concat([cipher.update(data), cipher.final()]).toString('utf8');
+    } catch {
+      throw new ServiceUnavailableException('Không thể giải mã cấu hình tích hợp. Kiểm tra khóa mã hóa trên máy chủ.');
+    }
+  }
+
+  async integrationValues(): Promise<Record<string, string | undefined>> {
+    const rows = await this.prisma.integrationSetting.findMany();
+    const overrides = new Map(rows.map((row) => [row.name, row.value]));
+    return Object.fromEntries(INTEGRATION_FIELDS.map((field) => {
+      const stored = overrides.get(field.name);
+      return [field.name, stored === undefined ? process.env[field.name] :
+        ('secret' in field && field.secret ? this.decrypt(field.name, stored) : stored)];
+    }));
+  }
+
+  async integrations() {
+    const rows = await this.prisma.integrationSetting.findMany();
+    const overrides = new Map(rows.map((row) => [row.name, row]));
+    return INTEGRATION_FIELDS.map((field) => {
+      const stored = overrides.get(field.name);
+      const secret = 'secret' in field && field.secret;
+      const value = stored?.value ?? process.env[field.name] ?? '';
+      return { ...field, secret, configured: Boolean(value),
+        source: stored ? 'database' : value ? 'environment' : 'unset',
+        value: secret ? '' : value, updatedAt: stored?.updatedAt ?? null };
+    });
+  }
+
+  async updateIntegrations(values: Record<string, string | null>) {
+    const operations = Object.entries(values).map(([name, input]) => {
+      const field = INTEGRATION_FIELDS.find((item) => item.name === name);
+      if (!field) throw new BadRequestException(`Không cho phép chỉnh sửa ${name}`);
+      if (input === null) return this.prisma.integrationSetting.deleteMany({ where: { name } });
+      if (typeof input !== 'string' || input.length > 4096 || /[\r\n\x00]/.test(input)) {
+        throw new BadRequestException(`Giá trị ${name} không hợp lệ`);
+      }
+      const secret = 'secret' in field && field.secret;
+      const value = secret ? input : input.trim();
+      if (!value) throw new BadRequestException(`Nhập ${name} hoặc dùng Xóa để trở về ENV`);
+      if ('kind' in field) {
+        if (field.kind === 'port' && (!/^\d+$/.test(value) || Number(value) < 1 || Number(value) > 65535)) {
+          throw new BadRequestException('Cổng SMTP phải từ 1 đến 65535');
+        }
+        if (field.kind === 'boolean' && !['true', 'false'].includes(value)) {
+          throw new BadRequestException(`${name} phải là true hoặc false`);
+        }
+        if (field.kind === 'url') {
+          try {
+            const url = new URL(value);
+            if (url.protocol !== 'https:' || url.username || url.password) throw new Error();
+          } catch { throw new BadRequestException(`${name} phải là URL HTTPS không chứa thông tin đăng nhập`); }
+        }
+      }
+      const storedValue = secret ? this.encrypt(name, value) : value;
+      return this.prisma.integrationSetting.upsert({ where: { name },
+        create: { name, value: storedValue }, update: { value: storedValue } });
+    });
+    await this.prisma.$transaction(operations);
+    return this.integrations();
+  }
+
   async get() {
+    const config = await this.integrationValues();
     const stored = await this.prisma.systemSetting.findUnique({ where: { id: SETTINGS_ID } });
     const values = {
       identityOcrEnabled: stored?.identityOcrEnabled ?? this.envEnabled('IDENTITY_OCR_ENABLED'),
@@ -28,19 +115,19 @@ export class SystemSettingsService {
       ticketEmailEnabled: stored?.ticketEmailEnabled ?? this.envEnabled('TICKET_EMAIL_ENABLED', true),
     };
     const configured = {
-      identityOcrEnabled: Boolean(process.env.FPT_AI_API_KEY?.trim()),
+      identityOcrEnabled: Boolean(config.FPT_AI_API_KEY?.trim()),
       paymentsEnabled: true,
       momoEnabled: Boolean(
-        process.env.MOMO_PARTNER_CODE?.trim()
-        && process.env.MOMO_ACCESS_KEY?.trim()
-        && process.env.MOMO_SECRET_KEY?.trim(),
+        config.MOMO_PARTNER_CODE?.trim()
+        && config.MOMO_ACCESS_KEY?.trim()
+        && config.MOMO_SECRET_KEY?.trim(),
       ),
       vnpayEnabled: Boolean(
-        process.env.VNPAY_TMN_CODE?.trim()
-        && process.env.VNPAY_HASH_SECRET?.trim(),
+        config.VNPAY_TMN_CODE?.trim()
+        && config.VNPAY_HASH_SECRET?.trim(),
       ),
       bankQrEnabled: true,
-      ticketEmailEnabled: Boolean(process.env.SMTP_HOST?.trim()),
+      ticketEmailEnabled: Boolean(config.SMTP_HOST?.trim()),
     };
     const effective = {
       identityOcrEnabled: values.identityOcrEnabled && configured.identityOcrEnabled,

@@ -22,6 +22,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { SystemSettingsService } from '../system-settings/system-settings.service';
 import { CreateCheckoutDto } from './dto/create-checkout.dto';
 import { NotificationsService } from '../notifications/notifications.service';
+import { ParticipantsService } from '../participants/participants.service';
 
 type RegistrationForPayment = Prisma.EventRegistrationGetPayload<{
   include: { event: true; athlete: { select: { fullName: true } } };
@@ -36,6 +37,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     private readonly prisma: PrismaService,
     private readonly settings: SystemSettingsService,
     private readonly notifications: NotificationsService,
+    private readonly participants: ParticipantsService,
   ) {}
 
   onModuleInit() {
@@ -199,7 +201,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
   }
 
   async handleVnpayIpn(query: Record<string, string>) {
-    if (!this.verifyVnpay(query)) return { RspCode: '97', Message: 'Invalid signature' };
+    if (!await this.verifyVnpay(query)) return { RspCode: '97', Message: 'Invalid signature' };
     const orderId = String(query.vnp_TxnRef || '');
     const transaction = await this.prisma.paymentTransaction.findUnique({ where: { orderId } });
     if (!transaction) return { RspCode: '01', Message: 'Order not found' };
@@ -225,7 +227,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
   async handleVnpayReturn(query: Record<string, string>) {
     const frontend = this.frontendUrl();
     const orderId = String(query.vnp_TxnRef || '');
-    const verified = this.verifyVnpay(query);
+    const verified = await this.verifyVnpay(query);
     const params = new URLSearchParams({
       provider: 'VNPAY',
       orderId,
@@ -236,7 +238,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
   }
 
   async handleMomoIpn(payload: Record<string, unknown>) {
-    if (!this.verifyMomo(payload)) throw new BadRequestException('Chữ ký MoMo không hợp lệ');
+    if (!await this.verifyMomo(payload)) throw new BadRequestException('Chữ ký MoMo không hợp lệ');
     const orderId = String(payload.orderId || '');
     const transaction = await this.prisma.paymentTransaction.findUnique({ where: { orderId } });
     if (!transaction) throw new NotFoundException('Không tìm thấy giao dịch MoMo');
@@ -299,8 +301,9 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     provider: Extract<PaymentProvider, 'VNPAY' | 'VISA'>,
     request: Request,
   ) {
-    const tmnCode = this.requireEnv('VNPAY_TMN_CODE');
-    const secret = this.requireEnv('VNPAY_HASH_SECRET');
+    const integration = await this.settings.integrationValues();
+    const tmnCode = this.requireEnv('VNPAY_TMN_CODE', integration);
+    const secret = this.requireEnv('VNPAY_HASH_SECRET', integration);
     const orderId = this.orderId();
     const createdAt = new Date();
     const expiresAt = this.paymentSessionExpiresAt(createdAt);
@@ -322,7 +325,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     };
     const signed = this.vnpayQuery(params);
     const signature = createHmac('sha512', secret).update(signed, 'utf8').digest('hex');
-    const paymentUrl = `${this.gatewayUrl('VNPAY_PAYMENT_URL', 'https://sandbox.vnpayment.vn/paymentv2/vpcpay.html')}?${signed}&vnp_SecureHash=${signature}`;
+    const paymentUrl = `${this.gatewayUrl('VNPAY_PAYMENT_URL', 'https://sandbox.vnpayment.vn/paymentv2/vpcpay.html', integration)}?${signed}&vnp_SecureHash=${signature}`;
     const transaction = await this.prisma.paymentTransaction.create({
       data: {
         registrationId: registration.id,
@@ -339,9 +342,10 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async createMomo(registration: RegistrationForPayment) {
-    const partnerCode = this.requireEnv('MOMO_PARTNER_CODE');
-    const accessKey = this.requireEnv('MOMO_ACCESS_KEY');
-    const secretKey = this.requireEnv('MOMO_SECRET_KEY');
+    const integration = await this.settings.integrationValues();
+    const partnerCode = this.requireEnv('MOMO_PARTNER_CODE', integration);
+    const accessKey = this.requireEnv('MOMO_ACCESS_KEY', integration);
+    const secretKey = this.requireEnv('MOMO_SECRET_KEY', integration);
     const orderId = this.orderId();
     const requestId = orderId;
     const redirectUrl = `${this.frontendUrl()}/payments/result?provider=MOMO&orderId=${encodeURIComponent(orderId)}`;
@@ -364,8 +368,8 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     const signature = createHmac('sha256', secretKey).update(rawSignature, 'utf8').digest('hex');
     const payload = {
       partnerCode,
-      partnerName: process.env.MOMO_PARTNER_NAME || 'SportData',
-      storeId: process.env.MOMO_STORE_ID || 'SportData',
+      partnerName: integration.MOMO_PARTNER_NAME || 'SportData',
+      storeId: integration.MOMO_STORE_ID || 'SportData',
       requestId,
       amount: registration.feeAmount,
       orderId,
@@ -392,7 +396,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     });
 
     try {
-      const response = await fetch(`${this.gatewayUrl('MOMO_API_URL', 'https://test-payment.momo.vn')}/v2/gateway/api/create`, {
+      const response = await fetch(`${this.gatewayUrl('MOMO_API_URL', 'https://test-payment.momo.vn', integration)}/v2/gateway/api/create`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -466,6 +470,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
       });
     });
     if (registrationId) {
+      await this.participants.finalizePaidRegistration(registrationId);
       await this.notifications.notifyRegistration(
         this.prisma,
         registrationId,
@@ -608,10 +613,11 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  private verifyVnpay(input: Record<string, string>) {
+  private async verifyVnpay(input: Record<string, string>) {
+    const integration = await this.settings.integrationValues();
     const received = String(input.vnp_SecureHash || '').toLowerCase();
-    const secret = process.env.VNPAY_HASH_SECRET?.trim();
-    if (!received || !secret || String(input.vnp_TmnCode || '') !== process.env.VNPAY_TMN_CODE?.trim()) return false;
+    const secret = integration.VNPAY_HASH_SECRET?.trim();
+    if (!received || !secret || String(input.vnp_TmnCode || '') !== integration.VNPAY_TMN_CODE?.trim()) return false;
     const params = Object.fromEntries(
       Object.entries(input).filter(([key]) => key !== 'vnp_SecureHash' && key !== 'vnp_SecureHashType'),
     );
@@ -619,15 +625,16 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     return this.safeEqual(received, expected);
   }
 
-  private verifyMomo(payload: Record<string, unknown>) {
-    const accessKey = process.env.MOMO_ACCESS_KEY?.trim();
-    const secretKey = process.env.MOMO_SECRET_KEY?.trim();
+  private async verifyMomo(payload: Record<string, unknown>) {
+    const integration = await this.settings.integrationValues();
+    const accessKey = integration.MOMO_ACCESS_KEY?.trim();
+    const secretKey = integration.MOMO_SECRET_KEY?.trim();
     const received = String(payload.signature || '').toLowerCase();
     if (
       !accessKey
       || !secretKey
       || !received
-      || String(payload.partnerCode || '') !== process.env.MOMO_PARTNER_CODE?.trim()
+      || String(payload.partnerCode || '') !== integration.MOMO_PARTNER_CODE?.trim()
     ) return false;
     const raw = [
       `accessKey=${accessKey}`,
@@ -722,14 +729,14 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private requireEnv(name: string) {
-    const value = process.env[name]?.trim();
+  private requireEnv(name: string, integration: Record<string, string | undefined>) {
+    const value = integration[name]?.trim();
     if (!value) throw new ServiceUnavailableException(`Thiếu cấu hình ${name}`);
     return value;
   }
 
-  private gatewayUrl(name: string, sandboxUrl: string) {
-    const configured = process.env[name]?.trim().replace(/\/$/, '');
+  private gatewayUrl(name: string, sandboxUrl: string, integration: Record<string, string | undefined>) {
+    const configured = integration[name]?.trim().replace(/\/$/, '');
     if (configured) return configured;
     if (process.env.NODE_ENV === 'production') {
       throw new ServiceUnavailableException(`Thiếu cấu hình production ${name}`);

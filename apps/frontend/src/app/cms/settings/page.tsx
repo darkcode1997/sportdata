@@ -13,6 +13,7 @@ import {
   Smartphone,
 } from 'lucide-react';
 import { CmsPageHeader } from '@/components/cms/CmsPageHeader';
+import { IntegrationSettings } from '@/components/cms/IntegrationSettings';
 import { useSportDataToast } from '@/hooks/useSportDataToast';
 import { api, fetcher } from '@/lib/api';
 
@@ -141,10 +142,11 @@ export default function SystemSettingsPage() {
       <Alert
         type="info"
         showIcon
-        message="Khóa bí mật vẫn được quản lý bằng biến môi trường"
-        description="Trang này chỉ điều khiển trạng thái vận hành. API key, merchant secret và mật khẩu SMTP không được lưu hoặc hiển thị trong CMS. Các giá trị trong .env là mặc định khi hệ thống chưa có lựa chọn được lưu."
+        message="Quản lý cấu hình và trạng thái dịch vụ"
+        description="Bạn có thể cấu hình SMTP, OCR và thanh toán bên dưới. Các giá trị trong ENV được dùng khi chưa có cấu hình tương ứng trong CMS."
       />
 
+      <IntegrationSettings onSaved={() => { void mutate(); }} />
       {isLoading || !settings ? (
         <Card><Skeleton active paragraph={{ rows: 8 }} /></Card>
       ) : (

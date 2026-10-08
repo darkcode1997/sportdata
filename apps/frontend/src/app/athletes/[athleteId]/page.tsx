@@ -157,16 +157,16 @@ export default function AthleteProfilePage() {
                 label="Giới tính"
                 value={athlete.gender === 'FEMALE' ? 'Nữ' : athlete.gender === 'MIXED' ? 'Hỗn hợp' : 'Nam'}
               />
-              <InfoStat
+              {athlete.height != null && <InfoStat
                 icon={<Ruler className="w-4 h-4 text-sblue-400" />}
                 label="Chiều cao"
-                value={athlete.height ? athlete.height + ' cm' : '—'}
-              />
-              <InfoStat
+                value={athlete.height + ' cm'}
+              />}
+              {athlete.weight != null && <InfoStat
                 icon={<Scale className="w-4 h-4 text-sblue-400" />}
                 label="Cân nặng"
-                value={athlete.weight ? athlete.weight + ' kg' : '—'}
-              />
+                value={athlete.weight + ' kg'}
+              />}
               <InfoStat
                 icon={<MapPin className="w-4 h-4 text-sblue-400" />}
                 label="Quốc tịch"

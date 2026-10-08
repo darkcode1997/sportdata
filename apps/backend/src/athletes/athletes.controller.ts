@@ -10,6 +10,7 @@ import {
   Res,
   HttpCode,
   HttpStatus,
+  Header,
   UseGuards,
   UploadedFile,
   UseInterceptors,
@@ -53,6 +54,14 @@ export class AthletesController {
   @Roles(UserRole.ADMIN, UserRole.CONTENT, UserRole.GAMES_ADMIN, UserRole.READ_ONLY)
   getDocuments(@Param('id') id: string) {
     return this.athletesService.getDocuments(id);
+  }
+
+  @Get(':id/identity-details')
+  @UseGuards(JwtAuthGuard)
+  @Roles(UserRole.ADMIN, UserRole.CONTENT, UserRole.GAMES_ADMIN, UserRole.READ_ONLY)
+  @Header('Cache-Control', 'private, no-store')
+  getIdentityDetails(@Param('id') id: string) {
+    return this.athletesService.getIdentityDetails(id);
   }
 
   @Get(':id/documents/:type')

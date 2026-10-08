@@ -642,7 +642,7 @@ function RegistrationsTab({ event, canOperate, canConfirmPayment }: { event: any
         birthDate: athlete.birthDate.format('YYYY-MM-DD'),
         federationId: athlete.federationId || undefined,
         height: athlete.height == null ? undefined : Number(athlete.height),
-        weight: Number(athlete.weight),
+        weight: athlete.weight == null ? undefined : Number(athlete.weight),
       },
       paymentStatus: event.paymentMode === 'FREE' ? undefined : values.paymentStatus || 'PENDING',
       paymentNote: values.paymentNote,
@@ -1047,7 +1047,7 @@ function RegistrationsTab({ event, canOperate, canConfirmPayment }: { event: any
               <Col xs={24} md={12}><Form.Item name={['athlete', 'phone']} label="Số điện thoại" rules={[{ required: true, message: 'Vui lòng nhập số điện thoại' }, { min: 8, message: 'Số điện thoại phải có ít nhất 8 ký tự' }]}><Input type="tel" placeholder="0901234567" /></Form.Item></Col>
               <Col xs={24} md={12}><Form.Item name={['athlete', 'gender']} label="Giới tính" rules={[{ required: true }]}><Select options={[{ value: 'MALE', label: 'Nam' }, { value: 'FEMALE', label: 'Nữ' }, { value: 'MIXED', label: 'Khác / hỗn hợp' }]} /></Form.Item></Col>
               <Col xs={24} md={12}><Form.Item name={['athlete', 'birthDate']} label="Ngày sinh" rules={[{ required: true, message: 'Vui lòng chọn ngày sinh' }]}><DatePicker className="w-full" format="DD/MM/YYYY" placeholder="Chọn ngày sinh" allowClear /></Form.Item></Col>
-              <Col xs={24} md={12}><Form.Item name={['athlete', 'weight']} label="Cân nặng (kg)" rules={[{ required: true, message: 'Vui lòng nhập cân nặng' }]}><InputNumber min={1} max={500} className="w-full" /></Form.Item></Col>
+              <Col xs={24} md={12}><Form.Item name={['athlete', 'weight']} label="Cân nặng (kg, không bắt buộc)"><InputNumber min={1} max={500} className="w-full" /></Form.Item></Col>
               <Col xs={24} md={12}><Form.Item name={['athlete', 'height']} label="Chiều cao (cm)"><InputNumber min={1} max={300} className="w-full" /></Form.Item></Col>
               <Col xs={24} md={12}><Form.Item name={['athlete', 'countryId']} label="Quốc gia" rules={[{ required: true, message: 'Vui lòng chọn quốc gia' }]}><Select showSearch optionFilterProp="label" options={countries.map((item) => ({ value: item.id, label: `${item.code} · ${item.name}` }))} /></Form.Item></Col>
               <Col xs={24} md={12}><Form.Item name={['athlete', 'federationId']} label="Đơn vị chủ quản"><Select allowClear showSearch optionFilterProp="label" placeholder="VĐV tự do" options={availableFederations.map((item) => ({ value: item.id, label: item.name }))} /></Form.Item></Col>

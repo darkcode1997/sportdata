@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   Param,
   Patch,
   Post,
@@ -38,6 +39,8 @@ import {
   UpdateAccountVerificationDto,
 } from './dto/participant.dto';
 import { TicketPdfService } from './ticket-pdf.service';
+import { CheckAthleteIdentityDto } from './dto/check-athlete-identity.dto';
+import { LookupAthleteDto } from './dto/lookup-athlete.dto';
 
 type ParticipantRequest = Request & { participant: { id: string } };
 
@@ -89,6 +92,17 @@ export class ParticipantsController {
     @UploadedFiles() files: Express.Multer.File[] = [],
   ) {
     return this.service.createGuestRegistrations(this.registrationPayload(body), files);
+  }
+
+  @Post('identity/check')
+  checkIdentity(@Body() dto: CheckAthleteIdentityDto) {
+    return this.service.checkAthleteIdentity(dto);
+  }
+
+  @Post('identity/lookup')
+  @Header('Cache-Control', 'private, no-store')
+  lookupIdentity(@Body() dto: LookupAthleteDto) {
+    return this.service.lookupAthlete(dto);
   }
 
   @Post('federation/registrations')

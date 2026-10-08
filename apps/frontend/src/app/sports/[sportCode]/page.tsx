@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import useSWR from 'swr';
 import { Button, Card, Empty, Skeleton, Tag } from 'antd';
-import { ArrowRight, CalendarDays, Clock3, MapPin, ShieldCheck, Trophy, Users } from 'lucide-react';
+import { ArrowRight, CalendarDays, Clock3, MapPin, Trophy, Users } from 'lucide-react';
 import { fetcher } from '@/lib/api';
 import { getParticipantAccount, getParticipantToken } from '@/lib/participant-auth';
 import { formatDateRange } from '@/lib/utils';
@@ -124,7 +124,6 @@ export default function SportPlatformPage() {
             <div className="grid grid-cols-2 gap-4 text-center">
               <div className="rounded-xl bg-white/5 p-5"><strong className="block text-3xl text-white">{events.length}</strong><span className="text-sm text-slate-400">Sự kiện</span></div>
               <div className="rounded-xl bg-white/5 p-5"><strong className="block text-3xl text-white">{sport.categories?.length || 0}</strong><span className="text-sm text-slate-400">Hạng đấu</span></div>
-              <div className="col-span-2 flex items-center gap-3 rounded-xl bg-emerald-500/10 p-4 text-left text-sm text-emerald-200"><ShieldCheck className="h-6 w-6 shrink-0" />Kiểm tra tự động tuổi, giới tính và cân nặng theo hạng đấu.</div>
             </div>
           </Card>
         </div>

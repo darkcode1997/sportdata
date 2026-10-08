@@ -4,18 +4,25 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateAthleteDto } from './dto/create-athlete.dto';
 import { UpdateAthleteDto } from './dto/update-athlete.dto';
 import { QueryAthletesDto } from './dto/query-athletes.dto';
+import { AthleteIdentityService } from './athlete-identity.service';
 
 @Injectable()
 export class AthletesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly athleteIdentity: AthleteIdentityService) {}
 
   async create(createAthleteDto: CreateAthleteDto) {
-    const { eventIds, categoryIds, birthDate, ...data } = createAthleteDto;
+    const { eventIds, categoryIds, birthDate, identityType, documentNumber, address, ...data } = createAthleteDto;
     await this.validateAffiliation(data.countryId, data.federationId);
 
-    return this.prisma.athlete.create({
+    return this.prisma.$transaction(async (transaction) => {
+      await this.athleteIdentity.lock(transaction);
+      const identity = await this.athleteIdentity.assertNew(transaction, {
+        ...data, birthDate: birthDate ? new Date(birthDate) : undefined, identityType, documentNumber, address,
+      });
+      return transaction.athlete.create({
       data: {
         ...data,
+        identity: { create: identity },
         email: data.email?.trim().toLowerCase(),
         phone: data.phone?.trim(),
         birthDate: birthDate ? new Date(birthDate) : undefined,
@@ -27,6 +34,7 @@ export class AthletesService {
           : undefined,
       },
       include: this.getAthleteInclude(),
+      });
     });
   }
 
@@ -240,7 +248,7 @@ export class AthletesService {
   }
 
   async update(id: string, updateAthleteDto: UpdateAthleteDto) {
-    const { eventIds, categoryIds, birthDate, ...data } = updateAthleteDto;
+    const { eventIds, categoryIds, birthDate, identityType, documentNumber, address, ...data } = updateAthleteDto;
 
     const existingAthlete = await this.findOne(id);
     await this.validateAffiliation(
@@ -250,10 +258,24 @@ export class AthletesService {
         : data.federationId || undefined,
     );
 
-    return this.prisma.athlete.update({
+    return this.prisma.$transaction(async (transaction) => {
+      await this.athleteIdentity.lock(transaction);
+      const identity = await this.athleteIdentity.assertNew(transaction, {
+        ...existingAthlete, ...data, birthDate: birthDate ? new Date(birthDate) : existingAthlete.birthDate,
+        identityType, documentNumber, address,
+      }, id);
+      return transaction.athlete.update({
       where: { id },
       data: {
         ...data,
+        ...((documentNumber || address) ? { identity: { upsert: {
+          create: identity,
+          update: {
+            ...(documentNumber ? { documentHash: identity.documentHash, cccdHash: identity.cccdHash, cccdEncrypted: identity.cccdEncrypted,
+              passportHash: identity.passportHash, passportEncrypted: identity.passportEncrypted } : {}),
+            ...(address ? { addressHash: identity.addressHash } : {}),
+          },
+        } } } : {}),
         email: data.email === null ? null : data.email?.trim().toLowerCase(),
         phone: data.phone === null ? null : data.phone?.trim(),
         birthDate: birthDate ? new Date(birthDate) : undefined,
@@ -265,6 +287,7 @@ export class AthletesService {
           : undefined,
       },
       include: this.getAthleteInclude(),
+      });
     });
   }
 
@@ -317,6 +340,26 @@ export class AthletesService {
       },
       orderBy: { type: 'asc' },
     });
+  }
+
+  async getIdentityDetails(id: string) {
+    const athlete = await this.prisma.athlete.findUnique({
+      where: { id },
+      select: { identity: true, media: {
+        where: { type: { in: this.documentTypes() } },
+        select: { type: true, ocrData: true },
+      } },
+    });
+    if (!athlete) throw new NotFoundException('Không tìm thấy vận động viên');
+    const legacyNumber = (type: AthleteMediaType) => {
+      const media = athlete.media.find((item) => item.type === type);
+      const data = media?.ocrData as { confirmedFields?: { documentNumber?: string }; fields?: { documentNumber?: string } } | null;
+      return data?.confirmedFields?.documentNumber || data?.fields?.documentNumber || null;
+    };
+    return {
+      cccd: athlete.identity?.cccdEncrypted ? this.athleteIdentity.decrypt(athlete.identity.cccdEncrypted, 'CCCD') : legacyNumber(AthleteMediaType.CCCD_FRONT),
+      passport: athlete.identity?.passportEncrypted ? this.athleteIdentity.decrypt(athlete.identity.passportEncrypted, 'PASSPORT') : legacyNumber(AthleteMediaType.PASSPORT),
+    };
   }
 
   async getDocument(id: string, type: AthleteMediaType) {

@@ -1,4 +1,6 @@
 import { Type } from 'class-transformer';
+import { PartialType, PickType } from '@nestjs/mapped-types';
+import { CreateAthleteDto } from '../../athletes/dto/create-athlete.dto';
 import {
   IsDateString,
   IsEmail,
@@ -164,7 +166,7 @@ export class CreatePublicRegistrationDto {
   categoryId: string;
 }
 
-export class AdminRegistrationAthleteDto {
+export class AdminRegistrationAthleteDto extends PartialType(PickType(CreateAthleteDto, ['identityType', 'documentNumber', 'address'] as const)) {
   @IsString()
   @MinLength(1)
   firstName: string;
@@ -190,10 +192,12 @@ export class AdminRegistrationAthleteDto {
   @IsDateString()
   birthDate: string;
 
+  @IsOptional()
   @Type(() => Number)
   @IsNumber()
   @Min(1)
-  weight: number;
+  @Max(500)
+  weight?: number;
 
   @IsOptional()
   @Type(() => Number)

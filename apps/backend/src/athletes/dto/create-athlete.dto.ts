@@ -1,8 +1,22 @@
-import { IsString, IsOptional, IsDateString, IsNumber, IsEnum, IsArray, IsEmail, MinLength } from 'class-validator';
+import { IsString, IsOptional, IsDateString, IsNumber, IsEnum, IsArray, IsEmail, IsIn, MaxLength, MinLength } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Gender } from '@prisma/client';
 
 export class CreateAthleteDto {
+  @IsOptional()
+  @IsIn(['CCCD', 'PASSPORT'])
+  identityType?: 'CCCD' | 'PASSPORT';
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  documentNumber?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  address?: string;
+
   @ApiProperty()
   @IsString()
   firstName: string;

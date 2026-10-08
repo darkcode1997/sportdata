@@ -291,6 +291,12 @@ model User {
 // Runtime feature switches. Environment variables provide the initial/default
 // value and keep credentials outside the database; this row stores only the
 // operator's on/off choices so changes can take effect without a redeploy.
+model IntegrationSetting {
+  name      String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
 model SystemSetting {
   id                 String   @id @default("global")
   identityOcrEnabled Boolean?
@@ -536,6 +542,7 @@ model Event {
 }
 
 model Athlete {
+  identity             AthleteIdentity?
   id                   String              @id @default(cuid())
   firstName            String
   lastName             String
@@ -571,7 +578,25 @@ model Athlete {
   @@index([countryId])
   @@index([federationId])
   @@index([fullName])
+  @@index([birthDate])
   @@index([email])
+}
+
+model AthleteIdentity {
+  athleteId    String   @id
+  athlete      Athlete  @relation(fields: [athleteId], references: [id], onDelete: Cascade)
+  documentHash String?
+  cccdHash     String?
+  passportHash String?
+  cccdEncrypted String?
+  passportEncrypted String?
+  addressHash  String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([documentHash])
+  @@index([cccdHash])
+  @@index([passportHash])
 }
 
 model AthleteMedia {

@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import useSWR from 'swr';
 import dayjs, { type Dayjs } from 'dayjs';
-import { Avatar, Button, Card, Col, DatePicker, Empty, Form, Image as AntImage, Input, InputNumber, Modal, Row, Segmented, Select, Spin, Tag, Upload } from 'antd';
+import { Alert, Avatar, Button, Card, Col, DatePicker, Empty, Form, Image as AntImage, Input, InputNumber, Modal, Row, Segmented, Select, Spin, Tag, Upload } from 'antd';
 import { CreditCard, Download, Eye, FileCheck2, FileText, ImagePlus, Pencil, Save, ScanText, TicketCheck, UploadCloud, UserRound } from 'lucide-react';
 import { CameraCaptureButton } from '@/components/CameraCaptureButton';
 import { EventParticipationCard } from '@/components/EventParticipationCard';
@@ -168,9 +168,15 @@ export default function ParticipantAccountPage() {
   const [confirmingOcr, setConfirmingOcr] = useState(false);
   const [editingProfile, setEditingProfile] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
+  const [resolvingLegacyAccount, setResolvingLegacyAccount] = useState(false);
+  const [profileNotFound, setProfileNotFound] = useState(false);
   const sessionAccount = getParticipantAccount();
   const isAthleteAccount = sessionAccount?.accountType !== 'FEDERATION';
-  const { data: profile, error, isLoading, mutate } = useSWR<Profile>(getParticipantToken() && isAthleteAccount ? '/participant-auth/me' : null, authFetcher);
+  const { data: profile, error, isLoading, mutate } = useSWR<Profile>(
+    getParticipantToken() && isAthleteAccount ? '/participant-auth/me' : null,
+    authFetcher,
+    { shouldRetryOnError: false },
+  );
   const { data: registrations = [], mutate: mutateRegistrations } = useSWR<Registration[]>(getParticipantToken() && isAthleteAccount ? '/participant-auth/registrations' : null, authFetcher);
   const { data: countries = [] } = useSWR<Country[]>('/countries', fetcher);
   const { data: federations = [] } = useSWR<Federation[]>('/federations', fetcher);
@@ -197,6 +203,38 @@ export default function ParticipantAccountPage() {
       router.replace('/account/login');
     }
   }, [error, router]);
+
+  useEffect(() => {
+    if (error?.response?.status !== 404 || resolvingLegacyAccount || profileNotFound) return;
+    let cancelled = false;
+    setResolvingLegacyAccount(true);
+    participantApi.get('/participant-auth/federation/me')
+      .then(({ data }) => {
+        if (cancelled) return;
+        const token = getParticipantToken();
+        const account = getParticipantAccount();
+        if (token && account) {
+          setParticipantSession(token, {
+            ...account,
+            accountType: 'FEDERATION',
+            federationId: data.federation?.id || account.federationId,
+          });
+        }
+        router.replace('/federation-account');
+      })
+      .catch((requestError) => {
+        if (cancelled) return;
+        if (requestError?.response?.status === 401) {
+          router.replace('/account/login');
+          return;
+        }
+        setProfileNotFound(true);
+      })
+      .finally(() => {
+        if (!cancelled) setResolvingLegacyAccount(false);
+      });
+    return () => { cancelled = true; };
+  }, [error?.response?.status, profileNotFound, resolvingLegacyAccount, router]);
 
   useEffect(() => {
     let cancelled = false;
@@ -301,8 +339,34 @@ export default function ParticipantAccountPage() {
     }
   };
 
-  if (isLoading || !profile) {
+  if (isLoading || resolvingLegacyAccount || (!profile && !error)) {
     return <main className="grid min-h-[60vh] place-items-center"><Spin size="large" /></main>;
+  }
+
+  if (!profile) {
+    return (
+      <main className="account-gateway-page grid min-h-[60vh] place-items-center px-4 py-10">
+        <Card className="w-full max-w-lg" title="Không thể tải hồ sơ SportData">
+          <Alert
+            showIcon
+            type="error"
+            message="Tài khoản chưa được liên kết với hồ sơ vận động viên"
+            description="Vui lòng đăng nhập lại. Nếu lỗi vẫn còn, quản trị viên cần kiểm tra và khôi phục liên kết giữa tài khoản và hồ sơ vận động viên."
+          />
+          <Button
+            block
+            className="mt-5"
+            type="primary"
+            onClick={() => {
+              clearParticipantSession();
+              router.replace('/account/login');
+            }}
+          >
+            Đăng nhập lại
+          </Button>
+        </Card>
+      </main>
+    );
   }
 
   return (
@@ -351,8 +415,8 @@ export default function ParticipantAccountPage() {
                   <dt className="text-slate-500">Đơn vị/CLB tham gia</dt>
                   <dd className="font-semibold text-slate-100">{profile.athlete.federation?.name || 'Chưa liên kết'}</dd>
                 </div>
-                <div><dt className="text-slate-500">Cân nặng đăng ký</dt><dd className="font-semibold text-slate-100">{profile.athlete.weight ? `${profile.athlete.weight} kg` : 'Chưa cập nhật'}</dd></div>
-                <div><dt className="text-slate-500">Chiều cao</dt><dd className="font-semibold text-slate-100">{profile.athlete.height ? `${profile.athlete.height} cm` : 'Chưa cập nhật'}</dd></div>
+                {profile.athlete.weight != null && <div><dt className="text-slate-500">Cân nặng đăng ký</dt><dd className="font-semibold text-slate-100">{profile.athlete.weight} kg</dd></div>}
+                {profile.athlete.height != null && <div><dt className="text-slate-500">Chiều cao</dt><dd className="font-semibold text-slate-100">{profile.athlete.height} cm</dd></div>}
               </dl>
             </Card>
             <Card

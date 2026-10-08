@@ -168,19 +168,22 @@ export default function EventPlatformsPage() {
               const backgroundImage = cover
                 ? `linear-gradient(180deg, rgba(5,8,18,.22) 0%, rgba(5,8,18,.52) 48%, rgba(5,8,18,.96) 100%), url("${cover.replace(/"/g, '%22')}")`
                 : fallbackBackgrounds[index % fallbackBackgrounds.length];
+              const lightBackground = cover
+                ? `linear-gradient(180deg, rgba(255,255,255,.78) 0%, rgba(255,255,255,.92) 48%, rgba(255,255,255,.98) 100%), url("${cover.replace(/"/g, '%22')}")`
+                : `radial-gradient(circle at 12% 8%, hsl(${195 + index * 37} 75% 92%), transparent 65%), linear-gradient(145deg, #ffffff, #f8fafc)`;
 
               return (
                 <Link
                   key={sport.id}
                   href={`/sports/${encodeURIComponent(sport.code.toLowerCase())}`}
-                  className="group relative min-h-[340px] overflow-hidden rounded-[28px] border border-white/15 bg-cover bg-center shadow-2xl shadow-black/20 transition duration-300 hover:-translate-y-1 hover:border-sky-400/80 hover:shadow-sky-950/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
-                  style={{ backgroundImage, '--platform-index': index } as CSSProperties}
+                  className="event-platform-card group relative min-h-[340px] overflow-hidden rounded-[28px] border border-white/15 bg-cover bg-center shadow-2xl shadow-black/20 transition duration-300 hover:-translate-y-1 hover:border-sky-400/80 hover:shadow-sky-950/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
+                  style={{ backgroundImage, '--platform-index': index, '--platform-light-background': lightBackground } as CSSProperties}
                   aria-label={`Mở nền tảng ${sport.displayName || sport.name}`}
                 >
                   <div className="absolute inset-0 bg-[linear-gradient(115deg,rgba(255,255,255,.06),transparent_35%)] opacity-70" />
                   <div className="relative flex min-h-[340px] flex-col justify-between p-7 sm:p-8">
                     <div className="flex items-start justify-between gap-4">
-                      <div className="grid min-h-16 min-w-16 place-items-center rounded-2xl border border-white/15 bg-black/35 p-3 backdrop-blur-sm">
+                      <div className="event-platform-card-logo grid min-h-16 min-w-16 place-items-center rounded-2xl border border-white/15 bg-black/35 p-3 backdrop-blur-sm">
                         {sport.logoUrl ? (
                           // Logo URL is managed by CMS and may use an external host.
                           // eslint-disable-next-line @next/next/no-img-element
@@ -189,13 +192,13 @@ export default function EventPlatformsPage() {
                           <span className="text-xl font-black tracking-tight text-sky-300">{sport.code.slice(0, 4)}</span>
                         )}
                       </div>
-                      <span className="grid h-11 w-11 place-items-center rounded-full border border-white/20 bg-black/30 text-white opacity-0 backdrop-blur transition group-hover:opacity-100">
+                      <span className="event-platform-card-arrow grid h-11 w-11 place-items-center rounded-full border border-white/20 bg-black/30 text-white opacity-0 backdrop-blur transition group-hover:opacity-100 group-focus-visible:opacity-100">
                         <ArrowUpRight className="h-5 w-5" />
                       </span>
                     </div>
 
                     <div>
-                      <div className="mb-3 flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-wider text-sky-300">
+                      <div className="event-platform-card-meta mb-3 flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-wider text-sky-300">
                         <span>{sport.code}</span>
                         <span className="h-1 w-1 rounded-full bg-slate-500" />
                         <span>{sportEvents.length || sport._count?.events || 0} sự kiện</span>
@@ -204,7 +207,7 @@ export default function EventPlatformsPage() {
                       <p className="mt-2 line-clamp-2 max-w-xl text-sm leading-6 text-slate-300">
                         {sport.subtitle || sport.description || `Nền tảng quản lý sự kiện và đăng ký thi đấu ${sport.name}.`}
                       </p>
-                      <span className="mt-5 inline-flex items-center gap-2 text-sm font-bold text-white">
+                      <span className="event-platform-card-link mt-5 inline-flex items-center gap-2 text-sm font-bold text-white">
                         Xem sự kiện <ArrowUpRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
                       </span>
                     </div>

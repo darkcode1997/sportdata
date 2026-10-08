@@ -1,8 +1,10 @@
 import { IsString, IsOptional, IsDateString, IsNumber, IsEnum, IsArray, IsEmail, MinLength } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Gender } from '@prisma/client';
+import { PartialType, PickType } from '@nestjs/mapped-types';
+import { CreateAthleteDto } from './create-athlete.dto';
 
-export class UpdateAthleteDto {
+export class UpdateAthleteDto extends PartialType(PickType(CreateAthleteDto, ['identityType', 'documentNumber', 'address'] as const)) {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
