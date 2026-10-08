@@ -5,7 +5,7 @@
   "description": "SportData Platform Backend API",
   "scripts": {
     "build": "nest build",
-    "vercel-build": "prisma generate && nest build && node scripts/vercel-storage-deploy.cjs",
+    "vercel-build": "node scripts/prepare-vercel-build.cjs && prisma generate && nest build && node scripts/vercel-storage-deploy.cjs",
     "storage:migrate:r2": "node scripts/migrate-storage-r2.cjs",
     "start": "nest start",
     "start:dev": "nest start --watch",
