@@ -21,8 +21,11 @@ async function migrateStorage({ apply = false, client: existingClient } = {}) {
   const prisma = new PrismaClient();
   const report = { scanned: 0, migrated: 0, failed: 0, missing: 0 };
   if (!existingClient) await client.connect();
+  let locked = false;
   try {
-    await client.query('SELECT pg_advisory_lock(872341901)');
+    const lock = await client.query('SELECT pg_try_advisory_lock(872341901) AS acquired');
+    locked = lock.rows[0].acquired;
+    if (!locked) throw new Error('Another R2 migration is running. Wait for it to finish, then rerun.');
     const settings = new SystemSettingsService(prisma);
     const values = await settings.integrationValues([
       'STORAGE_R2_BUCKET', 'STORAGE_R2_ACCOUNT_ID', 'STORAGE_R2_ENDPOINT',
@@ -202,7 +205,7 @@ async function migrateStorage({ apply = false, client: existingClient } = {}) {
     if (report.failed) throw new Error(`${report.failed} source files failed; originals and references were retained. Rerun after resolving sources.`);
     return report;
   } finally {
-    await client.query('SELECT pg_advisory_unlock(872341901)').catch(() => {});
+    if (locked) await client.query('SELECT pg_advisory_unlock(872341901)').catch(() => {});
     if (!existingClient) await client.end();
     await prisma.$disconnect();
   }

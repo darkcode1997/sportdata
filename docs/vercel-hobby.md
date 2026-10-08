@@ -26,6 +26,8 @@ JWT_SECRET=replace-with-at-least-64-random-characters
 
 Các biến SMTP, OCR và cổng thanh toán chỉ cần khai báo khi tính năng tương ứng được bật.
 
+Nếu database dùng connection pooler, thêm `DIRECT_URL` vào Vercel Production với chuỗi **direct/non-pooled** từ nhà cung cấp, trỏ đến cùng database với `DATABASE_URL`. Script dùng `DIRECT_URL` cho kết nối giữ advisory lock và lệnh Prisma migration, còn API vẫn dùng `DATABASE_URL`. Không dùng transaction pooler cho session-level advisory lock. Nếu log báo timeout khi Prisma chờ advisory lock, kiểm tra deployment cũ còn chạy và redeploy sau khi nó hoàn tất hoặc đã bị hủy. Không tắt khóa Prisma để ép hai migration chạy cùng lúc.
+
 Backend chạy thành một NestJS Vercel Function tại Singapore. Build production tự bảo toàn các cột file cũ, chạy Prisma migration rồi chuyển nguồn file còn đọc được sang R2. Preview/development không chạy các bước thay đổi database. Các lần chạy đồng thời được khóa bằng PostgreSQL advisory lock; file đã chuyển được bỏ qua.
 
 ```bash
