@@ -1,7 +1,9 @@
+import type { ImageVariant } from '../storage/image-variant';
 import { validateEventAgeLimits } from './event-age-limits';
 import { validateTicketDesign } from './ticket-design';
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { StorageService } from '../storage/storage.service';
 import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
 import { QueryEventsDto } from './dto/query-events.dto';
@@ -12,7 +14,7 @@ import { createHash } from 'crypto';
 
 @Injectable()
 export class EventsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly storage: StorageService) {}
 
   async create(createEventDto: CreateEventDto) {
     const {
@@ -473,48 +475,54 @@ export class EventsService {
       : file.buffer.length >= 8 && file.buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
     if (!validSignature) throw new BadRequestException('Nội dung tệp không đúng định dạng ảnh đã khai báo');
     await this.ensureEvent(id);
-    const event = await this.prisma.event.update({
+    const previous = await this.prisma.event.findUnique({ where: { id }, select: { ticketBackgroundStorageKey: true } });
+    const event = await this.storage.withUpload(file, 'events/ticket-backgrounds', previous.ticketBackgroundStorageKey, (ticketBackgroundStorageKey, stored) => this.prisma.event.update({
       where: { id },
       data: {
-        ticketBackgroundData: file.buffer,
+        ticketBackgroundStorageKey,
         ticketBackgroundMimeType: file.mimetype,
-        ticketBackgroundSize: file.size,
+        ticketBackgroundSize: stored.size,
       },
       include: this.getEventInclude(true),
-    });
+    }));
     return this.serializeEvent(event);
   }
 
   async removeTicketBackground(id: string) {
     await this.ensureEvent(id);
+    const previous = await this.prisma.event.findUnique({ where: { id }, select: { ticketBackgroundStorageKey: true } });
     const event = await this.prisma.event.update({
       where: { id },
       data: {
-        ticketBackgroundData: null,
+        ticketBackgroundStorageKey: null,
         ticketBackgroundMimeType: null,
         ticketBackgroundSize: null,
       },
       include: this.getEventInclude(true),
     });
+    await this.storage.deleteQuietly(previous.ticketBackgroundStorageKey);
     return this.serializeEvent(event);
   }
 
-  async getTicketBackground(id: string) {
+  async getTicketBackground(id: string, variant?: ImageVariant) {
     const event = await this.prisma.event.findUnique({
       where: { id },
       select: {
-        ticketBackgroundData: true,
+        ticketBackgroundStorageKey: true,
         ticketBackgroundMimeType: true,
       },
     });
     if (!event) throw new NotFoundException(`Không tìm thấy sự kiện có mã ${id}`);
-    if (!event.ticketBackgroundData || !event.ticketBackgroundMimeType) {
+    if (!event.ticketBackgroundStorageKey || !event.ticketBackgroundMimeType) {
       throw new NotFoundException('Sự kiện chưa có ảnh nền vé');
     }
+    const url = await this.storage.imageUrl(event.ticketBackgroundStorageKey, variant);
+    if (url) return { url };
+    const data = await this.storage.read(event.ticketBackgroundStorageKey);
     return {
-      data: event.ticketBackgroundData,
+      data,
       mimeType: event.ticketBackgroundMimeType,
-      etag: createHash('sha256').update(event.ticketBackgroundData).digest('hex'),
+      etag: createHash('sha256').update(data).digest('hex'),
     };
   }
 
@@ -550,44 +558,51 @@ export class EventsService {
     }
 
     await this.ensureEvent(id);
-    const event = await this.prisma.event.update({
+    const previous = await this.prisma.event.findUnique({ where: { id }, select: { bannerStorageKey: true, logoStorageKey: true } });
+    const previousKey = kind === 'banner' ? previous.bannerStorageKey : previous.logoStorageKey;
+    const event = await this.storage.withUpload(file, `events/${kind}`, previousKey, (storageKey, stored) => this.prisma.event.update({
       where: { id },
       data: kind === 'banner'
-        ? { bannerData: file.buffer, bannerMimeType: file.mimetype, bannerSize: file.size }
-        : { logoData: file.buffer, logoMimeType: file.mimetype, logoSize: file.size },
+        ? { bannerStorageKey: storageKey, bannerMimeType: file.mimetype, bannerSize: stored.size }
+        : { logoStorageKey: storageKey, logoMimeType: file.mimetype, logoSize: stored.size },
       include: this.getEventInclude(true),
-    });
+    }));
     return this.serializeEvent(event);
   }
 
   async removeEventImage(id: string, kind: 'banner' | 'logo') {
     await this.ensureEvent(id);
+    const previous = await this.prisma.event.findUnique({ where: { id }, select: { bannerStorageKey: true, logoStorageKey: true } });
     const event = await this.prisma.event.update({
       where: { id },
       data: kind === 'banner'
-        ? { bannerData: null, bannerMimeType: null, bannerSize: null }
-        : { logoData: null, logoMimeType: null, logoSize: null },
+        ? { bannerStorageKey: null, bannerMimeType: null, bannerSize: null }
+        : { logoStorageKey: null, logoMimeType: null, logoSize: null },
       include: this.getEventInclude(true),
     });
+    await this.storage.deleteQuietly(kind === 'banner' ? previous.bannerStorageKey : previous.logoStorageKey);
     return this.serializeEvent(event);
   }
 
-  async getEventImage(id: string, kind: 'banner' | 'logo') {
+  async getEventImage(id: string, kind: 'banner' | 'logo', variant?: ImageVariant) {
     const event = await this.prisma.event.findUnique({
       where: { id },
       select: {
-        bannerData: true,
+        bannerStorageKey: true,
         bannerMimeType: true,
-        logoData: true,
+        logoStorageKey: true,
         logoMimeType: true,
       },
     });
     if (!event) throw new NotFoundException(`Không tìm thấy sự kiện có mã ${id}`);
-    const data = kind === 'banner' ? event.bannerData : event.logoData;
+    const storageKey = kind === 'banner' ? event.bannerStorageKey : event.logoStorageKey;
     const mimeType = kind === 'banner' ? event.bannerMimeType : event.logoMimeType;
-    if (!data || !mimeType) {
+    if (!storageKey || !mimeType) {
       throw new NotFoundException(`Sự kiện chưa có ảnh ${kind === 'banner' ? 'banner' : 'logo'}`);
     }
+    const url = await this.storage.imageUrl(storageKey, variant);
+    if (url) return { url };
+    const data = await this.storage.read(storageKey);
     return {
       data,
       mimeType,
@@ -597,6 +612,10 @@ export class EventsService {
 
   async remove(id: string) {
     await this.findOne(id);
+    const previous = await this.prisma.event.findUnique({
+      where: { id },
+      select: { bannerStorageKey: true, logoStorageKey: true, ticketBackgroundStorageKey: true },
+    });
 
     await this.prisma.$transaction(async (transaction) => {
       await transaction.statistic.deleteMany({ where: { eventId: id } });
@@ -604,7 +623,7 @@ export class EventsService {
       await transaction.draw.deleteMany({ where: { eventId: id } });
       await transaction.event.delete({ where: { id } });
     });
-
+    await Promise.all(Object.values(previous).map((key) => this.storage.deleteQuietly(key)));
     return { id };
   }
 
@@ -720,9 +739,9 @@ export class EventsService {
 
   private serializeEvent(event: any) {
     const {
-      ticketBackgroundData: _ticketBackgroundData,
-      bannerData: _bannerData,
-      logoData: _logoData,
+      ticketBackgroundStorageKey: _ticketBackgroundStorageKey,
+      bannerStorageKey: _bannerStorageKey,
+      logoStorageKey: _logoStorageKey,
       ...safeEvent
     } = event;
     const imageVersion = event.updatedAt ? new Date(event.updatedAt).getTime() : undefined;

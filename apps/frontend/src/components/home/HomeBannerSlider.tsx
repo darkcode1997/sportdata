@@ -1,5 +1,7 @@
 'use client';
 
+import { imageUrl, imageSrcSet } from '@/lib/image-url';
+
 import { useEffect, useState } from 'react';
 import { Button, Skeleton } from 'antd';
 import { ChevronLeft, ChevronRight, Images } from 'lucide-react';
@@ -71,7 +73,10 @@ export function HomeBannerSlider() {
             // Banner images are managed by trusted CMS editors and served by the API.
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={banner.imageUrl}
+              src={imageUrl(banner.imageUrl, 'hero')}
+              srcSet={imageSrcSet(banner.imageUrl)}
+              sizes="(max-width: 768px) 100vw, 1600px"
+              decoding="async"
               alt={banner.altText}
               loading={index === 0 ? 'eager' : 'lazy'}
               fetchPriority={index === 0 ? 'high' : 'auto'}

@@ -1,5 +1,7 @@
 'use client';
 
+import { imageUrl } from '@/lib/image-url';
+
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import useSWR from 'swr';
@@ -797,7 +799,7 @@ function EventImageUpload({
     <div className={`event-image-upload event-image-upload--${kind}`}>
       <div className="event-image-preview">
         {previewUrl ? (
-          <Image src={previewUrl} alt={`Ảnh ${label} sự kiện`} preview={false} />
+          <Image src={imageUrl(previewUrl, 'card')} alt={`Ảnh ${label} sự kiện`} preview={false} />
         ) : (
           <div className="event-image-empty">
             <ImagePlus className="h-6 w-6" />

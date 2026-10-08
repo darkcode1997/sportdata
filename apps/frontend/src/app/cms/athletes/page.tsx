@@ -1,5 +1,7 @@
 'use client';
 
+import { imageUrl } from '@/lib/image-url';
+
 import { useEffect, useMemo, useState } from 'react';
 import useSWR from 'swr';
 import {
@@ -75,7 +77,7 @@ export default function AthletesListPage() {
         <Flex align="center" gap={12} className="w-full min-w-0">
           <Avatar
             size={44}
-            src={athlete.photoUrl || undefined}
+            src={imageUrl(athlete.photoUrl, 'avatar')}
             alt={athlete.fullName}
             icon={<UserRound className="h-5 w-5" />}
             className="!shrink-0 bg-sblue-500/20 text-sblue-300"

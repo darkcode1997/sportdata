@@ -1,3 +1,4 @@
+import type { ImageVariant } from '../storage/image-variant';
 import {
   BadRequestException,
   ConflictException,
@@ -7,6 +8,7 @@ import {
 import { Prisma } from '@prisma/client';
 import { createHash } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
+import { StorageService } from '../storage/storage.service';
 import { CreateSportDto } from './dto/create-sport.dto';
 import { UpdateSportDto } from './dto/update-sport.dto';
 
@@ -19,7 +21,7 @@ const ALLOWED_IMAGE_TYPES = new Set([
 
 @Injectable()
 export class SportsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly storage: StorageService) {}
 
   async create(createSportDto: CreateSportDto) {
     const code = createSportDto.code.trim().toUpperCase();
@@ -114,105 +116,121 @@ export class SportsService {
   async uploadBackground(id: string, file?: Express.Multer.File) {
     await this.findOne(id);
     this.validateImage(file, 'nền', 4 * 1024 * 1024);
-    const sport = await this.prisma.sport.update({
+    const previous = await this.prisma.sport.findUnique({ where: { id }, select: { backgroundStorageKey: true } });
+    const sport = await this.storage.withUpload(file!, 'sports/backgrounds', previous.backgroundStorageKey, (backgroundStorageKey, stored) => this.prisma.sport.update({
       where: { id },
       data: {
-        backgroundData: file!.buffer,
+        backgroundStorageKey,
         backgroundMimeType: file!.mimetype,
-        backgroundSize: file!.size,
+        backgroundSize: stored.size,
       },
       select: this.metadataSelect,
-    });
+    }));
     return this.serialize(sport);
   }
 
   async uploadLogo(id: string, file?: Express.Multer.File) {
     await this.findOne(id);
     this.validateImage(file, 'logo', 2 * 1024 * 1024);
-    const sport = await this.prisma.sport.update({
+    const previous = await this.prisma.sport.findUnique({ where: { id }, select: { logoStorageKey: true } });
+    const sport = await this.storage.withUpload(file!, 'sports/logos', previous.logoStorageKey, (logoStorageKey, stored) => this.prisma.sport.update({
       where: { id },
       data: {
         logoUrl: null,
-        logoData: file!.buffer,
+        logoStorageKey,
         logoMimeType: file!.mimetype,
-        logoSize: file!.size,
+        logoSize: stored.size,
       },
       select: this.metadataSelect,
-    });
+    }));
     return this.serialize(sport);
   }
 
   async removeLogo(id: string) {
     await this.findOne(id);
+    const previous = await this.prisma.sport.findUnique({ where: { id }, select: { logoStorageKey: true } });
     const sport = await this.prisma.sport.update({
       where: { id },
       data: {
         logoUrl: null,
-        logoData: null,
+        logoStorageKey: null,
         logoMimeType: null,
         logoSize: null,
       },
       select: this.metadataSelect,
     });
+    await this.storage.deleteQuietly(previous.logoStorageKey);
     return this.serialize(sport);
   }
 
-  async getLogo(id: string) {
+  async getLogo(id: string, variant?: ImageVariant) {
     const sport = await this.prisma.sport.findUnique({
       where: { id },
       select: {
-        logoData: true,
+        logoStorageKey: true,
         logoMimeType: true,
         logoSize: true,
       },
     });
-    if (!sport?.logoData || !sport.logoMimeType || !sport.logoSize) {
+    if (!sport?.logoStorageKey || !sport.logoMimeType || !sport.logoSize) {
       throw new NotFoundException('Bộ môn chưa có logo tải lên');
     }
+    const url = await this.storage.imageUrl(sport.logoStorageKey, variant);
+    if (url) return { url };
+    const imageData = await this.storage.read(sport.logoStorageKey);
     return {
-      imageData: sport.logoData,
+      imageData,
       imageMimeType: sport.logoMimeType,
       imageSize: sport.logoSize,
-      etag: `"${createHash('sha1').update(sport.logoData).digest('hex')}"`,
+      etag: `"${createHash('sha1').update(imageData).digest('hex')}"`,
     };
   }
 
   async removeBackground(id: string) {
     await this.findOne(id);
+    const previous = await this.prisma.sport.findUnique({ where: { id }, select: { backgroundStorageKey: true } });
     const sport = await this.prisma.sport.update({
       where: { id },
       data: {
-        backgroundData: null,
+        backgroundStorageKey: null,
         backgroundMimeType: null,
         backgroundSize: null,
       },
       select: this.metadataSelect,
     });
+    await this.storage.deleteQuietly(previous.backgroundStorageKey);
     return this.serialize(sport);
   }
 
-  async getBackground(id: string) {
+  async getBackground(id: string, variant?: ImageVariant) {
     const sport = await this.prisma.sport.findUnique({
       where: { id },
       select: {
-        backgroundData: true,
+        backgroundStorageKey: true,
         backgroundMimeType: true,
         backgroundSize: true,
       },
     });
-    if (!sport?.backgroundData || !sport.backgroundMimeType || !sport.backgroundSize) {
+    if (!sport?.backgroundStorageKey || !sport.backgroundMimeType || !sport.backgroundSize) {
       throw new NotFoundException('Bộ môn chưa có ảnh nền');
     }
+    const url = await this.storage.imageUrl(sport.backgroundStorageKey, variant);
+    if (url) return { url };
+    const imageData = await this.storage.read(sport.backgroundStorageKey);
     return {
-      imageData: sport.backgroundData,
+      imageData,
       imageMimeType: sport.backgroundMimeType,
       imageSize: sport.backgroundSize,
-      etag: `"${createHash('sha1').update(sport.backgroundData).digest('hex')}"`,
+      etag: `"${createHash('sha1').update(imageData).digest('hex')}"`,
     };
   }
 
   async remove(id: string) {
     await this.findOne(id);
+    const previous = await this.prisma.sport.findUnique({
+      where: { id }, select: { logoStorageKey: true, backgroundStorageKey: true },
+    });
+    const filesToDelete = Object.values(previous);
 
     await this.prisma.$transaction(async (transaction) => {
       const primaryEvents = await transaction.event.findMany({
@@ -242,7 +260,7 @@ export class SportsService {
             },
           });
         } else {
-          await this.deleteEventData(transaction, event.id);
+          filesToDelete.push(...await this.deleteEventData(transaction, event.id));
         }
       }
 
@@ -266,15 +284,20 @@ export class SportsService {
 
       await transaction.sport.delete({ where: { id } });
     });
-
+    await Promise.all(filesToDelete.map((key) => this.storage.deleteQuietly(key)));
     return { id };
   }
 
   private async deleteEventData(transaction: Prisma.TransactionClient, eventId: string) {
+    const previous = await transaction.event.findUnique({
+      where: { id: eventId },
+      select: { bannerStorageKey: true, logoStorageKey: true, ticketBackgroundStorageKey: true },
+    });
     await transaction.statistic.deleteMany({ where: { eventId } });
     await transaction.match.deleteMany({ where: { eventId } });
     await transaction.draw.deleteMany({ where: { eventId } });
     await transaction.event.delete({ where: { id: eventId } });
+    return Object.values(previous);
   }
 
   private validateImage(file: Express.Multer.File | undefined, label: string, maxSize: number) {

@@ -1,3 +1,4 @@
+import { imageUrl } from '@/lib/image-url';
 import { Fragment, type ReactNode } from 'react';
 
 type RichTextContentProps = {
@@ -54,7 +55,7 @@ export function RichTextContent({ content, className = '' }: RichTextContentProp
       blocks.push(
         <figure key={`image-${index}`}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={image[2]} alt={image[1] || 'Ảnh bài viết'} loading="lazy" />
+          <img src={imageUrl(image[2], 'hero')} alt={image[1] || 'Ảnh bài viết'} loading="lazy" />
           {image[1] && <figcaption>{image[1]}</figcaption>}
         </figure>,
       );

@@ -1,3 +1,4 @@
+import { ImageVariant, ImageVariantPipe } from '../storage/image-variant';
 import {
   Body,
   Controller,
@@ -185,8 +186,9 @@ export class ParticipantsController {
     @Req() request: ParticipantRequest,
     @Param('type') type: AthleteMediaType,
     @Res() response: Response,
+    @Query('variant', ImageVariantPipe) variant?: ImageVariant,
   ) {
-    const media = await this.service.getOwnMedia(request.participant.id, type);
+    const media = await this.service.getOwnMedia(request.participant.id, type, variant);
     response.setHeader('Content-Type', media.mimeType);
     response.setHeader('Cache-Control', 'private, no-store');
     response.setHeader('Content-Disposition', 'inline');
@@ -194,8 +196,16 @@ export class ParticipantsController {
   }
 
   @Get('avatar/:athleteId')
-  async avatar(@Param('athleteId') athleteId: string, @Res() response: Response) {
-    const media = await this.service.getMedia(athleteId, AthleteMediaType.AVATAR);
+  async avatar(
+    @Param('athleteId') athleteId: string,
+    @Res() response: Response,
+    @Query('variant', ImageVariantPipe) variant?: ImageVariant,
+  ) {
+    const media = await this.service.getAvatar(athleteId, variant);
+    if ('url' in media) {
+      response.setHeader('Cache-Control', 'public, max-age=300');
+      return response.redirect(302, media.url);
+    }
     response.setHeader('Content-Type', media.mimeType);
     response.setHeader('Cache-Control', 'public, max-age=300');
     response.send(media.data);
@@ -310,8 +320,9 @@ export class ParticipantsController {
     @Param('athleteId') athleteId: string,
     @Param('type') type: AthleteMediaType,
     @Res() response: Response,
+    @Query('variant', ImageVariantPipe) variant?: ImageVariant,
   ) {
-    const media = await this.service.getMedia(athleteId, type);
+    const media = await this.service.getMedia(athleteId, type, variant);
     response.setHeader('Content-Type', media.mimeType);
     response.setHeader('Cache-Control', 'private, no-store');
     response.send(media.data);

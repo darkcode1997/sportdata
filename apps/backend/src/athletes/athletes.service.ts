@@ -1,6 +1,8 @@
+import type { ImageVariant } from '../storage/image-variant';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { AthleteMediaType, DocumentOcrStatus, DocumentVerificationStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { StorageService } from '../storage/storage.service';
 import { CreateAthleteDto } from './dto/create-athlete.dto';
 import { UpdateAthleteDto } from './dto/update-athlete.dto';
 import { QueryAthletesDto } from './dto/query-athletes.dto';
@@ -8,7 +10,11 @@ import { AthleteIdentityService } from './athlete-identity.service';
 
 @Injectable()
 export class AthletesService {
-  constructor(private readonly prisma: PrismaService, private readonly athleteIdentity: AthleteIdentityService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly athleteIdentity: AthleteIdentityService,
+    private readonly storage: StorageService,
+  ) {}
 
   async create(createAthleteDto: CreateAthleteDto) {
     const { eventIds, categoryIds, birthDate, identityType, documentNumber, address, ...data } = createAthleteDto;
@@ -293,11 +299,13 @@ export class AthletesService {
 
   async remove(id: string) {
     await this.findOne(id);
-
-    return this.prisma.athlete.delete({
+    const media = await this.prisma.athleteMedia.findMany({ where: { athleteId: id }, select: { storageKey: true } });
+    const result = await this.prisma.athlete.delete({
       where: { id },
       include: this.getAthleteInclude(),
     });
+    await Promise.all(media.map((file) => this.storage.deleteQuietly(file.storageKey)));
+    return result;
   }
 
   async uploadAvatar(id: string, file?: Express.Multer.File) {
@@ -307,17 +315,18 @@ export class AthletesService {
       throw new BadRequestException('Ảnh đại diện phải là JPG, PNG hoặc WebP');
     }
     if (file.size > 8 * 1024 * 1024) throw new BadRequestException('Ảnh không được vượt quá 8 MB');
-    await this.prisma.$transaction([
+    const previous = await this.prisma.athleteMedia.findUnique({ where: { athleteId_type: { athleteId: id, type: AthleteMediaType.AVATAR } }, select: { storageKey: true } });
+    await this.storage.withUpload(file, 'athletes/avatars', previous?.storageKey, (storageKey, stored) => this.prisma.$transaction([
       this.prisma.athleteMedia.upsert({
         where: { athleteId_type: { athleteId: id, type: AthleteMediaType.AVATAR } },
-        create: { athleteId: id, type: AthleteMediaType.AVATAR, data: file.buffer, mimeType: file.mimetype, size: file.size },
-        update: { data: file.buffer, mimeType: file.mimetype, size: file.size },
+        create: { athleteId: id, type: AthleteMediaType.AVATAR, storageKey, mimeType: file.mimetype, size: stored.size },
+        update: { storageKey, mimeType: file.mimetype, size: stored.size },
       }),
       this.prisma.athlete.update({
         where: { id },
         data: { photoUrl: `/api/participant-auth/avatar/${id}` },
       }),
-    ]);
+    ]));
     return { photoUrl: `/api/participant-auth/avatar/${id}` };
   }
 
@@ -362,13 +371,13 @@ export class AthletesService {
     };
   }
 
-  async getDocument(id: string, type: AthleteMediaType) {
+  async getDocument(id: string, type: AthleteMediaType, variant?: ImageVariant) {
     this.validateDocumentType(type);
     const document = await this.prisma.athleteMedia.findUnique({
       where: { athleteId_type: { athleteId: id, type } },
     });
     if (!document) throw new NotFoundException('Chưa có giấy tờ này');
-    return document;
+    return { ...document, data: await this.storage.read(document.storageKey, variant) };
   }
 
   async uploadDocument(id: string, type: AthleteMediaType, file?: Express.Multer.File) {
@@ -376,21 +385,21 @@ export class AthletesService {
     this.validateDocumentType(type);
     if (!file) throw new BadRequestException('Vui lòng chọn ảnh giấy tờ');
     this.validateDocumentFile(file);
-
-    return this.prisma.athleteMedia.upsert({
+    const previous = await this.prisma.athleteMedia.findUnique({ where: { athleteId_type: { athleteId: id, type } }, select: { storageKey: true } });
+    return this.storage.withUpload(file, 'athletes/documents', previous?.storageKey, (storageKey, stored) => this.prisma.athleteMedia.upsert({
       where: { athleteId_type: { athleteId: id, type } },
       create: {
         athleteId: id,
         type,
-        data: file.buffer,
+        storageKey,
         mimeType: file.mimetype,
-        size: file.size,
+        size: stored.size,
         verificationStatus: DocumentVerificationStatus.PENDING,
       },
       update: {
-        data: file.buffer,
+        storageKey,
         mimeType: file.mimetype,
-        size: file.size,
+        size: stored.size,
         verificationStatus: DocumentVerificationStatus.PENDING,
         verificationNote: null,
         verifiedAt: null,
@@ -410,15 +419,17 @@ export class AthletesService {
         verifiedAt: true,
         updatedAt: true,
       },
-    });
+    }));
   }
 
   async deleteDocument(id: string, type: AthleteMediaType) {
     this.validateDocumentType(type);
+    const previous = await this.prisma.athleteMedia.findUnique({ where: { athleteId_type: { athleteId: id, type } }, select: { storageKey: true } });
     const deleted = await this.prisma.athleteMedia.deleteMany({
       where: { athleteId: id, type },
     });
     if (!deleted.count) throw new NotFoundException('Chưa có giấy tờ này');
+    await this.storage.deleteQuietly(previous?.storageKey);
     return { success: true };
   }
 

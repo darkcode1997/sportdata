@@ -1,5 +1,7 @@
 'use client';
 
+import { imageUrl as optimizedImageUrl } from '@/lib/image-url';
+
 import { useRef, useState } from 'react';
 import { Button, Input, Modal, Segmented, Tooltip } from 'antd';
 import {
@@ -187,7 +189,7 @@ export function MarkdownEditor({ value, onChange, onBlur, error }: MarkdownEdito
           {imageUrl.trim() && !imageError && (
             <div className="markdown-image-preview">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={imageUrl.trim()} alt={imageAlt.trim() || 'Xem trước ảnh bài viết'} />
+              <img src={optimizedImageUrl(imageUrl.trim(), 'card')} alt={imageAlt.trim() || 'Xem trước ảnh bài viết'} />
             </div>
           )}
           <p className="text-xs leading-5 text-slate-500">

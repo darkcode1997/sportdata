@@ -1,5 +1,7 @@
 'use client';
 
+import { imageUrl } from '@/lib/image-url';
+
 import { useEffect, useState } from 'react';
 import useSWR from 'swr';
 import {
@@ -358,7 +360,7 @@ export default function SportsPage() {
                   {sport.backgroundUrl ? (
                     // Ảnh được quản trị trong CMS và phục vụ qua API nội bộ.
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={sport.backgroundUrl} alt="" className="h-full w-full object-cover" />
+                    <img src={imageUrl(sport.backgroundUrl, 'card')} loading="lazy" alt="" className="h-full w-full object-cover" />
                   ) : (
                     <ImagePlus className="h-6 w-6" />
                   )}
@@ -536,7 +538,7 @@ export default function SportsPage() {
                 <div className="grid h-24 w-32 shrink-0 place-items-center overflow-hidden rounded-xl border border-sdark-700 bg-sdark-950 p-3">
                   {logoPreview ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={logoPreview} alt="Xem trước logo" className="max-h-full max-w-full object-contain" />
+                    <img src={imageUrl(logoPreview, 'logo')} alt="Xem trước logo" className="max-h-full max-w-full object-contain" />
                   ) : (
                     <ImagePlus className="h-7 w-7 text-slate-500" />
                   )}
@@ -603,12 +605,12 @@ export default function SportsPage() {
             {backgroundPreview && (
               <div className="relative mb-3 aspect-[16/7] overflow-hidden rounded-2xl border border-sdark-700 bg-sdark-950">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={backgroundPreview} alt="Xem trước ảnh nền" className="h-full w-full object-cover" />
+                <img src={imageUrl(backgroundPreview, 'card')} alt="Xem trước ảnh nền" className="h-full w-full object-cover" />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/10" />
                 {logoPreview && (
                   <div className="absolute left-4 top-4 grid h-16 w-24 place-items-center rounded-xl border border-white/15 bg-black/35 p-2 backdrop-blur-sm">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={logoPreview} alt="" className="max-h-full max-w-full object-contain" />
+                    <img src={imageUrl(logoPreview, 'logo')} alt="" className="max-h-full max-w-full object-contain" />
                   </div>
                 )}
                 <div className="absolute bottom-4 left-4">

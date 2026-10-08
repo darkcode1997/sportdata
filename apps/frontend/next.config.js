@@ -1,4 +1,4 @@
-const imageHostnames = (process.env.IMAGE_HOSTNAMES || 'images.unsplash.com,flagcdn.com')
+const imageHostnames = `${process.env.IMAGE_HOSTNAMES || 'images.unsplash.com,flagcdn.com'},res.cloudinary.com`
   .split(',')
   .map((hostname) => hostname.trim())
   .filter(Boolean);

@@ -1,5 +1,7 @@
 'use client';
 
+import { imageUrl } from '@/lib/image-url';
+
 import { useEffect, useMemo, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
@@ -763,7 +765,7 @@ function RegistrationsTab({ event, canOperate, canConfirmPayment }: { event: any
 
   const viewDocument = async (athleteId: string, type: string) => {
     try {
-      const response = await api.get(`/participant-auth/admin/athletes/${athleteId}/media/${type}`, { responseType: 'blob' });
+      const response = await api.get(`/participant-auth/admin/athletes/${athleteId}/media/${type}`, { responseType: 'blob', params: { variant: 'preview' } });
       const url = URL.createObjectURL(response.data);
       window.open(url, '_blank', 'noopener,noreferrer');
       window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
@@ -849,7 +851,7 @@ function RegistrationsTab({ event, canOperate, canConfirmPayment }: { event: any
                 <Avatar
                   size={46}
                   className="shrink-0"
-                  src={item.athlete.photoUrl || `/api/participant-auth/avatar/${item.athlete.id}`}
+                  src={imageUrl(item.athlete.photoUrl || `/api/participant-auth/avatar/${item.athlete.id}`, 'avatar')}
                   icon={<UserRound className="h-5 w-5" />}
                 />
                 <div className="min-w-0 flex-1 overflow-hidden">

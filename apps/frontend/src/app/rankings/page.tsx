@@ -1,5 +1,7 @@
 'use client';
 
+import { imageUrl } from '@/lib/image-url';
+
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import useSWR from 'swr';
@@ -114,7 +116,7 @@ export default function RankingsPage() {
       render: (_, row) => (
         <Link href={`/athletes/${row.athlete.id}`}>
           <Flex align="center" gap={12}>
-            <Avatar size={42} src={row.athlete.photoUrl || undefined}>
+            <Avatar size={42} src={imageUrl(row.athlete.photoUrl, 'avatar')}>
               {initials(row.athlete.fullName)}
             </Avatar>
             <div className="min-w-0">

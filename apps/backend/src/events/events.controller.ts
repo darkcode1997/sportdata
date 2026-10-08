@@ -1,3 +1,4 @@
+import { ImageVariant, ImageVariantPipe } from '../storage/image-variant';
 import {
   Controller,
   Get,
@@ -96,8 +97,16 @@ export class EventsController {
   }
 
   @Get(':id/ticket-background')
-  async ticketBackground(@Param('id') id: string, @Res() response: Response) {
-    const background = await this.eventsService.getTicketBackground(id);
+  async ticketBackground(
+    @Param('id') id: string,
+    @Res() response: Response,
+    @Query('variant', ImageVariantPipe) variant?: ImageVariant,
+  ) {
+    const background = await this.eventsService.getTicketBackground(id, variant);
+    if (background.url) {
+      response.setHeader('Cache-Control', 'public, max-age=300');
+      return response.redirect(302, background.url);
+    }
     response.setHeader('Content-Type', background.mimeType);
     response.setHeader('Cache-Control', 'public, max-age=300');
     response.setHeader('ETag', `"${background.etag}"`);
@@ -123,8 +132,12 @@ export class EventsController {
   }
 
   @Get(':id/banner-image')
-  async bannerImage(@Param('id') id: string, @Res() response: Response) {
-    return this.sendEventImage(response, await this.eventsService.getEventImage(id, 'banner'));
+  async bannerImage(
+    @Param('id') id: string,
+    @Res() response: Response,
+    @Query('variant', ImageVariantPipe) variant?: ImageVariant,
+  ) {
+    return this.sendEventImage(response, await this.eventsService.getEventImage(id, 'banner', variant));
   }
 
   @Patch(':id/banner-image')
@@ -143,8 +156,12 @@ export class EventsController {
   }
 
   @Get(':id/logo-image')
-  async logoImage(@Param('id') id: string, @Res() response: Response) {
-    return this.sendEventImage(response, await this.eventsService.getEventImage(id, 'logo'));
+  async logoImage(
+    @Param('id') id: string,
+    @Res() response: Response,
+    @Query('variant', ImageVariantPipe) variant?: ImageVariant,
+  ) {
+    return this.sendEventImage(response, await this.eventsService.getEventImage(id, 'logo', variant));
   }
 
   @Patch(':id/logo-image')
@@ -193,8 +210,12 @@ export class EventsController {
 
   private sendEventImage(
     response: Response,
-    image: { data: Buffer; mimeType: string; etag: string },
+    image: { data?: Buffer; mimeType?: string; etag?: string; url?: string },
   ) {
+    if (image.url) {
+      response.setHeader('Cache-Control', 'public, max-age=300');
+      return response.redirect(302, image.url);
+    }
     response.setHeader('Content-Type', image.mimeType);
     response.setHeader('Cache-Control', 'public, max-age=300');
     response.setHeader('ETag', `"${image.etag}"`);

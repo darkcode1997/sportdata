@@ -1,11 +1,13 @@
 'use client';
 
+import { ProtectedImage } from '@/components/ProtectedImage';
+
 import { useEffect, useMemo, useState, type ComponentProps } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import useSWR from 'swr';
 import dayjs, { type Dayjs } from 'dayjs';
-import { Alert, Avatar, Button, Card, Col, DatePicker, Empty, Form, Image as AntImage, Input, InputNumber, Modal, Row, Segmented, Select, Spin, Tag, Upload } from 'antd';
+import { Alert, Avatar, Button, Card, Col, DatePicker, Empty, Form, Input, InputNumber, Modal, Row, Segmented, Select, Spin, Tag, Upload } from 'antd';
 import { CreditCard, Download, Eye, FileCheck2, FileText, ImagePlus, Pencil, Save, ScanText, TicketCheck, UploadCloud, UserRound } from 'lucide-react';
 import { CameraCaptureButton } from '@/components/CameraCaptureButton';
 import { EventParticipationCard } from '@/components/EventParticipationCard';
@@ -243,7 +245,7 @@ export default function ParticipantAccountPage() {
     const loadMedia = async () => {
       const entries = await Promise.all(mediaItems.map(async (item) => {
         try {
-          const response = await participantApi.get(`/participant-auth/me/media/${item.type}`, { responseType: 'blob' });
+          const response = await participantApi.get(`/participant-auth/me/media/${item.type}`, { responseType: 'blob', params: { variant: 'card' } });
           const url = URL.createObjectURL(response.data);
           objectUrls.push(url);
           return [item.type, { url, mimeType: item.mimeType }] as const;
@@ -456,7 +458,9 @@ export default function ParticipantAccountPage() {
                       <div className="grid h-44 place-items-center bg-black/20">
                         {asset && !isPdf ? (
                           <div className="h-full w-full [&_.ant-image]:block [&_.ant-image]:h-full [&_.ant-image]:w-full">
-                            <AntImage
+                            <ProtectedImage
+                              endpoint={`/participant-auth/me/media/${type}`}
+                              client={participantApi}
                               src={asset.url}
                               alt={mediaLabels[type]}
                               className="!h-44 !w-full object-contain"

@@ -1,3 +1,4 @@
+import { ImageVariant, ImageVariantPipe } from '../storage/image-variant';
 import {
   Body,
   Controller,
@@ -9,6 +10,7 @@ import {
   Patch,
   Post,
   Res,
+  Query,
   UploadedFile,
   UseGuards,
   UseInterceptors,
@@ -43,8 +45,16 @@ export class BannersController {
   }
 
   @Get(':id/image')
-  async image(@Param('id') id: string, @Res() response: Response) {
-    const image = await this.bannersService.getImage(id);
+  async image(
+    @Param('id') id: string,
+    @Res() response: Response,
+    @Query('variant', ImageVariantPipe) variant?: ImageVariant,
+  ) {
+    const image = await this.bannersService.getImage(id, variant);
+    if (!('imageData' in image)) {
+      response.setHeader('Cache-Control', 'public, max-age=300');
+      return response.redirect(302, image.url);
+    }
     response.set({
       'Content-Type': image.imageMimeType,
       'Content-Length': String(image.imageSize),

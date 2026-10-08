@@ -24,10 +24,12 @@ import { ParticipantsModule } from './participants/participants.module';
 import { PaymentsModule } from './payments/payments.module';
 import { SystemSettingsModule } from './system-settings/system-settings.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { StorageModule } from './storage/storage.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, envFilePath: '../../.env' }),
+    StorageModule,
     PrismaModule,
     AuthModule,
     SportsModule,

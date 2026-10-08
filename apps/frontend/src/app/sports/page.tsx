@@ -1,5 +1,7 @@
 'use client';
 
+import { imageUrl } from '@/lib/image-url';
+
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import useSWR from 'swr';
@@ -90,7 +92,7 @@ export default function SportsDirectoryPage() {
                     {sport.logoUrl ? (
                       // Logos are managed by CMS editors and can be hosted on different domains.
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={sport.logoUrl} alt={`Logo ${sport.name}`} />
+                      <img src={imageUrl(sport.logoUrl, 'logo')} loading="lazy" decoding="async" alt={`Logo ${sport.name}`} />
                     ) : <Dumbbell className="h-7 w-7" />}
                   </span>
                   <div>

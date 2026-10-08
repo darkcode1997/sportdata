@@ -1,3 +1,4 @@
+import type { ImageVariant } from '../storage/image-variant';
 import {
   BadRequestException,
   Injectable,
@@ -5,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { createHash } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
+import { StorageService, type StoredFile } from '../storage/storage.service';
 import { CreateBannerDto } from './dto/create-banner.dto';
 import { UpdateBannerDto } from './dto/update-banner.dto';
 
@@ -17,7 +19,7 @@ const ALLOWED_IMAGE_TYPES = new Set([
 
 @Injectable()
 export class BannersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly storage: StorageService) {}
 
   async findPublished() {
     const banners = await this.prisma.banner.findMany({
@@ -38,26 +40,26 @@ export class BannersService {
 
   async create(dto: CreateBannerDto, file?: Express.Multer.File) {
     this.validateImage(file, true);
-    const banner = await this.prisma.banner.create({
+    const banner = await this.storage.withUpload(file!, 'banners', null, (imageStorageKey, stored) => this.prisma.banner.create({
       data: {
         title: this.optional(dto.title),
         altText: dto.altText.trim(),
         linkUrl: this.optional(dto.linkUrl),
         sortOrder: dto.sortOrder ?? 0,
         isActive: dto.isActive ?? true,
-        imageData: file!.buffer,
+        imageStorageKey,
         imageMimeType: file!.mimetype,
-        imageSize: file!.size,
+        imageSize: stored.size,
       },
       select: this.metadataSelect,
-    });
+    }));
     return this.serialize(banner);
   }
 
   async update(id: string, dto: UpdateBannerDto, file?: Express.Multer.File) {
-    await this.requireBanner(id);
+    const previous = await this.requireBanner(id);
     this.validateImage(file, false);
-    const banner = await this.prisma.banner.update({
+    const persist = (imageStorageKey?: string, stored?: StoredFile) => this.prisma.banner.update({
       where: { id },
       data: {
         ...(dto.title !== undefined ? { title: this.optional(dto.title) } : {}),
@@ -66,36 +68,44 @@ export class BannersService {
         ...(dto.sortOrder !== undefined ? { sortOrder: dto.sortOrder } : {}),
         ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
         ...(file ? {
-          imageData: file.buffer,
+          imageStorageKey,
           imageMimeType: file.mimetype,
-          imageSize: file.size,
+          imageSize: stored.size,
         } : {}),
       },
       select: this.metadataSelect,
     });
+    const banner = file
+      ? await this.storage.withUpload(file, 'banners', previous.imageStorageKey, persist)
+      : await persist();
     return this.serialize(banner);
   }
 
   async remove(id: string) {
-    await this.requireBanner(id);
+    const previous = await this.requireBanner(id);
     await this.prisma.banner.delete({ where: { id } });
+    await this.storage.deleteQuietly(previous.imageStorageKey);
     return { id };
   }
 
-  async getImage(id: string) {
+  async getImage(id: string, variant?: ImageVariant) {
     const banner = await this.prisma.banner.findUnique({
       where: { id },
       select: {
-        imageData: true,
+        imageStorageKey: true,
         imageMimeType: true,
         imageSize: true,
         updatedAt: true,
       },
     });
     if (!banner) throw new NotFoundException('Không tìm thấy banner');
+    const url = await this.storage.imageUrl(banner.imageStorageKey, variant);
+    if (url) return { url };
+    const imageData = await this.storage.read(banner.imageStorageKey);
     return {
       ...banner,
-      etag: `"${createHash('sha1').update(banner.imageData).digest('hex')}"`,
+      imageData,
+      etag: `"${createHash('sha1').update(imageData).digest('hex')}"`,
     };
   }
 

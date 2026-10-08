@@ -1,5 +1,7 @@
 'use client';
 
+import { imageUrl } from '@/lib/image-url';
+
 import { useEffect, useId, useState, type CSSProperties } from 'react';
 import { QRCode } from 'antd';
 import { UserRound } from 'lucide-react';
@@ -28,14 +30,14 @@ export function EventParticipationCard({ ticket, design }: { ticket: Participati
     <article className="event-pass-card relative mx-auto aspect-[105/148] w-full max-w-[560px] overflow-hidden bg-white text-slate-950" data-ticket-layout="CUSTOM" aria-label="Thẻ thi đấu A6">
       {ticket.event.ticketBackgroundUrl && (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={ticket.event.ticketBackgroundUrl} alt="Nền thẻ thi đấu" draggable={false} className="pointer-events-none absolute inset-0 h-full w-full object-contain" />
+        <img src={imageUrl(ticket.event.ticketBackgroundUrl, 'hero')} alt="Nền thẻ thi đấu" draggable={false} className="pointer-events-none absolute inset-0 h-full w-full object-contain" />
       )}
       {layout.elements.map((element) => (
         <div key={element.id} data-ticket-element-id={element.id} data-ticket-element-type={element.type} style={ticketElementStyle(element)} className="overflow-hidden">
           {element.type === 'PHOTO' ? (
             ticket.athlete.avatarUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={ticket.athlete.avatarUrl} alt={`Ảnh 4×6 ${ticket.athlete.fullName}`} draggable={false} className="pointer-events-none h-full w-full object-cover" />
+              <img src={imageUrl(ticket.athlete.avatarUrl, 'portrait')} alt={`Ảnh 4×6 ${ticket.athlete.fullName}`} draggable={false} className="pointer-events-none h-full w-full object-cover" />
             ) : (
               <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-slate-200 text-slate-500"><UserRound className="h-10 w-10" /><span className="text-xs">Ảnh 4 × 6 cm</span></div>
             )

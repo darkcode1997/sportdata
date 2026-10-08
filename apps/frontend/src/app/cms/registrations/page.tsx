@@ -76,7 +76,7 @@ export default function CmsRegistrationsPage() {
 
   const viewDocument = async (athleteId: string, type: string) => {
     try {
-      const response = await api.get(`/participant-auth/admin/athletes/${athleteId}/media/${type}`, { responseType: 'blob' });
+      const response = await api.get(`/participant-auth/admin/athletes/${athleteId}/media/${type}`, { responseType: 'blob', params: { variant: 'preview' } });
       const url = URL.createObjectURL(response.data);
       window.open(url, '_blank', 'noopener,noreferrer');
       window.setTimeout(() => URL.revokeObjectURL(url), 60_000);

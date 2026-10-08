@@ -1,5 +1,7 @@
 'use client';
 
+import { imageUrl } from '@/lib/image-url';
+
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
 import useSWR from 'swr';
@@ -323,7 +325,7 @@ export function AthleteForm({ athleteId, initialData, returnTo = '/cms/athletes'
     if (!athleteId) return;
     try {
       const response = await api.get(`/athletes/${athleteId}/documents/${type}`, {
-        responseType: 'blob',
+        responseType: 'blob', params: { variant: 'preview' },
       });
       const url = URL.createObjectURL(response.data);
       window.open(url, '_blank', 'noopener,noreferrer');
@@ -447,7 +449,7 @@ export function AthleteForm({ athleteId, initialData, returnTo = '/cms/athletes'
                   <Avatar
                     size={64}
                     icon={<UserRound />}
-                    src={watch('photoUrl') ? `${watch('photoUrl')}?v=${avatarVersion}` : undefined}
+                    src={imageUrl(watch('photoUrl'), 'avatar', avatarVersion)}
                   />
                   <Upload
                     accept="image/jpeg,image/png,image/webp"

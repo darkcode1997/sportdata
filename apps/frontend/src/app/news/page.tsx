@@ -1,5 +1,7 @@
 'use client';
 
+import { imageUrl } from '@/lib/image-url';
+
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import useSWR from 'swr';
@@ -114,7 +116,7 @@ function ArticleCard({ article }: { article: Article }) {
       <div className="news-card-cover">
         {article.coverImageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={article.coverImageUrl} alt="" loading="lazy" />
+          <img src={imageUrl(article.coverImageUrl, 'card')} alt="" loading="lazy" decoding="async" />
         ) : <Newspaper size={40} />}
       </div>
       <div className="news-card-body">

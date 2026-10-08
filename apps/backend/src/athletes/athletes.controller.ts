@@ -1,3 +1,4 @@
+import { ImageVariant, ImageVariantPipe } from '../storage/image-variant';
 import {
   Controller,
   Get,
@@ -71,8 +72,9 @@ export class AthletesController {
     @Param('id') id: string,
     @Param('type') type: AthleteMediaType,
     @Res() response: Response,
+    @Query('variant', ImageVariantPipe) variant?: ImageVariant,
   ) {
-    const document = await this.athletesService.getDocument(id, type);
+    const document = await this.athletesService.getDocument(id, type, variant);
     response.setHeader('Content-Type', document.mimeType);
     response.setHeader('Cache-Control', 'private, no-store');
     response.setHeader('Content-Disposition', 'inline');

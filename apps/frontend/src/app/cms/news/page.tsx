@@ -1,5 +1,7 @@
 'use client';
 
+import { imageUrl } from '@/lib/image-url';
+
 import { useEffect, useMemo, useState } from 'react';
 import useSWR from 'swr';
 import {
@@ -94,7 +96,7 @@ export default function NewsManagementPage() {
           <Avatar
             shape="square"
             size={48}
-            src={article.coverImageUrl || undefined}
+            src={imageUrl(article.coverImageUrl, 'card')}
             icon={<FileText className="h-5 w-5" />}
             className="shrink-0 bg-sblue-500/15 text-sblue-400 [&_img]:object-cover"
           />

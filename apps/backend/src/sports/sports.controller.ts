@@ -1,3 +1,4 @@
+import { ImageVariant, ImageVariantPipe } from '../storage/image-variant';
 import {
   Body,
   Controller,
@@ -7,6 +8,7 @@ import {
   Patch,
   Post,
   Res,
+  Query,
   UploadedFile,
   UseGuards,
   UseInterceptors,
@@ -40,8 +42,16 @@ export class SportsController {
   }
 
   @Get(':id/background')
-  async background(@Param('id') id: string, @Res() response: Response) {
-    const image = await this.sportsService.getBackground(id);
+  async background(
+    @Param('id') id: string,
+    @Res() response: Response,
+    @Query('variant', ImageVariantPipe) variant?: ImageVariant,
+  ) {
+    const image = await this.sportsService.getBackground(id, variant);
+    if (image.url) {
+      response.setHeader('Cache-Control', 'public, max-age=300');
+      return response.redirect(302, image.url);
+    }
     response.set({
       'Content-Type': image.imageMimeType,
       'Content-Length': String(image.imageSize),
@@ -52,8 +62,16 @@ export class SportsController {
   }
 
   @Get(':id/logo')
-  async logo(@Param('id') id: string, @Res() response: Response) {
-    const image = await this.sportsService.getLogo(id);
+  async logo(
+    @Param('id') id: string,
+    @Res() response: Response,
+    @Query('variant', ImageVariantPipe) variant?: ImageVariant,
+  ) {
+    const image = await this.sportsService.getLogo(id, variant);
+    if (image.url) {
+      response.setHeader('Cache-Control', 'public, max-age=300');
+      return response.redirect(302, image.url);
+    }
     response.set({
       'Content-Type': image.imageMimeType,
       'Content-Length': String(image.imageSize),

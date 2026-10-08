@@ -16,3 +16,4 @@ docs
 deploy
 tests
 debug.log
+**/static/uploads

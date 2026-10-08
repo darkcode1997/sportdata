@@ -1,5 +1,7 @@
 'use client';
 
+import { imageUrl } from '@/lib/image-url';
+
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
@@ -99,7 +101,7 @@ export default function SportPlatformPage() {
         className="sport-platform-hero relative overflow-hidden border-b border-white/10 bg-cover bg-center"
         style={{
           backgroundImage: sport.backgroundUrl
-            ? `linear-gradient(110deg, rgba(8,15,30,.97), rgba(8,15,30,.74)), url("${sport.backgroundUrl.replace(/"/g, '%22')}")`
+            ? `linear-gradient(110deg, rgba(8,15,30,.97), rgba(8,15,30,.74)), url("${imageUrl(sport.backgroundUrl, 'hero')!.replace(/"/g, '%22')}")`
             : 'linear-gradient(135deg, #111827, #0b1e36 52%, #082f49)',
         }}
       >

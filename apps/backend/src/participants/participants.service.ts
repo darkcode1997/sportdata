@@ -1,3 +1,4 @@
+import type { ImageVariant } from '../storage/image-variant';
 import { resolveEventAgeLimits } from '../events/event-age-limits';
 import {
   BadRequestException,
@@ -30,6 +31,7 @@ import { createHash, randomBytes } from 'crypto';
 import * as nodemailer from 'nodemailer';
 import type { SignOptions } from 'jsonwebtoken';
 import { PrismaService } from '../prisma/prisma.service';
+import { StorageService } from '../storage/storage.service';
 import {
   ConfirmIdentityOcrDto,
   AdminCreateRegistrationDto,
@@ -99,7 +101,10 @@ type GuestMediaUploadReference = {
   token?: string;
 };
 
-type RegistrationMediaFile = Pick<Express.Multer.File, 'buffer' | 'mimetype' | 'size'>;
+type RegistrationMediaFile = Pick<Express.Multer.File, 'mimetype' | 'size'> & {
+  buffer?: Buffer;
+  storageKey?: string;
+};
 
 type GuestRegistrationPayload = {
   eventId?: string;
@@ -117,6 +122,7 @@ export class ParticipantsService {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly storage: StorageService,
     private readonly jwtService: JwtService,
     private readonly identityOcr: IdentityOcrService,
     private readonly ticketEmail: TicketEmailService,
@@ -532,14 +538,18 @@ export class ParticipantsService {
       : autoVerify
         ? DocumentVerificationStatus.VERIFIED
         : DocumentVerificationStatus.PENDING;
-    await this.prisma.athleteMedia.upsert({
+    const previous = await this.prisma.athleteMedia.findUnique({
+      where: { athleteId_type: { athleteId: profile.athlete.id, type } },
+      select: { storageKey: true },
+    });
+    const storedMedia = await this.storage.withUpload(file, type === AthleteMediaType.AVATAR ? 'athletes/avatars' : 'athletes/documents', previous?.storageKey, (storageKey, stored) => this.prisma.athleteMedia.upsert({
       where: { athleteId_type: { athleteId: profile.athlete.id, type } },
       create: {
         athleteId: profile.athlete.id,
         type,
-        data: file.buffer,
+        storageKey,
         mimeType: file.mimetype,
-        size: file.size,
+        size: stored.size,
         verificationStatus,
         verificationNote: autoVerify ? 'Tự động duyệt vì OCR CCCD / Hộ chiếu đang tắt.' : null,
         verifiedAt: autoVerify ? new Date() : null,
@@ -547,9 +557,9 @@ export class ParticipantsService {
         ...(ocr ? this.ocrPersistence(ocr) : {}),
       },
       update: {
-        data: file.buffer,
+        storageKey,
         mimeType: file.mimetype,
-        size: file.size,
+        size: stored.size,
         verificationStatus,
         verificationNote: autoVerify ? 'Tự động duyệt vì OCR CCCD / Hộ chiếu đang tắt.' : null,
         verifiedAt: autoVerify ? new Date() : null,
@@ -561,14 +571,14 @@ export class ParticipantsService {
           ocrData: Prisma.DbNull,
         }),
       },
-    });
+    }));
     if (type === AthleteMediaType.AVATAR) {
       await this.prisma.athlete.update({
         where: { id: profile.athlete.id },
         data: { photoUrl: `/api/participant-auth/avatar/${profile.athlete.id}` },
       });
     }
-    return { type, mimeType: file.mimetype, size: file.size, verificationStatus, ocr };
+    return { type, mimeType: storedMedia.mimeType, size: storedMedia.size, verificationStatus, ocr };
   }
 
   async previewIdentityOcr(type: AthleteMediaType, file?: Express.Multer.File) {
@@ -673,17 +683,28 @@ export class ParticipantsService {
     });
   }
 
-  async getOwnMedia(accountId: string, type: AthleteMediaType) {
+  async getOwnMedia(accountId: string, type: AthleteMediaType, variant?: ImageVariant) {
     const profile = await this.getProfile(accountId);
-    return this.getMedia(profile.athlete.id, type);
+    return this.getMedia(profile.athlete.id, type, variant);
   }
 
-  async getMedia(athleteId: string, type: AthleteMediaType) {
+  async getAvatar(athleteId: string, variant?: ImageVariant): Promise<{ url: string } | { data: Buffer; mimeType: string }> {
+    const media = await this.prisma.athleteMedia.findUnique({
+      where: { athleteId_type: { athleteId, type: AthleteMediaType.AVATAR } },
+      select: { storageKey: true, mimeType: true },
+    });
+    if (!media) throw new NotFoundException('Chưa có ảnh đại diện');
+    const url = await this.storage.imageUrl(media.storageKey, variant);
+    if (url) return { url };
+    return { data: await this.storage.read(media.storageKey), mimeType: media.mimeType };
+  }
+
+  async getMedia(athleteId: string, type: AthleteMediaType, variant?: ImageVariant) {
     const media = await this.prisma.athleteMedia.findUnique({
       where: { athleteId_type: { athleteId, type } },
     });
     if (!media) throw new NotFoundException('Chưa có tệp này');
-    return media;
+    return { ...media, data: await this.storage.read(media.storageKey, variant) };
   }
 
   async createMediaUpload(typeText: string, file?: Express.Multer.File) {
@@ -702,20 +723,23 @@ export class ParticipantsService {
     this.validateFile(type, file);
 
     const now = new Date();
-    await this.prisma.participantMediaUpload.deleteMany({ where: { expiresAt: { lte: now } } });
+    const expired = await this.prisma.$queryRaw<Array<{ storageKey: string | null }>>`
+      DELETE FROM "ParticipantMediaUpload" WHERE "expiresAt" <= ${now} RETURNING "storageKey"
+    `;
+    for (const upload of expired) await this.storage.deleteQuietly(upload.storageKey);
     const token = randomBytes(32).toString('hex');
     const expiresAt = new Date(now.getTime() + 60 * 60 * 1000);
-    const upload = await this.prisma.participantMediaUpload.create({
+    const upload = await this.storage.withUpload(file, `participant-uploads/${type.toLowerCase()}`, null, (storageKey, stored) => this.prisma.participantMediaUpload.create({
       data: {
         tokenHash: this.hashResetToken(token),
         type,
-        data: file.buffer,
+        storageKey,
         mimeType: file.mimetype,
-        size: file.size,
+        size: stored.size,
         expiresAt,
       },
       select: { id: true, expiresAt: true },
-    });
+    }));
     return { ...upload, token };
   }
 
@@ -847,11 +871,15 @@ export class ParticipantsService {
         || !reference.token
         || upload.tokenHash !== this.hashResetToken(reference.token)
         || upload.type !== expectedType
+        || !upload.storageKey
       ) {
         throw new BadRequestException(`Vận động viên ${athleteIndex + 1}: tệp tải lên đã hết hạn hoặc không hợp lệ`);
       }
+      if (consumedUploadIds.has(upload.id)) {
+        throw new BadRequestException('Mỗi tệp tải lên chỉ được sử dụng cho một vận động viên');
+      }
       consumedUploadIds.add(upload.id);
-      return { buffer: upload.data, mimetype: upload.mimeType, size: upload.size };
+      return { storageKey: upload.storageKey, mimetype: upload.mimeType, size: upload.size };
     };
 
     const prepared = athletes.map((athlete, index) => {
@@ -939,7 +967,7 @@ export class ParticipantsService {
     });
 
     const referenceCode = this.submissionReference();
-    const result = await this.prisma.$transaction(async (transaction) => {
+    const persistRegistration = () => this.prisma.$transaction(async (transaction) => {
       await this.athleteIdentity.lock(transaction);
       let submission: { id: string; type: RegistrationSubmissionType } | null = null;
       const ensureSubmission = async () => submission || (submission = await transaction.registrationSubmission.create({
@@ -1055,9 +1083,12 @@ export class ParticipantsService {
       }
 
       if (consumedUploadIds.size) {
-        await transaction.participantMediaUpload.deleteMany({
-          where: { id: { in: [...consumedUploadIds] } },
+        const consumed = await transaction.participantMediaUpload.deleteMany({
+          where: { id: { in: [...consumedUploadIds] }, expiresAt: { gt: new Date() } },
         });
+        if (consumed.count !== consumedUploadIds.size) {
+          throw new BadRequestException('Tệp tải lên đã hết hạn hoặc đã được sử dụng');
+        }
       }
 
       return {
@@ -1071,6 +1102,27 @@ export class ParticipantsService {
         registrations,
       };
     }, { maxWait: 10000, timeout: 30000 });
+    const newlyStored: string[] = [];
+    const result = await (async () => {
+      try {
+        // Upload direct multipart files before opening the DB transaction.
+        for (const item of prepared) {
+          for (const [type, file] of Object.entries(item.files) as Array<[string, RegistrationMediaFile | undefined]>) {
+            if (!file) continue;
+            if (!file.storageKey) {
+              const stored = await this.storage.upload(file.buffer!, file.mimetype, type === 'avatar' ? 'athletes/avatars' : 'athletes/documents');
+              file.storageKey = stored.key;
+              file.size = stored.size;
+              newlyStored.push(file.storageKey);
+            }
+          }
+        }
+        return await persistRegistration();
+      } catch (error) {
+        await Promise.all(newlyStored.map((key) => this.storage.deleteQuietly(key)));
+        throw error;
+      }
+    })();
     const newRegistrations = result.registrations.filter((registration) => !registration.existing);
     const notificationResults = await Promise.allSettled(newRegistrations.map((registration) => (
       this.notifications.notifyRegistration(
@@ -1277,7 +1329,7 @@ export class ParticipantsService {
             statistics: true,
             media: {
               where: { type: AthleteMediaType.AVATAR },
-              select: { data: true, mimeType: true },
+              select: { storageKey: true, mimeType: true },
               take: 1,
             },
           },
@@ -1387,9 +1439,13 @@ export class ParticipantsService {
       },
       ...(includeAssets ? {
         assets: {
-          backgroundData: registration.event.ticketBackgroundData,
+          backgroundData: registration.event.ticketBackgroundStorageKey
+            ? await this.storage.read(registration.event.ticketBackgroundStorageKey)
+            : null,
           backgroundMimeType: registration.event.ticketBackgroundMimeType,
-          avatarData: registration.athlete.media[0]?.data || null,
+          avatarData: registration.athlete.media[0]?.storageKey
+            ? await this.storage.read(registration.athlete.media[0].storageKey)
+            : null,
           avatarMimeType: registration.athlete.media[0]?.mimeType || null,
         },
       } : {}),
@@ -2081,7 +2137,7 @@ export class ParticipantsService {
     const hasConfirmedPreview = Boolean(previewOcr?.userConfirmed && previewOcr.fields);
     return {
       type,
-      data: file.buffer,
+      storageKey: file.storageKey,
       mimeType: file.mimetype,
       size: file.size,
       verificationStatus: requiresVerification
@@ -2189,7 +2245,8 @@ export class ParticipantsService {
     const allowed = type === AthleteMediaType.AVATAR ? imageTypes : [...imageTypes, 'application/pdf'];
     if (!allowed.includes(file.mimetype)) throw new BadRequestException('Chỉ hỗ trợ JPG, PNG, WebP hoặc PDF');
     if (file.size > 8 * 1024 * 1024) throw new BadRequestException('Tệp không được vượt quá 8 MB');
-    if (!this.hasValidFileSignature(file)) {
+    // Staged files were validated before upload; the reference comes from the DB.
+    if (!file.storageKey && !this.hasValidFileSignature(file)) {
       throw new BadRequestException('Nội dung tệp không đúng định dạng ảnh hoặc PDF đã khai báo');
     }
   }

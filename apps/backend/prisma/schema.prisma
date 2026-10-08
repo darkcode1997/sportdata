@@ -361,7 +361,7 @@ model Banner {
   linkUrl       String?
   sortOrder     Int      @default(0)
   isActive      Boolean  @default(true)
-  imageData     Bytes
+  imageStorageKey     String?
   imageMimeType String
   imageSize     Int
   createdAt     DateTime @default(now())
@@ -393,14 +393,14 @@ model Sport {
   code               String                @unique
   description        String?
   logoUrl            String?
-  logoData           Bytes?
+  logoStorageKey           String?
   logoMimeType       String?
   logoSize           Int?
   displayName        String?
   subtitle           String?
   isVisible          Boolean               @default(true)
   sortOrder          Int                   @default(0)
-  backgroundData     Bytes?
+  backgroundStorageKey     String?
   backgroundMimeType String?
   backgroundSize     Int?
   events             Event[]               @relation("EventSports")
@@ -482,13 +482,13 @@ model Event {
   location                 String?
   bannerUrl                String?
   logoUrl                  String?
-  bannerData               Bytes?
+  bannerStorageKey               String?
   bannerMimeType           String?
   bannerSize               Int?
-  logoData                 Bytes?
+  logoStorageKey                 String?
   logoMimeType             String?
   logoSize                 Int?
-  ticketBackgroundData     Bytes?
+  ticketBackgroundStorageKey     String?
   ticketBackgroundMimeType String?
   ticketBackgroundSize     Int?
   ticketDesign             Json?
@@ -604,7 +604,7 @@ model AthleteMedia {
   athleteId          String
   athlete            Athlete                     @relation(fields: [athleteId], references: [id], onDelete: Cascade)
   type               AthleteMediaType
-  data               Bytes
+  storageKey               String?
   mimeType           String
   size               Int
   verificationStatus DocumentVerificationStatus?
@@ -626,7 +626,7 @@ model ParticipantMediaUpload {
   id        String           @id @default(cuid())
   tokenHash String           @unique
   type      AthleteMediaType
-  data      Bytes
+  storageKey      String?
   mimeType  String
   size      Int
   expiresAt DateTime
@@ -1265,7 +1265,7 @@ model BackupUploadChunk {
   index     Int
   size      Int
   sha256    String
-  data      Bytes
+  storageKey      String?
   createdAt DateTime     @default(now())
   upload    BackupUpload @relation(fields: [uploadId], references: [id], onDelete: Cascade)
 

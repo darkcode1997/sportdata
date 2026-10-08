@@ -5,6 +5,8 @@ import useSWR from 'swr';
 import { Avatar, Button, Descriptions, Empty, Image, Modal, Skeleton, Space, Statistic, Table, Tag, Typography } from 'antd';
 import { Pencil, UserRound } from 'lucide-react';
 import { api, fetcher } from '@/lib/api';
+import { imageUrl } from '@/lib/image-url';
+import { ProtectedImage } from '@/components/ProtectedImage';
 
 type AthleteQuickViewModalProps = {
   athleteId?: string;
@@ -27,38 +29,21 @@ const documentLabels = {
 };
 
 function AthleteAvatarPreview({ athleteId, name }: { athleteId: string; name: string }) {
-  const [url, setUrl] = useState<string>();
-
-  useEffect(() => {
-    let active = true;
-    let objectUrl: string | undefined;
-    void api.get(`/participant-auth/avatar/${athleteId}`, { responseType: 'blob' })
-      .then((response) => {
-        if (!active) return;
-        objectUrl = URL.createObjectURL(response.data);
-        setUrl(objectUrl);
-      })
-      .catch(() => {
-        if (active) setUrl(undefined);
-      });
-    return () => {
-      active = false;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
-  }, [athleteId]);
-
-  if (!url) {
+  const [failedId, setFailedId] = useState<string>();
+  const endpoint = `/api/participant-auth/avatar/${athleteId}`;
+  if (failedId === athleteId) {
     return <Avatar size={72} icon={<UserRound className="h-8 w-8" />} />;
   }
 
   return (
     <Image
-      src={url}
+      src={imageUrl(endpoint, 'avatar')}
+      onError={() => setFailedId(athleteId)}
       alt={`Ảnh đại diện ${name}`}
       width={72}
       height={72}
       className="rounded-full object-cover"
-      preview={{ mask: <span className="text-xs font-medium">Xem ảnh</span> }}
+      preview={{ src: imageUrl(endpoint, 'preview'), mask: <span className="text-xs font-medium">Xem ảnh</span> }}
     />
   );
 }
@@ -69,7 +54,10 @@ function ProtectedDocumentPreview({ athleteId, document }: { athleteId: string; 
   useEffect(() => {
     let active = true;
     let objectUrl: string | undefined;
-    void api.get(`/athletes/${athleteId}/documents/${document.type}`, { responseType: 'blob' })
+    const controller = new AbortController();
+    void api.get(`/participant-auth/admin/athletes/${athleteId}/media/${document.type}`, {
+      responseType: 'blob', params: { variant: 'card' }, signal: controller.signal,
+    })
       .then((response) => {
         if (!active) return;
         const blob = response.data instanceof Blob
@@ -83,6 +71,7 @@ function ProtectedDocumentPreview({ athleteId, document }: { athleteId: string; 
       });
     return () => {
       active = false;
+      controller.abort();
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [athleteId, document.mimeType, document.type]);
@@ -101,7 +90,14 @@ function ProtectedDocumentPreview({ athleteId, document }: { athleteId: string; 
       <div className="grid h-44 place-items-center bg-slate-950/20">
         {!url ? <Skeleton.Image active /> : document.mimeType === 'application/pdf'
           ? <iframe src={`${url}#toolbar=0&navpanes=0`} title={documentLabels[document.type]} className="h-full w-full bg-white" />
-          : <Image src={url} alt={documentLabels[document.type]} width="100%" height={176} className="object-contain" />}
+          : <ProtectedImage
+              src={url}
+              endpoint={`/participant-auth/admin/athletes/${athleteId}/media/${document.type}`}
+              alt={documentLabels[document.type]}
+              width="100%"
+              height={176}
+              className="object-contain"
+            />}
       </div>
       {document.verificationNote
         && !document.verificationNote.toLocaleLowerCase('vi').includes('tự động duyệt vì ocr')

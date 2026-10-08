@@ -1,5 +1,7 @@
 'use client';
 
+import { imageUrl } from '@/lib/image-url';
+
 import Link from 'next/link';
 import { useMemo, useState, type CSSProperties } from 'react';
 import useSWR from 'swr';
@@ -166,7 +168,7 @@ export default function EventPlatformsPage() {
               const sportEvents = events.filter((event) => belongsToSport(event, sport.id));
               const cover = sport.backgroundUrl || sportEvents.find((event) => event.bannerUrl)?.bannerUrl;
               const backgroundImage = cover
-                ? `linear-gradient(180deg, rgba(5,8,18,.22) 0%, rgba(5,8,18,.52) 48%, rgba(5,8,18,.96) 100%), url("${cover.replace(/"/g, '%22')}")`
+                ? `linear-gradient(180deg, rgba(5,8,18,.22) 0%, rgba(5,8,18,.52) 48%, rgba(5,8,18,.96) 100%), url("${imageUrl(cover, 'card')!.replace(/"/g, '%22')}")`
                 : fallbackBackgrounds[index % fallbackBackgrounds.length];
               const lightBackground = cover
                 ? `linear-gradient(180deg, rgba(255,255,255,.78) 0%, rgba(255,255,255,.92) 48%, rgba(255,255,255,.98) 100%), url("${cover.replace(/"/g, '%22')}")`
@@ -187,7 +189,7 @@ export default function EventPlatformsPage() {
                         {sport.logoUrl ? (
                           // Logo URL is managed by CMS and may use an external host.
                           // eslint-disable-next-line @next/next/no-img-element
-                          <img src={sport.logoUrl} alt={`Logo ${sport.name}`} className="max-h-12 max-w-28 object-contain" />
+                          <img src={imageUrl(sport.logoUrl, 'logo')} loading="lazy" decoding="async" alt={`Logo ${sport.name}`} className="max-h-12 max-w-28 object-contain" />
                         ) : (
                           <span className="text-xl font-black tracking-tight text-sky-300">{sport.code.slice(0, 4)}</span>
                         )}

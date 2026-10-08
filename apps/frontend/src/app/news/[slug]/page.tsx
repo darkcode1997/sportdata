@@ -1,5 +1,7 @@
 'use client';
 
+import { imageUrl } from '@/lib/image-url';
+
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import useSWR from 'swr';
@@ -46,7 +48,7 @@ export default function ArticleDetailPage() {
         <div className="mx-auto max-w-4xl px-4 sm:px-6">
           {article.coverImageUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img className="news-article-cover" src={article.coverImageUrl} alt={article.title} />
+            <img className="news-article-cover" src={imageUrl(article.coverImageUrl, 'hero')} decoding="async" alt={article.title} />
           ) : (
             <div className="news-article-cover news-article-cover-placeholder"><Newspaper className="h-14 w-14" /></div>
           )}

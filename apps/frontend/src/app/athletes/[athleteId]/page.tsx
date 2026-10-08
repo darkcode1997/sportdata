@@ -1,5 +1,7 @@
 'use client';
 
+import { imageUrl } from '@/lib/image-url';
+
 import { useMemo, useState } from 'react';
 import useSWR from 'swr';
 import Link from 'next/link';
@@ -90,7 +92,7 @@ export default function AthleteProfilePage() {
             <div className="relative flex-shrink-0">
               <div className="w-32 h-32 sm:w-40 sm:h-40 rounded-3xl bg-sdark-800 border-4 border-sdark-950 overflow-hidden shadow-2xl">
                 {athlete.photoUrl ? (
-                  <Image src={athlete.photoUrl} alt={athlete.fullName} fill className="object-cover" />
+                  <Image src={imageUrl(athlete.photoUrl, 'portrait')!} sizes="(max-width: 768px) 160px, 240px" alt={athlete.fullName} fill className="object-cover" />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-slate-600">
                     <Users className="w-16 h-16" />

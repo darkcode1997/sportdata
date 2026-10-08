@@ -1,5 +1,7 @@
 'use client';
 
+import { imageUrl } from '@/lib/image-url';
+
 import { useState } from 'react';
 import { useBracketViewport } from './useBracketViewport';
 import Link from 'next/link';
@@ -323,7 +325,7 @@ function BracketParticipantNode({
       <Avatar
         shape="square"
         size={58}
-        src={athlete ? athlete.photoUrl || `/api/participant-auth/avatar/${athlete.id}` : undefined}
+        src={imageUrl(athlete ? athlete.photoUrl || `/api/participant-auth/avatar/${athlete.id}` : undefined, 'avatar')}
         icon={<UserRound className="h-6 w-6" />}
         alt={athlete?.fullName || 'Vận động viên'}
         className="sportdata-node-avatar"

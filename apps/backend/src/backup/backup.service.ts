@@ -10,6 +10,7 @@ import { createGunzip, createGzip } from 'zlib';
 import type { Response } from 'express';
 import { Client } from 'pg';
 import QueryStream from 'pg-query-stream';
+import { StorageService } from '../storage/storage.service';
 
 export const MAX_BACKUP_FILE_SIZE = 2 * 1024 * 1024 * 1024;
 
@@ -59,6 +60,8 @@ type BackupEnd = {
 export class BackupService {
   private readonly logger = new Logger(BackupService.name);
 
+  constructor(private readonly storage: StorageService) {}
+
   async createImportUpload(filename?: string, size?: number) {
     const normalizedFilename = filename?.trim();
     if (!normalizedFilename?.toLowerCase().endsWith('.jsonl.gz')) {
@@ -71,7 +74,8 @@ export class BackupService {
     const client = this.createClient();
     await client.connect();
     try {
-      await client.query('DELETE FROM "BackupUpload" WHERE "expiresAt" < NOW()');
+      const expired = await client.query<{ id: string }>('SELECT "id" FROM "BackupUpload" WHERE "expiresAt" < NOW()');
+      for (const upload of expired.rows) await this.deleteImportUpload(upload.id);
       const uploadId = randomUUID();
       await client.query(
         `INSERT INTO "BackupUpload"
@@ -96,7 +100,11 @@ export class BackupService {
     const client = this.createClient();
     await client.connect();
     let transactionOpen = false;
+    let storageKey: string | undefined;
+    let stored = false;
     try {
+      // Store the payload before taking the PostgreSQL row lock.
+      storageKey = await this.storage.put(data, 'application/octet-stream', 'backup-chunks');
       await client.query('BEGIN');
       transactionOpen = true;
       const uploadResult = await client.query<{
@@ -145,9 +153,9 @@ export class BackupService {
       }
       await client.query(
         `INSERT INTO "BackupUploadChunk"
-          ("uploadId", "index", "size", "sha256", "data")
+          ("uploadId", "index", "size", "sha256", "storageKey")
          VALUES ($1, $2, $3, $4, $5)`,
-        [uploadId, index, data.length, chunkHash, data],
+        [uploadId, index, data.length, chunkHash, storageKey],
       );
       await client.query(
         `UPDATE "BackupUpload"
@@ -157,17 +165,21 @@ export class BackupService {
       );
       await client.query('COMMIT');
       transactionOpen = false;
+      stored = true;
       return { receivedSize, nextChunk: index + 1 };
     } catch (error) {
       if (transactionOpen) await client.query('ROLLBACK').catch(() => undefined);
       throw error;
     } finally {
       await client.end();
+      if (!stored && storageKey) await this.storage.deleteQuietly(storageKey);
     }
   }
 
   async importUploadedBackup(uploadId: string) {
     const filePath = join(tmpdir(), `sportdata-import-${randomUUID()}.jsonl.gz`);
+    let ownsUpload = false;
+    let expectedSize = 0;
     try {
       const client = this.createClient();
       await client.connect();
@@ -181,30 +193,45 @@ export class BackupService {
           `UPDATE "BackupUpload"
            SET "status" = 'PROCESSING', "updatedAt" = NOW()
            WHERE "id" = $1 AND "status" = 'UPLOADING'
+             AND "expiresAt" > NOW() AND "totalSize" = "receivedSize"
            RETURNING "totalSize", "receivedSize", "status", "expiresAt" < NOW() AS expired`,
           [uploadId],
         );
         const upload = uploadResult.rows[0];
         if (!upload || upload.expired) {
-          throw new BadRequestException('Phiên tải backup không tồn tại, đã hết hạn hoặc đang xử lý');
+          throw new BadRequestException('Phiên tải backup không tồn tại, chưa tải đủ, đã hết hạn hoặc đang xử lý');
         }
+        ownsUpload = true;
+        expectedSize = Number(upload.totalSize);
         if (upload.totalSize !== upload.receivedSize) {
           throw new BadRequestException('File backup chưa được tải lên đầy đủ');
         }
 
         const output = createWriteStream(filePath, { flags: 'wx' });
+        const completion = finished(output);
+        completion.catch(() => undefined);
         const chunks = client.query(new QueryStream(
-          `SELECT "data" FROM "BackupUploadChunk"
+          `SELECT "storageKey", "size", "sha256" FROM "BackupUploadChunk"
            WHERE "uploadId" = $1 ORDER BY "index" ASC`,
           [uploadId],
           { batchSize: 8 },
         ));
         try {
           for await (const row of chunks) {
-            if (!output.write(row.data)) await once(output, 'drain');
+            const source = await this.storage.open(row.storageKey);
+            const hash = createHash('sha256');
+            let size = 0;
+            for await (const data of source) {
+              hash.update(data);
+              size += data.length;
+              if (!output.write(data)) await once(output, 'drain');
+            }
+            if (size !== row.size || hash.digest('hex') !== row.sha256) {
+              throw new BadRequestException('Chunk backup trong storage bị thiếu hoặc sai dữ liệu');
+            }
           }
           output.end();
-          await finished(output);
+          await completion;
         } catch (error) {
           output.destroy();
           chunks.destroy();
@@ -215,19 +242,36 @@ export class BackupService {
       }
 
       const stats = await fs.stat(filePath);
+      if (stats.size !== expectedSize) throw new BadRequestException('File backup trong storage không đủ dung lượng');
+      // Restore may truncate staging tables through CASCADE; release objects first.
+      await this.deleteImportUpload(uploadId);
       return await this.importDatabase(filePath, stats.size);
     } finally {
       await fs.unlink(filePath).catch(() => undefined);
-      await this.deleteImportUpload(uploadId).catch(() => undefined);
+      if (ownsUpload) await this.deleteImportUpload(uploadId).catch(() => undefined);
     }
   }
 
   async deleteImportUpload(uploadId: string) {
     const client = this.createClient();
     await client.connect();
+    let transactionOpen = false;
+    let keys: Array<{ storageKey: string | null }> = [];
     try {
+      await client.query('BEGIN');
+      transactionOpen = true;
+      await client.query('SELECT "id" FROM "BackupUpload" WHERE "id" = $1 FOR UPDATE', [uploadId]);
+      keys = (await client.query<{ storageKey: string | null }>(
+        'SELECT "storageKey" FROM "BackupUploadChunk" WHERE "uploadId" = $1', [uploadId],
+      )).rows;
       await client.query('DELETE FROM "BackupUpload" WHERE "id" = $1', [uploadId]);
+      await client.query('COMMIT');
+      transactionOpen = false;
+      for (const file of keys) await this.storage.deleteQuietly(file.storageKey);
       return { success: true };
+    } catch (error) {
+      if (transactionOpen) await client.query('ROLLBACK').catch(() => undefined);
+      throw error;
     } finally {
       await client.end();
     }

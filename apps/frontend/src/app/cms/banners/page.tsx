@@ -1,5 +1,7 @@
 'use client';
 
+import { imageUrl } from '@/lib/image-url';
+
 import { useEffect, useMemo, useState } from 'react';
 import useSWR from 'swr';
 import {
@@ -193,7 +195,7 @@ export default function BannerManagementPage() {
         <Flex align="center" gap={14}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={banner.imageUrl}
+            src={imageUrl(banner.imageUrl, 'card')} loading="lazy"
             alt=""
             className="h-16 w-28 shrink-0 rounded-lg border border-white/10 object-cover"
           />
@@ -319,7 +321,7 @@ export default function BannerManagementPage() {
           {editing && (
             <div className="mb-5 overflow-hidden rounded-xl border border-white/10 bg-slate-950/30">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={editing.imageUrl} alt={editing.altText} className="aspect-[8/3] w-full object-cover" />
+              <img src={imageUrl(editing.imageUrl, 'card')} alt={editing.altText} className="aspect-[8/3] w-full object-cover" />
             </div>
           )}
 
