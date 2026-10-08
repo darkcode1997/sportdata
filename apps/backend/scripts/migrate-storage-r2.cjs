@@ -8,6 +8,7 @@ const { SystemSettingsService } = require('../dist/src/system-settings/system-se
 const { StorageService } = require('../dist/src/storage/storage.service');
 const { R2StorageProvider } = require('../dist/src/storage/r2-storage.provider');
 const fields = require('./storage-migration-fields.cjs');
+const { forEachConcurrent, migrationConcurrency } = require('./migration-workers.cjs');
 
 const extensions = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp',
   'image/gif': 'gif', 'image/avif': 'avif', 'image/svg+xml': 'svg' };
@@ -15,6 +16,7 @@ const hash = data => createHash('sha256').update(data).digest('hex');
 const publicPrefix = '/api/storage/public-images/';
 
 async function migrateStorage({ apply = false, client: existingClient } = {}) {
+  const concurrency = migrationConcurrency(process.env.STORAGE_MIGRATION_CONCURRENCY);
   const client = existingClient || new Client({ connectionString: process.env.DIRECT_URL || process.env.DATABASE_URL });
   const prisma = new PrismaClient();
   const report = { scanned: 0, migrated: 0, failed: 0, missing: 0 };
@@ -38,32 +40,38 @@ async function migrateStorage({ apply = false, client: existingClient } = {}) {
       const key = publicImage ? `public/images/${digest}.${extensions[mimeType]}` : `migration/files/${digest}`;
       await target.put(key, data, mimeType);
       const stream = await target.open(key);
-      const chunks = [];
-      for await (const chunk of stream) chunks.push(Buffer.from(chunk));
-      if (hash(Buffer.concat(chunks)) !== digest) throw new Error('R2 verification failed');
+      const verified = createHash('sha256');
+      for await (const chunk of stream) verified.update(chunk);
+      if (verified.digest('hex') !== digest) throw new Error('R2 verification failed');
       return publicImage ? `${publicPrefix}${key.split('/').at(-1)}` : `r2:${key}`;
     }
 
+    let completed = 0;
+    console.log(`Storage migration: ${concurrency} concurrent workers`);
     async function attempt(label, work) {
       report.scanned++;
       if (!apply) return;
       try { if (await work()) report.migrated++; }
       catch (error) { report.failed++; console.error(`${label}: ${error.name || 'Error'} (source or destination unavailable)`); }
-      if (report.scanned % 25 === 0) console.log(`Progress: ${report.migrated} migrated, ${report.failed} failed`);
+      completed++;
+      if (completed % 25 === 0) console.log(`Progress: ${report.migrated} migrated, ${report.failed} failed`);
     }
 
     // Resume legacy bytes preserved before the destructive historical SQL migration.
     const stage = await client.query(`SELECT to_regclass('public."_StorageMigrationFiles"') AS name`);
     if (stage.rows[0].name) {
       if (apply) await client.query('ALTER TABLE "_StorageMigrationFiles" ADD COLUMN IF NOT EXISTS "migratedKey" text');
+      const columns = await client.query(`SELECT EXISTS (SELECT 1 FROM information_schema.columns
+        WHERE table_schema='public' AND table_name='_StorageMigrationFiles' AND column_name='migratedKey') AS present`);
+      const pendingOnly = columns.rows[0].present ? 'AND "migratedKey" IS NULL' : '';
       let cursor = ['', '', ''];
       while (true) {
         const { rows } = await client.query(`SELECT * FROM "_StorageMigrationFiles"
           WHERE ("tableName", "recordId", "keyColumn") > ($1,$2,$3)
+          ${pendingOnly}
           ORDER BY "tableName", "recordId", "keyColumn" LIMIT 25`, cursor);
         if (!rows.length) break;
-        for (const row of rows) {
-          if (row.migratedKey) continue;
+        await forEachConcurrent(rows, concurrency, async (row) => {
           if (!fields.some(([table,,key]) => table === row.tableName && key === row.keyColumn)) throw new Error('Unknown staged field');
           await attempt(`legacy ${row.tableName}.${row.keyColumn}`, async () => {
             const identity = row.tableName === 'BackupUploadChunk' ? `"uploadId" || ':' || "index"::text` : 'id';
@@ -77,7 +85,7 @@ async function migrateStorage({ apply = false, client: existingClient } = {}) {
               WHERE "tableName"=$2 AND "recordId"=$3 AND "keyColumn"=$4`, [key, row.tableName, row.recordId, row.keyColumn]);
             return true;
           });
-        }
+        });
         const last = rows.at(-1); cursor = [last.tableName, last.recordId, last.keyColumn];
       }
     }
@@ -91,12 +99,12 @@ async function migrateStorage({ apply = false, client: existingClient } = {}) {
           FROM "${table}" WHERE ${identity} > $1 AND "${column}" IS NOT NULL
           AND "${column}" NOT LIKE 'r2:%' ORDER BY ${identity} LIMIT 25`, [cursor]);
         if (!rows.length) break;
-        for (const row of rows) await attempt(`${table}.${column}`, async () => {
+        await forEachConcurrent(rows, concurrency, row => attempt(`${table}.${column}`, async () => {
           const data = await source.read(row.key);
           const key = await upload(data, row.mime || 'application/octet-stream');
           const updated = await client.query(`UPDATE "${table}" SET "${column}"=$1 WHERE ${identity}=$2 AND "${column}"=$3`, [key,row.id,row.key]);
           return updated.rowCount > 0;
-        });
+        }));
         cursor = rows.at(-1).id;
       }
       const missing = await client.query(`SELECT count(*)::int AS count FROM "${table}" WHERE "${column}" IS NULL
@@ -143,9 +151,11 @@ async function migrateStorage({ apply = false, client: existingClient } = {}) {
     const imageCache = new Map();
     async function publicImage(url) {
       if (!imageCache.has(url)) {
-        const { data, mime } = await imageData(url);
-        if (!extensions[mime]) throw new Error('Unsupported image type');
-        imageCache.set(url, await upload(data, mime, true));
+        imageCache.set(url, (async () => {
+          const { data, mime } = await imageData(url);
+          if (!extensions[mime]) throw new Error('Unsupported image type');
+          return upload(data, mime, true);
+        })());
       }
       return imageCache.get(url);
     }
@@ -155,16 +165,16 @@ async function migrateStorage({ apply = false, client: existingClient } = {}) {
       let cursor = '';
       while (true) {
         const { rows } = await client.query(`SELECT id,"${column}" AS url FROM "${table}"
-          WHERE id>$1 AND "${column}" IS NOT NULL ORDER BY id LIMIT 25`, [cursor]);
+          WHERE id>$1 AND "${column}" IS NOT NULL AND "${column}" NOT LIKE '/api/%'
+          ORDER BY id LIMIT 25`, [cursor]);
         if (!rows.length) break;
-        for (const row of rows) {
-          if (!row.url || row.url.startsWith('/api/')) continue;
+        await forEachConcurrent(rows.filter(row => row.url), concurrency, async (row) => {
           await attempt(`${table}.${column}`, async () => {
             const url = await publicImage(row.url);
             const updated = await client.query(`UPDATE "${table}" SET "${column}"=$1 WHERE id=$2 AND "${column}"=$3`, [url,row.id,row.url]);
             return updated.rowCount > 0;
           });
-        }
+        });
         cursor = rows.at(-1).id;
       }
     }
@@ -173,17 +183,17 @@ async function migrateStorage({ apply = false, client: existingClient } = {}) {
     while (true) {
       const { rows } = await client.query('SELECT id,content FROM "Article" WHERE id>$1 ORDER BY id LIMIT 25', [cursor]);
       if (!rows.length) break;
-      for (const row of rows) {
+      await forEachConcurrent(rows, concurrency, async (row) => {
         const matches = [...row.content.matchAll(/(?:src=["']|!\[[^\]]*\]\()((?:https?:\/\/|data:image\/|\/)[^"'\s)]+)/g)];
         const sources = [...new Set(matches.map(m => m[1]))].filter(url => !url.startsWith('/api/'));
-        if (!sources.length) continue;
+        if (!sources.length) return;
         await attempt('Article.content', async () => {
           let content = row.content;
           for (const url of sources) content = content.split(url).join(await publicImage(url));
           const updated = await client.query('UPDATE "Article" SET content=$1 WHERE id=$2 AND content=$3', [content,row.id,row.content]);
           return updated.rowCount > 0;
         });
-      }
+      });
       cursor = rows.at(-1).id;
     }
     if (apply && !report.failed) await settings.updateIntegrations({ STORAGE_DRIVER: 'r2' });

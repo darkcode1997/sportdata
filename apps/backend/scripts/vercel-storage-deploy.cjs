@@ -2,6 +2,7 @@ const { execFileSync } = require('child_process');
 const { Client } = require('pg');
 const { preserveLegacyFiles } = require('./preserve-legacy-files.cjs');
 const { migrateStorage } = require('./migrate-storage-r2.cjs');
+const { validateR2Deployment } = require('./validate-r2-deployment.cjs');
 
 async function deploy() {
   if (process.env.VERCEL_ENV !== 'production') {
@@ -12,6 +13,7 @@ async function deploy() {
   await client.connect();
   try {
     await client.query('SELECT pg_advisory_lock(872341902)');
+    await validateR2Deployment(client);
     await preserveLegacyFiles(client);
     execFileSync(process.platform === 'win32' ? 'npx.cmd' : 'npx', ['prisma', 'migrate', 'deploy'], { stdio: 'inherit' });
     await migrateStorage({ apply: true, client });

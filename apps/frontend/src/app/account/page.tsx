@@ -207,7 +207,7 @@ export default function ParticipantAccountPage() {
   }, [error, router]);
 
   useEffect(() => {
-    if (error?.response?.status !== 404 || resolvingLegacyAccount || profileNotFound) return;
+    if (error?.response?.status !== 404 || profileNotFound) return;
     let cancelled = false;
     setResolvingLegacyAccount(true);
     participantApi.get('/participant-auth/federation/me')
@@ -226,7 +226,9 @@ export default function ParticipantAccountPage() {
       })
       .catch((requestError) => {
         if (cancelled) return;
+        setResolvingLegacyAccount(false);
         if (requestError?.response?.status === 401) {
+          clearParticipantSession();
           router.replace('/account/login');
           return;
         }
@@ -236,7 +238,7 @@ export default function ParticipantAccountPage() {
         if (!cancelled) setResolvingLegacyAccount(false);
       });
     return () => { cancelled = true; };
-  }, [error?.response?.status, profileNotFound, resolvingLegacyAccount, router]);
+  }, [error?.response?.status, profileNotFound, router]);
 
   useEffect(() => {
     let cancelled = false;
