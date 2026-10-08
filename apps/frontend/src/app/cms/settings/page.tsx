@@ -143,7 +143,7 @@ export default function SystemSettingsPage() {
         type="info"
         showIcon
         message="Quản lý cấu hình và trạng thái dịch vụ"
-        description="Bạn có thể cấu hình SMTP, OCR và thanh toán bên dưới. Các giá trị trong ENV được dùng khi chưa có cấu hình tương ứng trong CMS."
+        description="Bạn có thể cấu hình SMTP, OCR, thanh toán và Cloudflare R2 bên dưới. Các giá trị trong ENV được dùng khi chưa có cấu hình tương ứng trong CMS."
       />
 
       <IntegrationSettings onSaved={() => { void mutate(); }} />

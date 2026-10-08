@@ -108,6 +108,10 @@ STORAGE_TIMEOUT_MS=30000
 
 ## Cloudflare R2
 
+Có thể cấu hình tại **CMS → Cài đặt hệ thống → Cloudflare R2**. Lưu tên bucket, Cloudflare Account ID (hoặc S3 API endpoint), Access Key ID và Secret Access Key, sau đó chọn **Cloudflare R2** ở **Nơi lưu file mới** và bấm Lưu. Khóa được mã hóa bằng `SETTINGS_ENCRYPTION_KEY` (hoặc `JWT_SECRET` hợp lệ), không trả lại cho trình duyệt. Cấu hình CMS ưu tiên hơn ENV và áp dụng cho request tiếp theo, không cần restart. Xóa từng giá trị CMS để dùng lại ENV. Endpoint tùy chọn; không cần nhập nếu đã có Account ID. Backend vẫn khởi động khi R2 chưa đủ cấu hình để quản trị viên bổ sung trong CMS; thao tác R2 sẽ báo lỗi cho đến khi cấu hình hợp lệ.
+
+Đổi nơi lưu chỉ tác động file mới. Khi đổi bucket hoặc endpoint R2, cần chuyển object cũ sang bucket mới trước vì key hiện tại không chứa tên bucket. Giữ credential R2 khi chuyển sang driver khác để đọc file R2 cũ.
+
 R2 có lựa chọn riêng `STORAGE_DRIVER=r2`, dùng adapter S3 hiện có với `region=auto`, endpoint Cloudflare và credential R2 riêng. Không cần thêm dependency, sửa frontend hoặc migration database để dùng R2.
 
 ```dotenv

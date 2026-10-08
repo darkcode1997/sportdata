@@ -17,4 +17,10 @@ export const INTEGRATION_FIELDS = [
   { name: 'VNPAY_TMN_CODE', group: 'VNPAY', label: 'TMN Code' },
   { name: 'VNPAY_HASH_SECRET', group: 'VNPAY', label: 'Hash Secret', secret: true },
   { name: 'VNPAY_PAYMENT_URL', group: 'VNPAY', label: 'URL thanh toán', kind: 'url' },
+  { name: 'STORAGE_DRIVER', group: 'Cloudflare R2', label: 'Nơi lưu file mới', kind: 'storageDriver' },
+  { name: 'STORAGE_R2_BUCKET', group: 'Cloudflare R2', label: 'Tên bucket' },
+  { name: 'STORAGE_R2_ACCOUNT_ID', group: 'Cloudflare R2', label: 'Cloudflare Account ID', kind: 'r2AccountId' },
+  { name: 'STORAGE_R2_ENDPOINT', group: 'Cloudflare R2', label: 'S3 API endpoint (tùy chọn)', kind: 'r2Endpoint' },
+  { name: 'STORAGE_R2_ACCESS_KEY_ID', group: 'Cloudflare R2', label: 'Access Key ID', secret: true },
+  { name: 'STORAGE_R2_SECRET_ACCESS_KEY', group: 'Cloudflare R2', label: 'Secret Access Key', secret: true },
 ] as const;

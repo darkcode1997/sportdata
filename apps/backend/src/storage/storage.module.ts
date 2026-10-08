@@ -1,6 +1,7 @@
 import { Global, Module } from '@nestjs/common';
 import { StorageService } from './storage.service';
+import { SystemSettingsModule } from '../system-settings/system-settings.module';
 
 @Global()
-@Module({ providers: [StorageService], exports: [StorageService] })
+@Module({ imports: [SystemSettingsModule], providers: [StorageService], exports: [StorageService] })
 export class StorageModule {}

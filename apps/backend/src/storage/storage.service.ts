@@ -1,5 +1,6 @@
 import { Injectable, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { SystemSettingsService } from '../system-settings/system-settings.service';
 import { randomUUID } from 'crypto';
 import type { Readable } from 'stream';
 import { LocalStorageProvider } from './local-storage.provider';
@@ -19,7 +20,9 @@ export class StorageService {
   private readonly driver: StorageDriver;
   private readonly providers = new Map<string, StorageProvider>();
 
-  constructor(config: ConfigService) {
+  private r2Configuration?: string;
+
+  constructor(private readonly config: ConfigService, private readonly settings: SystemSettingsService) {
     const driver = config.get<string>('STORAGE_DRIVER') || 'local';
     if (!['local', 's3', 'cloudinary', 'r2'].includes(driver)) throw new Error('STORAGE_DRIVER must be local, s3, cloudinary or r2');
     this.driver = driver as StorageDriver;
@@ -27,16 +30,6 @@ export class StorageService {
 
     const timeoutMs = Number(config.get<string>('STORAGE_TIMEOUT_MS') || 30000);
     if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0) throw new Error('Invalid STORAGE_TIMEOUT_MS');
-    const r2Options = {
-      bucket: config.get<string>('STORAGE_R2_BUCKET')?.trim(),
-      accountId: config.get<string>('STORAGE_R2_ACCOUNT_ID')?.trim(),
-      endpoint: config.get<string>('STORAGE_R2_ENDPOINT')?.trim(),
-      accessKeyId: config.get<string>('STORAGE_R2_ACCESS_KEY_ID')?.trim(),
-      secretAccessKey: config.get<string>('STORAGE_R2_SECRET_ACCESS_KEY')?.trim(),
-    };
-    if (driver === 'r2' || Object.values(r2Options).some(Boolean)) {
-      this.providers.set('r2', new R2StorageProvider(r2Options, timeoutMs));
-    }
     const cloudName = config.get<string>('CLOUDINARY_CLOUD_NAME');
     const apiKey = config.get<string>('CLOUDINARY_API_KEY');
     const apiSecret = config.get<string>('CLOUDINARY_API_SECRET');
@@ -90,6 +83,37 @@ export class StorageService {
     }
   }
 
+  private async storageConfiguration() {
+    const values = await this.settings.integrationValues([
+      'STORAGE_DRIVER', 'STORAGE_R2_BUCKET', 'STORAGE_R2_ACCOUNT_ID', 'STORAGE_R2_ENDPOINT',
+      'STORAGE_R2_ACCESS_KEY_ID', 'STORAGE_R2_SECRET_ACCESS_KEY',
+    ]);
+    const driver = values.STORAGE_DRIVER?.trim() || this.driver;
+    if (!['local', 's3', 'cloudinary', 'r2'].includes(driver)) {
+      throw new ServiceUnavailableException('Nơi lưu file chưa được cấu hình hợp lệ');
+    }
+    return { values, driver };
+  }
+
+  private r2Provider(values: Record<string, string | undefined>): StorageProvider {
+    const options = {
+      bucket: values.STORAGE_R2_BUCKET?.trim(), accountId: values.STORAGE_R2_ACCOUNT_ID?.trim(),
+      endpoint: values.STORAGE_R2_ENDPOINT?.trim(), accessKeyId: values.STORAGE_R2_ACCESS_KEY_ID?.trim(),
+      secretAccessKey: values.STORAGE_R2_SECRET_ACCESS_KEY?.trim(),
+    };
+    const signature = JSON.stringify(options);
+    if (signature !== this.r2Configuration) {
+      try {
+        const provider = new R2StorageProvider(options, Number(this.config.get<string>('STORAGE_TIMEOUT_MS') || 30000));
+        this.providers.set('r2', provider);
+        this.r2Configuration = signature;
+      } catch {
+        throw new ServiceUnavailableException('Cấu hình Cloudflare R2 chưa đầy đủ hoặc không hợp lệ. Kiểm tra cài đặt hệ thống.');
+      }
+    }
+    return this.providers.get('r2')!;
+  }
+
   async put(data: Buffer, mimeType: string, folder: string): Promise<string> {
     return (await this.upload(data, mimeType, folder)).key;
   }
@@ -97,23 +121,25 @@ export class StorageService {
   async upload(data: Buffer, mimeType: string, folder: string): Promise<StoredFile> {
     if (!/^[a-zA-Z0-9/_-]+$/.test(folder) || folder.startsWith('/')) throw new Error('Invalid storage folder');
     const key = `${folder}/${randomUUID()}`;
-    const provider = this.providers.get(this.driver)!;
+    const { values, driver } = await this.storageConfiguration();
+    const provider = driver === 'r2' ? this.r2Provider(values) : this.providers.get(driver);
+    if (!provider) throw new ServiceUnavailableException('Nơi lưu file chưa được cấu hình');
     const storageKey = provider.prepareKey?.(key, mimeType) || key;
-    const reference = `${this.driver}:${storageKey}`;
+    const reference = `${driver}:${storageKey}`;
     try {
       const result = await provider.put(storageKey, data, mimeType);
       const size = result && Number.isSafeInteger(result.size) && result.size > 0 ? result.size : data.length;
       return { key: reference, size, mimeType };
     } catch (error) {
       await this.deleteQuietly(reference);
-      this.logger.error(`Storage upload failed (${this.driver}): ${(error as Error).message}`);
+      this.logger.error(`Storage upload failed (${driver}): ${(error as Error).message}`);
       throw new ServiceUnavailableException('Không thể lưu tệp, vui lòng thử lại');
     }
   }
 
   async imageUrl(reference: string, variant?: ImageVariant): Promise<string | undefined> {
     if (!variant || !reference) return undefined;
-    const { provider, key } = this.resolve(reference);
+    const { provider, key } = await this.resolve(reference);
     try {
       return await provider.imageUrl?.(key, variant);
     } catch (error) {
@@ -124,7 +150,7 @@ export class StorageService {
 
   async open(reference: string, variant?: ImageVariant): Promise<Readable> {
     if (!reference) throw new NotFoundException('Chưa có tệp trong storage');
-    const { provider, key } = this.resolve(reference);
+    const { provider, key } = await this.resolve(reference);
     try {
       if (variant) {
         try {
@@ -152,7 +178,7 @@ export class StorageService {
 
   async delete(reference: string) {
     if (!reference) return;
-    const { provider, key } = this.resolve(reference);
+    const { provider, key } = await this.resolve(reference);
     await provider.delete(key);
   }
 
@@ -178,13 +204,15 @@ export class StorageService {
     return result;
   }
 
-  private resolve(reference: string) {
+  private async resolve(reference: string) {
     const separator = reference.indexOf(':');
-    const provider = this.providers.get(reference.slice(0, separator));
+    const driver = reference.slice(0, separator);
     const key = reference.slice(separator + 1);
     if (separator < 0 || !/^[a-zA-Z0-9/_-]+$/.test(key) || key.startsWith('/')) {
       throw new NotFoundException('Định danh tệp không hợp lệ');
     }
+    const provider = driver === 'r2'
+      ? this.r2Provider((await this.storageConfiguration()).values) : this.providers.get(driver);
     if (!provider) throw new ServiceUnavailableException('Storage của tệp chưa được cấu hình');
     return { provider, key };
   }

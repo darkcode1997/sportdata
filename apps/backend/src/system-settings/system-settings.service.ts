@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'crypto';
 import { INTEGRATION_FIELDS } from './integration-config';
+import { validateR2Options } from '../storage/r2-storage.provider';
 import { AthleteMediaType, DocumentVerificationStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { UpdateSystemSettingsDto } from './dto/update-system-settings.dto';
@@ -47,10 +48,10 @@ export class SystemSettingsService {
     }
   }
 
-  async integrationValues(): Promise<Record<string, string | undefined>> {
-    const rows = await this.prisma.integrationSetting.findMany();
+  async integrationValues(names?: string[]): Promise<Record<string, string | undefined>> {
+    const rows = await this.prisma.integrationSetting.findMany(names ? { where: { name: { in: names } } } : undefined);
     const overrides = new Map(rows.map((row) => [row.name, row.value]));
-    return Object.fromEntries(INTEGRATION_FIELDS.map((field) => {
+    return Object.fromEntries(INTEGRATION_FIELDS.filter((field) => !names || names.includes(field.name)).map((field) => {
       const stored = overrides.get(field.name);
       return [field.name, stored === undefined ? process.env[field.name] :
         ('secret' in field && field.secret ? this.decrypt(field.name, stored) : stored)];
@@ -71,6 +72,20 @@ export class SystemSettingsService {
   }
 
   async updateIntegrations(values: Record<string, string | null>) {
+    if (values.STORAGE_DRIVER === 'r2') {
+      const current = await this.integrationValues(INTEGRATION_FIELDS.filter((field) => field.group === 'Cloudflare R2').map((field) => field.name));
+      const merged = { ...current };
+      for (const [name, value] of Object.entries(values)) {
+        merged[name] = value === null ? process.env[name] : typeof value === 'string' ? value.trim() : undefined;
+      }
+      try {
+        validateR2Options({ bucket: merged.STORAGE_R2_BUCKET, accountId: merged.STORAGE_R2_ACCOUNT_ID,
+          endpoint: merged.STORAGE_R2_ENDPOINT, accessKeyId: merged.STORAGE_R2_ACCESS_KEY_ID,
+          secretAccessKey: merged.STORAGE_R2_SECRET_ACCESS_KEY });
+      } catch (error) {
+        throw new BadRequestException((error as Error).message);
+      }
+    }
     const operations = Object.entries(values).map(([name, input]) => {
       const field = INTEGRATION_FIELDS.find((item) => item.name === name);
       if (!field) throw new BadRequestException(`Không cho phép chỉnh sửa ${name}`);
@@ -87,6 +102,16 @@ export class SystemSettingsService {
         }
         if (field.kind === 'boolean' && !['true', 'false'].includes(value)) {
           throw new BadRequestException(`${name} phải là true hoặc false`);
+        }
+        if (field.kind === 'storageDriver' && !['local', 's3', 'cloudinary', 'r2'].includes(value)) {
+          throw new BadRequestException('Nơi lưu file phải là local, s3, cloudinary hoặc r2');
+        }
+        if (field.kind === 'r2AccountId' && !/^[a-f0-9]{32}$/i.test(value)) {
+          throw new BadRequestException('Cloudflare Account ID phải gồm 32 ký tự hexadecimal');
+        }
+        if (field.kind === 'r2Endpoint') {
+          try { validateR2Options({ bucket: 'validation', endpoint: value, accessKeyId: 'validation', secretAccessKey: 'validation' }); }
+          catch (error) { throw new BadRequestException((error as Error).message); }
         }
         if (field.kind === 'url') {
           try {
