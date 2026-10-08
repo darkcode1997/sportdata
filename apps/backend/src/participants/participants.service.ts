@@ -1092,8 +1092,9 @@ export class ParticipantsService {
         }
       }
 
-      const ticketEmailQueued = Boolean(submission) && registrations.some((registration) => !registration.existing)
-        && registrations.every((registration) => registration.status === RegistrationStatus.CONFIRMED);
+      const newRegistrations = registrations.filter((registration) => !registration.existing);
+      const ticketEmailQueued = Boolean(submission) && newRegistrations.length > 0
+        && newRegistrations.every((registration) => registration.status === RegistrationStatus.CONFIRMED);
       if (ticketEmailQueued) {
         await this.ticketEmailQueue.enqueueSubmission(transaction, contactEmail, referenceCode);
       }
@@ -1956,7 +1957,9 @@ export class ParticipantsService {
         reason: 'Hồ sơ đã xác thực và thanh toán thành công', changedBy: 'SYSTEM:PAYMENT_CONFIRMED',
       } });
       const email = registration.submission?.contactEmail || registration.athlete.email;
-      if (email) await this.ticketEmailQueue.enqueueTicket(transaction, email, registration.ticketCode);
+      if (email) {
+        await this.ticketEmailQueue.enqueueTicket(transaction, email, registration.ticketCode);
+      }
       return { ticketCode: registration.ticketCode, statusChangedAt, email };
     });
     return finalized;
