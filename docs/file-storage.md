@@ -17,7 +17,7 @@ STORAGE_LOCAL_DIR=static/uploads
 STORAGE_TIMEOUT_MS=30000
 ```
 
-Đường dẫn tương đối tính từ thư mục chạy tiến trình backend. Với `npm run dev:backend`, folder mặc định là `apps/backend/static/uploads`. Có thể dùng đường dẫn tuyệt đối. Docker Compose cấu hình `/app/storage` và volume `sportdata_storage` để giữ file khi tạo lại container; hai backend production chia sẻ volume này.
+Đường dẫn tương đối tính từ thư mục chạy tiến trình backend. Với `npm run dev:backend`, folder mặc định là `apps/backend/static/uploads`. Có thể dùng đường dẫn tuyệt đối. Docker Compose local và production đều chạy một backend, cấu hình `/app/storage` và volume `sportdata_storage` để giữ file khi tạo lại container.
 
 Folder này không được mount thành static HTTP công khai. Ảnh được trả qua API hiện tại, còn giấy tờ qua API có kiểm tra quyền. File được tạo với quyền `0600`, folder với `0700`. Khi chạy trên nhiều máy chủ, dùng filesystem chia sẻ hoặc chọn cloud. Với serverless như Vercel, chọn Cloudinary/S3 vì folder local không bền vững giữa các instance.
 

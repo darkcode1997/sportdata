@@ -1,5 +1,7 @@
 # SportData production runbook
 
+Ứng dụng triển khai theo mô hình monolith với một service `backend` (NestJS) và một service `frontend` (Next.js), phía trước là Nginx. File local của backend lưu trong volume `sportdata_storage` tại `/app/storage`.
+
 ## Điều kiện trước khi chạy
 
 - Domain đã trỏ về máy chủ và hai file TLS nằm tại `deploy/certs/fullchain.pem`, `deploy/certs/privkey.pem`.
@@ -19,6 +21,15 @@ docker compose --env-file .env.production -f docker-compose.production.yml ps
 
 Chỉ Nginx mở cổng public. Prometheus, Grafana và Alertmanager chỉ bind vào loopback để truy cập qua SSH tunnel hoặc VPN.
 
+Nếu chuyển từ cấu hình hai backend/frontend trước đây, dùng cùng Compose project và chạy:
+
+```bash
+docker compose --env-file .env.production -f docker-compose.production.yml up -d --build --remove-orphans
+docker compose --env-file .env.production -f docker-compose.production.yml restart nginx prometheus
+```
+
+Lệnh đầu xóa container `backend-1`, `backend-2`, `frontend-1`, `frontend-2` cũ và tạo `backend`, `frontend`. Lệnh sau nạp lại cấu hình proxy và monitoring. Volume database và file upload được giữ nguyên. Có gián đoạn ngắn khi chuyển đổi hoặc cập nhật ứng dụng vì mỗi service chỉ có một instance.
+
 ## PostgreSQL và PITR
 
 Primary bật WAL archive, replica nhận streaming replication và `postgres-base-backup` tạo base backup hằng ngày. Trước go-live phải diễn tập restore sang một máy chủ riêng:
@@ -33,7 +44,7 @@ Volume cùng một máy chủ không phải bản backup thảm họa. Đồng b
 
 ## Go-live gate
 
-- `GET /api/health/ready` trả HTTP 200 ở cả hai backend.
+- `GET /api/health/ready` trả HTTP 200 ở backend.
 - Báo cáo `GET /api/scheduling/events/:eventId/conflicts` có `valid: true`.
 - K6 đạt ngưỡng trong `tests/load/sea-games.js` với tải mục tiêu.
 - Restore PITR đã được diễn tập thành công.

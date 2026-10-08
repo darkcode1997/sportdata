@@ -88,16 +88,15 @@ x-frontend: &frontend
     context: .
     dockerfile: Dockerfile.frontend
     args:
-      API_INTERNAL_URL: http://backend-1:4000/api
+      API_INTERNAL_URL: http://backend:4000/api
       IMAGE_HOSTNAMES: ${IMAGE_HOSTNAMES:-images.unsplash.com,flagcdn.com}
   environment:
-    NEXT_PUBLIC_API_URL: http://backend-1:4000/api
+    NEXT_PUBLIC_API_URL: http://backend:4000/api
     NEXT_PUBLIC_APP_URL: https://${PUBLIC_DOMAIN:?}
     NEXT_TELEMETRY_DISABLED: 1
     NODE_ENV: production
   depends_on:
-    backend-1: { condition: service_healthy }
-    backend-2: { condition: service_healthy }
+    backend: { condition: service_healthy }
   restart: unless-stopped
   security_opt: [no-new-privileges:true]
   cap_drop: [ALL]
@@ -180,16 +179,10 @@ services:
       postgres-primary: { condition: service_healthy }
     restart: "no"
 
-  backend-1:
+  backend:
     <<: *backend
 
-  backend-2:
-    <<: *backend
-
-  frontend-1:
-    <<: *frontend
-
-  frontend-2:
+  frontend:
     <<: *frontend
 
   nginx:
@@ -201,8 +194,7 @@ services:
       - ./deploy/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./deploy/certs:/etc/nginx/certs:ro
     depends_on:
-      frontend-1: { condition: service_healthy }
-      frontend-2: { condition: service_healthy }
+      frontend: { condition: service_healthy }
     restart: unless-stopped
     security_opt: [no-new-privileges:true]
 
