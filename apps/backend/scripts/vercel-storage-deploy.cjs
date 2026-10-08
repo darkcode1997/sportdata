@@ -1,4 +1,4 @@
-const { execFileSync } = require('child_process');
+const { deployPrismaWithRetry } = require('./prisma-deploy-retry.cjs');
 const { Client } = require('pg');
 const { preserveLegacyFiles } = require('./preserve-legacy-files.cjs');
 const { migrateStorage } = require('./migrate-storage-r2.cjs');
@@ -18,11 +18,10 @@ async function deploy() {
     if (!locked) throw new Error('Another production deployment is migrating files/database. Wait for it to finish or cancel the old build, then redeploy.');
     await validateR2Deployment(client);
     await preserveLegacyFiles(client);
-    execFileSync(process.platform === 'win32' ? 'npx.cmd' : 'npx', ['prisma', 'migrate', 'deploy'], {
-      stdio: 'inherit',
+    await deployPrismaWithRetry({
       // Prisma's schema reads DATABASE_URL; the pg client already uses DIRECT_URL.
       // Both migration connections must use the same direct database endpoint.
-      env: { ...process.env, DATABASE_URL: process.env.DIRECT_URL || process.env.DATABASE_URL },
+      ...process.env, DATABASE_URL: process.env.DIRECT_URL || process.env.DATABASE_URL,
     });
     await migrateStorage({ apply: true, client });
   } finally {
