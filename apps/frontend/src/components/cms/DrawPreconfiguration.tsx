@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
-import useSWR from 'swr';
+import useSWR, { useSWRConfig } from 'swr';
 import { Alert, Button, Card, Empty, InputNumber, Modal, Select, Space, Tag } from 'antd';
 import { api, fetcher } from '@/lib/api';
 import type { BracketDraw } from '@/components/brackets/SportdataBracket';
@@ -36,6 +36,7 @@ type Props = {
 
 export function DrawPreconfiguration({ event, categoryId, drawType, actorId, entries, name, onSeedingMode, onGroupCount, onBusy }: Props) {
   const toast = useSportDataToast();
+  const { mutate: mutateGlobal } = useSWRConfig();
   const base = `/matches/event/${event.id}/category/${categoryId}`;
   const { data, error, isLoading, mutate } = useSWR<Configuration>(
     [`${base}/preconfiguration?drawType=${drawType}`, actorId], ([url]) => fetcher(url),
@@ -119,8 +120,13 @@ export function DrawPreconfiguration({ event, categoryId, drawType, actorId, ent
     if (!data || busy || partial || saveError) return;
     setPreviewing(true);
     try {
+      const rosterUrl = `/competitions/events/${event.id}/categories/${categoryId}/entries`;
+      const currentEntries: any[] = await fetcher(rosterUrl);
+      await mutateGlobal(rosterUrl, currentEntries, { revalidate: false });
+      const athleteIds = currentEntries.filter((entry) => entry.status === 'VERIFIED'
+        && entry.type === 'INDIVIDUAL' && entry.athlete?.id).map((entry) => entry.athlete.id);
       const response = await api.post<Configuration>(`${base}/preview-draw`, {
-        type: drawType, athleteIds: entries.map((entry) => entry.athlete.id),
+        type: drawType, athleteIds,
         seedingMode: mode, groupCount: drawType === 'REPECHAGE' ? 1 : groupCount, revision: data.revision, name,
         fops: event.fops?.length ? event.fops.map((fop: any) => fop.name) : undefined,
       });

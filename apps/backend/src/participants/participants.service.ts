@@ -51,6 +51,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { AthleteIdentityService } from '../athletes/athlete-identity.service';
 import { CheckAthleteIdentityDto } from './dto/check-athlete-identity.dto';
 import { LookupAthleteDto } from './dto/lookup-athlete.dto';
+import { registrationDisciplineKey } from './registration-discipline';
 
 const mediaSelect = {
   id: true,
@@ -79,6 +80,7 @@ type GuestAthleteInput = {
   countryId?: string;
   federationId?: string;
   categoryId?: string;
+  categoryIds?: string[];
   weight?: number;
   height?: number;
   identityType?: 'CCCD' | 'PASSPORT';
@@ -166,7 +168,8 @@ export class ParticipantsService {
     if (!authorized.length) return { status: 'VERIFY_CONTACT' as const,
       message: 'Đã có hồ sơ theo số giấy tờ này. Nhập SĐT liên hệ đã dùng trước đây hoặc họ tên và ngày sinh để xác nhận hồ sơ.' };
     const athlete = authorized.find((item) => item.publicRegistrations.some((registration) => registration.eventId === dto.eventId)) || authorized[0];
-    const registration = athlete.publicRegistrations.find((item) => item.eventId === dto.eventId);
+    const registrations = athlete.publicRegistrations.filter((item) => item.eventId === dto.eventId);
+    const registration = registrations[0];
     const keys = this.athleteIdentity.normalize(input);
     const reuseToken = this.jwtService.sign({ purpose: 'reuse-athlete', athleteId: athlete.id,
       eventId: dto.eventId, documentHash: keys.documentHash, phone }, { expiresIn: '30m' });
@@ -179,6 +182,8 @@ export class ParticipantsService {
         weight: athlete.weight, height: athlete.height,
         hasAvatar: athlete.media.some((media) => media.type === AthleteMediaType.AVATAR),
         hasIdentity: this.identityDocumentState(athlete.media).complete },
+      registrations: registrations.map((item) => ({ ticketCode: item.ticketCode, status: item.status,
+        paymentStatus: item.paymentStatus, categoryId: item.categoryId, feeAmount: item.feeAmount })),
       registration: registration ? { ticketCode: registration.ticketCode, status: registration.status,
         paymentStatus: registration.paymentStatus, categoryId: registration.categoryId,
         feeAmount: registration.feeAmount } : undefined,
@@ -908,8 +913,16 @@ export class ParticipantsService {
       } else if (!event.allowIndependentAthletes) {
         throw new BadRequestException(`Vận động viên ${index + 1}: sự kiện không nhận đăng ký tự do`);
       }
-      const category = athlete.categoryId ? categoryMap.get(athlete.categoryId) : undefined;
-      if (!category) throw new BadRequestException(`Vận động viên ${index + 1}: hạng đấu không hợp lệ`);
+      const categoryIds = athlete.categoryIds ?? (athlete.categoryId ? [athlete.categoryId] : []);
+      if (!Array.isArray(categoryIds) || !categoryIds.length || categoryIds.length > event.categories.length
+        || categoryIds.some((id) => typeof id !== 'string' || !categoryMap.has(id))) {
+        throw new BadRequestException(`Vận động viên ${index + 1}: hạng đấu không hợp lệ`);
+      }
+      const categories = categoryIds.map((id) => categoryMap.get(id)!);
+      const disciplineKeys = categories.map(registrationDisciplineKey);
+      if (new Set(disciplineKeys).size !== categories.length) {
+        throw new BadRequestException(`Vận động viên ${index + 1}: chỉ được chọn một hạng đấu cho mỗi nội dung`);
+      }
       const weight = athlete.weight === undefined || athlete.weight === null || athlete.weight === ('' as unknown as number)
         ? null
         : Number(athlete.weight);
@@ -921,7 +934,9 @@ export class ParticipantsService {
       if (height !== null && (!Number.isFinite(height) || height <= 0 || height > 300)) {
         throw new BadRequestException(`Vận động viên ${index + 1}: chiều cao không hợp lệ`);
       }
-      this.validateAthleteForCategory({ gender: athlete.gender, birthDate, weight }, { ...category, ...resolveEventAgeLimits(event, category) }, event.startDate);
+      for (const category of categories) {
+        this.validateAthleteForCategory({ gender: athlete.gender, birthDate, weight }, { ...category, ...resolveEventAgeLimits(event, category) }, event.startDate);
+      }
 
       const cccdFront = fileMap.get(`athlete_${index}_cccdFront`)
         || stagedFile(athlete.mediaUploads?.cccdFront, AthleteMediaType.CCCD_FRONT, index);
@@ -951,7 +966,8 @@ export class ParticipantsService {
       return {
         athlete,
         existingAthlete,
-        category,
+        athleteIndex: index,
+        categories,
         fullName,
         birthDate,
         weight,
@@ -986,21 +1002,32 @@ export class ParticipantsService {
 
       const registrations = [];
       for (const item of prepared) {
-        if (item.existingAthlete) {
-          const registered = await transaction.eventRegistration.findFirst({
-            where: { eventId: event.id, athleteId: item.existingAthlete.id },
-            orderBy: { createdAt: 'asc' },
-          });
-          if (registered) {
-            registrations.push({ id: registered.id, athleteId: item.existingAthlete.id,
-              athleteName: item.existingAthlete.fullName, ticketCode: registered.ticketCode,
-              status: registered.status, paymentStatus: registered.paymentStatus,
-              feeAmount: registered.feeAmount, currency: registered.currency,
-              paymentDueAt: registered.paymentStatus === PaymentStatus.PENDING ? this.paymentDueAt(registered.createdAt) : null,
-              existing: true });
-            continue;
+        const existingRegistrations = item.existingAthlete
+          ? await transaction.eventRegistration.findMany({
+              where: { eventId: event.id, athleteId: item.existingAthlete.id },
+              include: { category: true },
+            })
+          : [];
+        for (const category of item.categories) {
+          const conflicting = existingRegistrations.find((registered) => registered.categoryId !== category.id
+            && registrationDisciplineKey(registered.category) === registrationDisciplineKey(category));
+          if (conflicting) {
+            throw new ConflictException(`${item.fullName}: đã đăng ký một hạng đấu trong nội dung này (vé ${conflicting.ticketCode})`);
           }
         }
+        const newCategories = item.categories.filter((category) => !existingRegistrations.some((registered) => registered.categoryId === category.id));
+        for (const category of item.categories) {
+          const registered = existingRegistrations.find((registration) => registration.categoryId === category.id);
+          if (!registered) continue;
+          registrations.push({ id: registered.id, athleteId: registered.athleteId,
+            athleteIndex: item.athleteIndex, categoryId: registered.categoryId,
+            athleteName: item.fullName, ticketCode: registered.ticketCode,
+            status: registered.status, paymentStatus: registered.paymentStatus,
+            feeAmount: registered.feeAmount, currency: registered.currency,
+            paymentDueAt: registered.paymentStatus === PaymentStatus.PENDING ? this.paymentDueAt(registered.createdAt) : null,
+            existing: true });
+        }
+        if (!newCategories.length) continue;
         if (!item.identityInput.documentNumber) {
           throw new BadRequestException('Vui lòng nhập số CCCD hoặc hộ chiếu của từng VĐV.');
         }
@@ -1041,46 +1068,51 @@ export class ParticipantsService {
         const existingMedia = item.existingAthlete ? await transaction.athleteMedia.findMany({
           where: { athleteId: createdAthlete.id }, select: { type: true, verificationStatus: true },
         }) : undefined;
-        const canConfirmImmediately = event.paymentMode === PaymentMode.FREE
-          && (existingMedia ? this.identityDocumentState(existingMedia).verified : autoVerifyIdentity);
-        const registration = await transaction.eventRegistration.create({
-          data: {
-            eventId: event.id,
+        const identityVerified = existingMedia ? this.identityDocumentState(existingMedia).verified : autoVerifyIdentity;
+        for (const category of newCategories) {
+          const payment = this.registrationPayment(event);
+          const canConfirmImmediately = identityVerified
+            && payment.paymentStatus === PaymentStatus.NOT_REQUIRED;
+          const registration = await transaction.eventRegistration.create({
+            data: {
+              eventId: event.id,
+              athleteId: createdAthlete.id,
+              accountId: submittingAccount?.id,
+              submissionId: currentSubmission.id,
+              categoryId: category.id,
+              federationId: item.athlete.federationId || null,
+              status: canConfirmImmediately ? RegistrationStatus.CONFIRMED : RegistrationStatus.SUBMITTED,
+              ...payment,
+              currency: event.registrationCurrency,
+              ticketCode: this.ticketCode(),
+            },
+          });
+          if (canConfirmImmediately) {
+            await this.syncCompetitionEntry(transaction, {
+              eventId: event.id,
+              categoryId: category.id,
+              athleteId: createdAthlete.id,
+              countryId: item.athlete.countryId!,
+              confirmed: true,
+            });
+          }
+          registrations.push({
+            existing: false,
+            id: registration.id,
             athleteId: createdAthlete.id,
-            accountId: submittingAccount?.id,
-            submissionId: currentSubmission.id,
-            categoryId: item.category.id,
-            federationId: item.athlete.federationId || null,
-            status: canConfirmImmediately ? RegistrationStatus.CONFIRMED : RegistrationStatus.SUBMITTED,
-            paymentStatus: event.paymentMode === PaymentMode.FREE ? PaymentStatus.NOT_REQUIRED : PaymentStatus.PENDING,
-            feeAmount: event.paymentMode === PaymentMode.FREE ? 0 : event.registrationFee,
-            currency: event.registrationCurrency,
-            ticketCode: this.ticketCode(),
-          },
-        });
-        if (canConfirmImmediately) {
-          await this.syncCompetitionEntry(transaction, {
-            eventId: event.id,
-            categoryId: item.category.id,
-            athleteId: createdAthlete.id,
-            countryId: item.athlete.countryId!,
-            confirmed: true,
+            athleteIndex: item.athleteIndex,
+            categoryId: category.id,
+            athleteName: createdAthlete.fullName,
+            ticketCode: registration.ticketCode,
+            status: registration.status,
+            paymentStatus: registration.paymentStatus,
+            feeAmount: registration.feeAmount,
+            currency: registration.currency,
+            paymentDueAt: registration.paymentStatus === PaymentStatus.PENDING
+              ? this.paymentDueAt(registration.createdAt)
+              : null,
           });
         }
-        registrations.push({
-          existing: false,
-          id: registration.id,
-          athleteId: createdAthlete.id,
-          athleteName: createdAthlete.fullName,
-          ticketCode: registration.ticketCode,
-          status: registration.status,
-          paymentStatus: registration.paymentStatus,
-          feeAmount: registration.feeAmount,
-          currency: registration.currency,
-          paymentDueAt: registration.paymentStatus === PaymentStatus.PENDING
-            ? this.paymentDueAt(registration.createdAt)
-            : null,
-        });
       }
 
       if (consumedUploadIds.size) {
@@ -1155,15 +1187,16 @@ export class ParticipantsService {
     return { ...result, ticketEmailSent: false };
   }
 
+  private registrationPayment(event: { paymentMode: PaymentMode; registrationFee: number }) {
+    const free = event.paymentMode === PaymentMode.FREE;
+    return {
+      feeAmount: free ? 0 : event.registrationFee,
+      paymentStatus: free ? PaymentStatus.NOT_REQUIRED : PaymentStatus.PENDING,
+    };
+  }
+
   async createRegistration(accountId: string, dto: CreatePublicRegistrationDto) {
     let profile = await this.getProfile(accountId);
-    const existingRegistration = await this.prisma.eventRegistration.findFirst({
-      where: { eventId: dto.eventId, athleteId: profile.athlete.id },
-      select: { ticketCode: true },
-    });
-    if (existingRegistration) {
-      throw new ConflictException(`Bạn đã đăng ký sự kiện này với vé ${existingRegistration.ticketCode}`);
-    }
     const event = await this.prisma.event.findUnique({
       where: { id: dto.eventId },
       include: {
@@ -1199,10 +1232,17 @@ export class ParticipantsService {
       throw new BadRequestException('Cần tải đủ CCCD hai mặt hoặc hộ chiếu trước khi đăng ký');
     }
 
-    const free = event.paymentMode === PaymentMode.FREE;
-    const canConfirmImmediately = free && identity.verified;
+    let canConfirmImmediately = false;
     try {
       const registration = await this.prisma.$transaction(async (transaction) => {
+        await this.athleteIdentity.lock(transaction);
+        const existing = await transaction.eventRegistration.findMany({
+          where: { eventId: event.id, athleteId: profile.athlete.id }, include: { category: true },
+        });
+        const conflicting = existing.find((registration) => registrationDisciplineKey(registration.category) === registrationDisciplineKey(category));
+        if (conflicting) throw new ConflictException(`Bạn đã đăng ký nội dung này với vé ${conflicting.ticketCode}`);
+        const payment = this.registrationPayment(event);
+        canConfirmImmediately = identity.verified && payment.paymentStatus === PaymentStatus.NOT_REQUIRED;
         const registration = await transaction.eventRegistration.create({
           data: {
             eventId: event.id,
@@ -1211,8 +1251,7 @@ export class ParticipantsService {
             categoryId: category.id,
             federationId: profile.athlete.federationId,
             status: canConfirmImmediately ? RegistrationStatus.CONFIRMED : RegistrationStatus.SUBMITTED,
-            paymentStatus: free ? PaymentStatus.NOT_REQUIRED : PaymentStatus.PENDING,
-            feeAmount: free ? 0 : event.registrationFee,
+            ...payment,
             currency: event.registrationCurrency,
             ticketCode: this.ticketCode(),
           },
@@ -1525,7 +1564,10 @@ export class ParticipantsService {
     }
     const registrations = await this.prisma.eventRegistration.findMany({
       where: eventId ? { eventId } : undefined,
-      include: this.registrationInclude(),
+      include: {
+        ...this.registrationInclude(),
+        account: { select: { displayName: true, email: true, phone: true } },
+      },
       orderBy: { createdAt: 'desc' },
     });
     const entries = registrations.length
@@ -1612,15 +1654,16 @@ export class ParticipantsService {
               },
               include: { media: { select: { type: true, verificationStatus: true } } },
             });
-        const identityVerified = this.identityDocumentState(athlete.media).verified;
-        const free = context.event.paymentMode === PaymentMode.FREE;
-        const paymentStatus = free
-          ? PaymentStatus.NOT_REQUIRED
-          : dto.paymentStatus === PaymentStatus.PAID
-            ? PaymentStatus.PAID
-            : PaymentStatus.PENDING;
-        const confirmed = identityVerified
-          && (paymentStatus === PaymentStatus.NOT_REQUIRED || paymentStatus === PaymentStatus.PAID);
+        const existing = await transaction.eventRegistration.findMany({
+          where: { eventId: context.event.id, athleteId: athlete.id }, include: { category: true },
+        });
+        if (existing.some((registration) => registrationDisciplineKey(registration.category) === registrationDisciplineKey(context.category))) {
+          throw new ConflictException('Vận động viên đã đăng ký một hạng đấu trong nội dung này');
+        }
+        const payment = this.registrationPayment(context.event);
+        const paymentStatus = payment.paymentStatus === PaymentStatus.NOT_REQUIRED
+          ? payment.paymentStatus
+          : dto.paymentStatus === PaymentStatus.PAID ? PaymentStatus.PAID : PaymentStatus.PENDING;
         const paymentNote = paymentStatus === PaymentStatus.PAID
           ? dto.paymentNote?.trim() || 'CMS ghi nhận đã thu lệ phí thủ công'
           : null;
@@ -1630,19 +1673,15 @@ export class ParticipantsService {
             athleteId: athlete.id,
             categoryId: context.category.id,
             federationId: athlete.federationId,
-            status: confirmed ? RegistrationStatus.CONFIRMED : RegistrationStatus.SUBMITTED,
-            statusReason: confirmed
-              ? 'CMS thêm VĐV đủ điều kiện, giấy tờ và thanh toán hợp lệ'
-              : !identityVerified
-                ? 'CMS thêm VĐV; chờ hoàn tất xác thực hồ sơ'
-                : 'CMS thêm VĐV; chờ hoàn tất thanh toán',
+            status: RegistrationStatus.CONFIRMED,
+            statusReason: 'Quản trị viên tạo và xác nhận hồ sơ trực tiếp trên CMS',
             statusChangedAt: new Date(),
             statusChangedBy: changedBy || 'CMS',
             paymentStatus,
             paymentStatusReason: paymentNote,
             paymentStatusChangedAt: paymentStatus === PaymentStatus.PAID ? new Date() : null,
             paymentStatusChangedBy: paymentStatus === PaymentStatus.PAID ? changedBy || 'CMS' : null,
-            feeAmount: free ? 0 : context.event.registrationFee,
+            feeAmount: payment.feeAmount,
             currency: context.event.registrationCurrency,
             ticketCode: this.ticketCode(),
           },
@@ -1658,15 +1697,13 @@ export class ParticipantsService {
             },
           });
         }
-        if (confirmed) {
-          await this.syncCompetitionEntry(transaction, {
-            eventId: context.event.id,
-            categoryId: context.category.id,
-            athleteId: athlete.id,
-            countryId: athlete.countryId,
-            confirmed: true,
-          });
-        }
+        await this.syncCompetitionEntry(transaction, {
+          eventId: context.event.id,
+          categoryId: context.category.id,
+          athleteId: athlete.id,
+          countryId: athlete.countryId,
+          confirmed: true,
+        });
         return transaction.eventRegistration.findUniqueOrThrow({
           where: { id: registration.id },
           include: this.registrationInclude(),
@@ -1677,7 +1714,7 @@ export class ParticipantsService {
         created.id,
         'REGISTRATION_CREATED',
         'CMS vừa thêm một hồ sơ đăng ký',
-        created.status === RegistrationStatus.CONFIRMED ? 'Đã xác nhận tham dự' : 'Đang chờ hoàn tất hồ sơ',
+        'Quản trị viên đã xác nhận tham dự',
       );
       return created;
     } catch (error: any) {
@@ -1758,21 +1795,16 @@ export class ParticipantsService {
     }
 
     if (existingAthlete) {
-      const duplicate = await this.prisma.eventRegistration.findUnique({
-        where: {
-          eventId_athleteId_categoryId: {
-            eventId: event.id,
-            athleteId: existingAthlete.id,
-            categoryId: category.id,
-          },
-        },
-        select: { id: true },
+      const existing = await this.prisma.eventRegistration.findMany({
+        where: { eventId: event.id, athleteId: existingAthlete.id }, include: { category: true },
       });
-      if (duplicate) reasons.push('Vận động viên đã đăng ký hạng đấu này');
+      if (existing.some((registration) => registrationDisciplineKey(registration.category) === registrationDisciplineKey(category))) {
+        reasons.push('Vận động viên đã đăng ký một hạng đấu trong nội dung này');
+      }
       if (!this.identityDocumentState(existingAthlete.media).complete) {
-        warnings.push('Hồ sơ chưa có đủ CCCD hai mặt hoặc hộ chiếu; đăng ký sẽ ở trạng thái chờ duyệt');
+        warnings.push('Hồ sơ chưa có đủ CCCD hai mặt hoặc hộ chiếu; hãy bổ sung giấy tờ trong hồ sơ VĐV');
       } else if (!this.identityDocumentState(existingAthlete.media).verified) {
-        warnings.push('Giấy tờ chưa được xác thực; đăng ký sẽ ở trạng thái chờ duyệt');
+        warnings.push('Giấy tờ chưa được xác thực; có thể xác thực trong hồ sơ VĐV');
       }
     } else {
       warnings.push('VĐV mới chưa có giấy tờ định danh; hãy bổ sung trong hồ sơ sau khi tạo');
@@ -1793,6 +1825,93 @@ export class ParticipantsService {
     }
 
     return { event, category, athlete, athleteId: existingAthlete?.id, reasons: [...new Set(reasons)], warnings };
+  }
+
+  async updateRegistrationCategory(id: string, categoryId: string, changedBy?: string) {
+    try {
+      return await this.prisma.$transaction(async (transaction) => {
+        const current = await transaction.eventRegistration.findUnique({ where: { id } });
+        if (!current) throw new NotFoundException('Không tìm thấy lượt đăng ký');
+        // Share the draw lock so a category cannot move while a bracket is generated.
+        await transaction.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${current.eventId}))`;
+        await transaction.$queryRaw`SELECT "id" FROM "Event" WHERE "id" = ${current.eventId} FOR UPDATE`;
+        await transaction.$queryRaw`SELECT "id" FROM "Athlete" WHERE "id" = ${current.athleteId} FOR UPDATE`;
+        const registration = await transaction.eventRegistration.findUniqueOrThrow({
+          where: { id }, include: { athlete: true, category: true, event: true },
+        });
+        if (registration.categoryId === categoryId) {
+          return transaction.eventRegistration.findUniqueOrThrow({ where: { id }, include: this.registrationInclude() });
+        }
+        const category = await transaction.category.findFirst({
+          where: { id: categoryId, events: { some: { id: registration.eventId } } },
+        });
+        if (!category) throw new BadRequestException('Hạng đấu không thuộc sự kiện này');
+        if (category.sportId !== registration.category.sportId) {
+          throw new BadRequestException('Chỉ có thể đổi nội dung và hạng cân trong cùng môn thể thao');
+        }
+        this.validateAthleteForCategory(registration.athlete,
+          { ...category, ...resolveEventAgeLimits(registration.event, category) }, registration.event.startDate);
+        const otherRegistrations = await transaction.eventRegistration.findMany({
+          where: { eventId: registration.eventId, athleteId: registration.athleteId, id: { not: id } },
+          include: { category: true },
+        });
+        if (otherRegistrations.some((item) => registrationDisciplineKey(item.category) === registrationDisciplineKey(category))) {
+          throw new ConflictException('Vận động viên đã đăng ký một hạng đấu trong nội dung này');
+        }
+        const competitionWhere = { eventId: registration.eventId, categoryId: { in: [registration.categoryId, categoryId] } };
+        const [draws, matches, heats, groups] = await Promise.all([
+          transaction.draw.count({ where: competitionWhere }),
+          transaction.match.count({ where: competitionWhere }),
+          transaction.heat.count({ where: competitionWhere }),
+          transaction.roundRobinGroup.count({ where: competitionWhere }),
+        ]);
+        if (draws || matches || heats || groups) {
+          throw new ConflictException('Hạng đấu đã có bốc thăm hoặc lịch thi đấu. Hãy hoàn tác bốc thăm/lịch thi đấu trước khi đổi hạng đấu');
+        }
+        const targetEntry = await transaction.competitionEntry.findUnique({
+          where: { eventId_categoryId_athleteId: { eventId: registration.eventId, categoryId, athleteId: registration.athleteId } },
+        });
+        if (targetEntry) throw new ConflictException('Vận động viên đã có suất thi đấu ở hạng đấu mới');
+        if (category.maxEntriesPerCountry && (registration.status === RegistrationStatus.SUBMITTED || registration.status === RegistrationStatus.CONFIRMED)) {
+          const [registrations, entries] = await Promise.all([
+            transaction.eventRegistration.findMany({ where: {
+              eventId: registration.eventId, categoryId, athlete: { countryId: registration.athlete.countryId },
+              status: { in: [RegistrationStatus.SUBMITTED, RegistrationStatus.CONFIRMED] },
+            }, select: { athleteId: true } }),
+            transaction.competitionEntry.findMany({ where: {
+              eventId: registration.eventId, categoryId, countryId: registration.athlete.countryId,
+              status: { in: [EntryStatus.REGISTERED, EntryStatus.VERIFIED] },
+            }, select: { id: true, athleteId: true } }),
+          ]);
+          const occupiedPlaces = new Set([
+            ...registrations.map((item) => `athlete:${item.athleteId}`),
+            ...entries.map((item) => item.athleteId ? `athlete:${item.athleteId}` : `entry:${item.id}`),
+          ]);
+          if (occupiedPlaces.size >= category.maxEntriesPerCountry) {
+            throw new BadRequestException(`Quốc gia đã đạt giới hạn ${category.maxEntriesPerCountry} VĐV cho hạng đấu này`);
+          }
+        }
+        await transaction.competitionEntry.updateMany({
+          where: { eventId: registration.eventId, categoryId: registration.categoryId, athleteId: registration.athleteId },
+          data: { categoryId, seed: null },
+        });
+        await transaction.eventRegistration.update({ where: { id }, data: { categoryId } });
+        if (registration.status === RegistrationStatus.CONFIRMED) {
+          await this.syncCompetitionEntry(transaction, { eventId: registration.eventId, categoryId,
+            athleteId: registration.athleteId, countryId: registration.athlete.countryId, confirmed: true });
+        }
+        await this.notifications.notifyRegistration(transaction, id, 'REGISTRATION_CATEGORY_CHANGED',
+          'CMS đã cập nhật nội dung / hạng cân',
+          `${registration.category.name} → ${category.name} · ${changedBy || 'CMS'}`);
+        return transaction.eventRegistration.findUniqueOrThrow({ where: { id }, include: this.registrationInclude() });
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 30000 });
+    } catch (error: any) {
+      if (['P2002', 'P2034'].includes(error?.code)
+        || (error?.code === 'P2010' && ['40001', '40P01'].includes(String(error.meta?.code)))) {
+        throw new ConflictException('Dữ liệu vừa thay đổi hoặc hạng đấu đã được đăng ký. Hãy tải lại và thử lại');
+      }
+      throw error;
+    }
   }
 
   async updateRegistrationStatus(id: string, status: RegistrationStatus, reason: string, changedBy?: string) {

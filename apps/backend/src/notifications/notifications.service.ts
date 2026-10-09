@@ -41,7 +41,7 @@ export class NotificationsService {
   async notifyRegistration(
     database: NotificationDatabase,
     registrationId: string,
-    type: 'REGISTRATION_CREATED' | 'REGISTRATION_STATUS' | 'REGISTRATION_PAYMENT',
+    type: 'REGISTRATION_CREATED' | 'REGISTRATION_STATUS' | 'REGISTRATION_PAYMENT' | 'REGISTRATION_CATEGORY_CHANGED',
     title: string,
     detail: string,
   ) {

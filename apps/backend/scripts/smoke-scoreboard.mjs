@@ -91,25 +91,39 @@ try {
   a = await cmd(first.id, 'UNDO', a.resultVersion);
   assert.equal(a.athlete1Score, 0);
   a = await cmd(first.id, 'AWARD', a.resultVersion, { side: 1, award: 'POINTS', points: 4 });
-  // Staged penalties must be sequential and remain separate from point awards.
+  // Staged penalties award the opponent and must remain sequential.
   await cmd(first.id, 'AWARD', a.resultVersion, { side: 1, award: 'PENALTY', penaltyLevel: 2 }, 400);
   await cmd(first.id, 'AWARD', a.resultVersion, { side: 1, award: 'POINTS', points: 2, penaltyLevel: 1 }, 400);
   for (let level = 1; level <= 4; level++) {
     a = await cmd(first.id, 'AWARD', a.resultVersion, { side: 1, award: 'PENALTY', penaltyLevel: level });
     assert.equal(a.athlete1Penalties, level);
     assert.equal(a.athlete1Score, 4);
+    assert.equal(a.athlete2Advantages, level >= 2 ? 1 : 0);
+    assert.equal(a.athlete2Score, level >= 3 ? 2 : 0);
     assert.equal(a.resultData.scoreboard.actions.at(-1).penaltyLevel, level);
   }
+  assert.equal(a.proposedWinnerId, athleteIds[1]);
+  assert.equal(a.proposedWinMethod, 'DISQUALIFICATION');
+  assert.equal(a.resultData.scoreboard.runningSince, null);
   await cmd(first.id, 'AWARD', a.resultVersion, { side: 1, award: 'PENALTY', penaltyLevel: 4 }, 400);
   await cmd(first.id, 'AWARD', a.resultVersion, { side: 1, award: 'PENALTY', penaltyLevel: 5 }, 400);
   const penaltyReload = await request(boardPath(first.id), scorer);
   assert.equal(penaltyReload.athlete1Penalties, 4);
+  assert.equal(penaltyReload.athlete2Advantages, 1);
+  assert.equal(penaltyReload.athlete2Score, 2);
   a = await cmd(first.id, 'UNDO', a.resultVersion);
   assert.equal(a.athlete1Penalties, 3);
   assert.equal(a.resultData.scoreboard.actions.at(-1).undone, true);
   a = await cmd(first.id, 'AWARD', a.resultVersion, { side: 1, award: 'PENALTY', penaltyLevel: 4 });
+  // Undo all penalties before exercising other scoring and submission actions.
+  for (let level = 3; level >= 0; level--) {
+    a = await cmd(first.id, 'UNDO', a.resultVersion);
+    assert.equal(a.athlete1Penalties, level);
+    assert.equal(a.athlete2Advantages, level >= 2 ? 1 : 0);
+    assert.equal(a.athlete2Score, level >= 3 ? 2 : 0);
+  }
   a = await cmd(first.id, 'AWARD', a.resultVersion, { side: 2, award: 'PENALTY', penaltyLevel: 1 });
-  assert.equal(a.athlete1Penalties, 4);
+  assert.equal(a.athlete1Penalties, 0);
   assert.equal(a.athlete2Penalties, 1);
   a = await cmd(first.id, 'AWARD', a.resultVersion, { side: 1, award: 'ADVANTAGE' });
   a = await cmd(first.id, 'AWARD', a.resultVersion, { side: 1, award: 'SUBMISSION' });
@@ -118,8 +132,7 @@ try {
   assert.equal(a.resultData.scoreboard.runningSince, null);
   const reloaded = await request(boardPath(first.id), scorer);
   assert.equal(reloaded.resultData.scoreboard.remainingMs, a.resultData.scoreboard.remainingMs);
-  a = await cmd(first.id, 'RESUME', a.resultVersion);
-  a = await cmd(first.id, 'PAUSE', a.resultVersion);
+  await cmd(first.id, 'RESUME', a.resultVersion, {}, 400);
   await cmd(first.id, 'FINISH', a.resultVersion, { winnerId: athleteIds[2], winMethod: 'POINTS' }, 400);
   await db.match.update({ where: { id: final.id }, data: { athlete1Id: athleteIds[3] } });
   await cmd(first.id, 'FINISH', a.resultVersion, { winnerId: athleteIds[0], winMethod: 'SUBMISSION' }, 409);

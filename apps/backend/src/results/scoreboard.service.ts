@@ -3,11 +3,12 @@ import { BadRequestException, ConflictException, HttpException, Injectable, NotF
 import { MatchStatus, Prisma, ResultStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { MatchesService } from '../matches/matches.service';
-import { ScoreboardCommandDto } from './dto/scoreboard.dto';
+import { SCOREBOARD_AWARDS, ScoreboardCommandDto } from './dto/scoreboard.dto';
 
 const SCOREBOARD_LEASE_MS = 20_000;
+const MAX_SCORE = 50;
 
-type Award = { id: number; side: number; award: string; points: number; remainingMs: number; at: string; actor: string; penaltyLevel?: number; undone?: boolean };
+type Award = { id: number; side: number; award: string; points: number; remainingMs: number; at: string; actor: string; penaltyLevel?: number; opponentAward?: { side: number; award: 'ADVANTAGE' | 'POINTS'; points: number }; scoreChanges?: { side: number; before: number; after: number }[]; undone?: boolean };
 type Clock = { remainingMs: number; runningSince: string | null; actions: Award[]; finishedAt?: string };
 
 @Injectable()
@@ -22,6 +23,12 @@ export class ScoreboardService {
     return db.match.findUnique({ where: { id }, include: { category: { select: { name: true, matchDurationSeconds: true } }, event: { select: { name: true } } } });
   }
 
+  private terminal(match: any, clock: Clock) {
+    return match.athlete1Score >= MAX_SCORE || match.athlete2Score >= MAX_SCORE
+      || match.athlete1Penalties >= 4 || match.athlete2Penalties >= 4
+      || clock.actions.some((action) => !action.undone && action.award === 'SUBMISSION');
+  }
+
   private outcome(match: any, clock: Clock) {
     const actions = clock.actions.filter((action) => !action.undone);
     const submission = [...actions].reverse().find((action) => action.award === 'SUBMISSION');
@@ -30,12 +37,15 @@ export class ScoreboardService {
       const winnerSide = match.athlete1Penalties >= 4 ? 2 : 1;
       return { winnerId: winnerSide === 1 ? match.athlete1Id : match.athlete2Id, method: 'DISQUALIFICATION', reason: 'Đối thủ nhận đủ 4 lần phạt' };
     }
+    if (match.athlete1Score >= MAX_SCORE || match.athlete2Score >= MAX_SCORE) {
+      const firstReached = actions.find((action) => action.scoreChanges?.some((change) => change.after >= MAX_SCORE));
+      const firstSide = firstReached?.scoreChanges?.find((change) => change.after >= MAX_SCORE)?.side
+        ?? (match.athlete1Score >= MAX_SCORE && match.athlete2Score < MAX_SCORE ? 1 : match.athlete2Score >= MAX_SCORE && match.athlete1Score < MAX_SCORE ? 2 : null);
+      return firstSide ? { winnerId: firstSide === 1 ? match.athlete1Id : match.athlete2Id, method: 'POINTS', reason: 'Đạt 50 điểm trước' } : null;
+    }
     if (match.athlete1Score !== match.athlete2Score) return { winnerId: match.athlete1Score > match.athlete2Score ? match.athlete1Id : match.athlete2Id, method: 'POINTS', reason: 'Nhiều điểm hơn' };
     if (match.athlete1Advantages !== match.athlete2Advantages) return { winnerId: match.athlete1Advantages > match.athlete2Advantages ? match.athlete1Id : match.athlete2Id, method: 'DECISION', reason: 'Điểm hòa; nhiều lợi thế hơn' };
     if (match.athlete1Penalties !== match.athlete2Penalties) return { winnerId: match.athlete1Penalties < match.athlete2Penalties ? match.athlete1Id : match.athlete2Id, method: 'DECISION', reason: 'Điểm và lợi thế hòa; ít lần phạt hơn' };
-    const attack1 = actions.filter((action) => action.side === 1 && action.award === 'ATTACK').length;
-    const attack2 = actions.filter((action) => action.side === 2 && action.award === 'ATTACK').length;
-    if (attack1 !== attack2) return { winnerId: attack1 > attack2 ? match.athlete1Id : match.athlete2Id, method: 'DECISION', reason: 'Các chỉ số hòa; trọng tài ghi nhận chủ động tấn công nhiều hơn' };
     return null;
   }
 
@@ -149,8 +159,8 @@ export class ScoreboardService {
       } else {
         if (match.status !== 'RUNNING') throw new BadRequestException('Hãy bắt đầu trận đấu trước');
         if (dto.action === 'RESUME') {
-          if (clock.actions.some((action) => !action.undone && action.award === 'SUBMISSION') || match.athlete1Penalties >= 4 || match.athlete2Penalties >= 4) {
-            throw new BadRequestException('Trận đã kết thúc bằng submission hoặc truất quyền; hãy hoàn tác nếu cần sửa');
+          if (this.terminal(match, clock)) {
+            throw new BadRequestException('Trận đã có người thắng bằng submission, truất quyền hoặc đạt 50 điểm; hãy hoàn tác nếu cần sửa');
           }
           if (clock.runningSince || remaining === 0) throw new BadRequestException('Đồng hồ đang chạy hoặc đã hết giờ');
           clock.runningSince = now.toISOString();
@@ -168,20 +178,27 @@ export class ScoreboardService {
             clock.actions[index] = award;
             direction = -1;
           } else {
-            if (clock.actions.some((action) => !action.undone && action.award === 'SUBMISSION') || match.athlete1Penalties >= 4 || match.athlete2Penalties >= 4) {
-              throw new BadRequestException('Trận đã kết thúc bằng submission hoặc truất quyền; hãy hoàn tác nếu cần sửa');
+            if (this.terminal(match, clock)) {
+              throw new BadRequestException('Trận đã có người thắng bằng submission, truất quyền hoặc đạt 50 điểm; hãy hoàn tác nếu cần sửa');
             }
             if (!dto.side || !dto.award) throw new BadRequestException('Thiếu VĐV hoặc loại điểm');
+            if (!SCOREBOARD_AWARDS.includes(dto.award)) throw new BadRequestException('Loại điểm không được hỗ trợ');
             if (dto.award === 'POINTS' && !dto.points) throw new BadRequestException('Thiếu số điểm');
             if (dto.penaltyLevel !== undefined) {
               if (dto.award !== 'PENALTY') throw new BadRequestException('Mốc phạt chỉ dùng cho thao tác phạt');
-              const currentPenalties = dto.side === 1 ? match.athlete1Penalties : match.athlete2Penalties;
-              if (dto.penaltyLevel !== currentPenalties + 1) {
-                throw new BadRequestException('Chỉ có thể ghi nhận mốc phạt tiếp theo');
-              }
             }
             award = { id: match.resultVersion + 1, side: dto.side, award: dto.award, points: dto.award === 'POINTS' ? dto.points : 1, remainingMs: remaining, at: now.toISOString(), actor: userId };
-            if (dto.penaltyLevel !== undefined) award.penaltyLevel = dto.penaltyLevel;
+            if (dto.award === 'PENALTY') {
+              const currentPenalties = dto.side === 1 ? match.athlete1Penalties : match.athlete2Penalties;
+              const penaltyLevel = currentPenalties + 1;
+              if (penaltyLevel > 4 || (dto.penaltyLevel !== undefined && dto.penaltyLevel !== penaltyLevel)) {
+                throw new BadRequestException('Chỉ có thể ghi nhận mốc phạt tiếp theo');
+              }
+              award.penaltyLevel = penaltyLevel;
+              const opponentSide = dto.side === 1 ? 2 : 1;
+              if (penaltyLevel === 2) award.opponentAward = { side: opponentSide, award: 'ADVANTAGE', points: 1 };
+              if (penaltyLevel === 3) award.opponentAward = { side: opponentSide, award: 'POINTS', points: 2 };
+            }
             clock.actions.push(award);
           }
           const suffix = { POINTS: 'Score', ADVANTAGE: 'Advantages', PENALTY: 'Penalties' }[award.award];
@@ -189,7 +206,25 @@ export class ScoreboardService {
             const field = `athlete${award.side}${suffix}`;
             update[field] = Math.max(0, match[field] + direction * award.points);
           }
-          if (award.award === 'SUBMISSION' || (award.award === 'PENALTY' && dto.penaltyLevel === 4)) {
+          // Keep the opponent award in the same action so undo reverses both atomically.
+          if (award.opponentAward) {
+            const opponentAward = award.opponentAward;
+            const field = `athlete${opponentAward.side}${opponentAward.award === 'ADVANTAGE' ? 'Advantages' : 'Score'}`;
+            update[field] = Math.max(0, match[field] + direction * opponentAward.points);
+          }
+          if (direction === 1) {
+            for (const side of [1, 2]) {
+              const field = `athlete${side}Score`;
+              const proposedScore = award.award === 'SUBMISSION' && award.side === side ? MAX_SCORE : update[field];
+              if (typeof proposedScore !== 'number') continue;
+              const after = Math.min(MAX_SCORE, Math.max(0, proposedScore));
+              update[field] = after;
+              (award.scoreChanges ||= []).push({ side, before: match[field], after });
+            }
+          } else if (award.scoreChanges) {
+            for (const change of award.scoreChanges) update[`athlete${change.side}Score`] = change.before;
+          }
+          if (this.terminal({ ...match, ...update }, clock)) {
             clock.remainingMs = remaining;
             clock.runningSince = null;
           }
@@ -205,6 +240,9 @@ export class ScoreboardService {
             throw new BadRequestException(`Kết quả phải theo bảng điểm: ${outcome.reason}`);
           }
           if (!outcome && dto.winMethod !== 'DECISION') throw new BadRequestException('Khi mọi chỉ số bằng nhau, chọn Quyết định trọng tài');
+          update.athlete1Score = Math.min(MAX_SCORE, match.athlete1Score || 0);
+          update.athlete2Score = Math.min(MAX_SCORE, match.athlete2Score || 0);
+          if (outcome?.method === 'SUBMISSION') update[outcome.winnerId === match.athlete1Id ? 'athlete1Score' : 'athlete2Score'] = MAX_SCORE;
           clock.remainingMs = remaining;
           clock.runningSince = null;
           clock.finishedAt = now.toISOString();

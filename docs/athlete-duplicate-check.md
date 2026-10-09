@@ -1,8 +1,12 @@
 # Kiểm tra hồ sơ VĐV trùng
 
-Đăng ký công khai yêu cầu số CCCD (12 chữ số) hoặc passport (5–20 ký tự chữ/số), kể cả khi OCR tắt. Giao diện kiểm tra trước khi tải ảnh lên; backend kiểm tra lại trong transaction trước khi tạo hồ sơ. Nhập lại số giấy tờ không tạo thêm hồ sơ hay vé. Toàn bộ danh sách đăng ký được rollback nếu một VĐV bị trùng.
+Trước khi chạy phiên bản có kiểm tra CCCD, áp dụng migration bằng `npm run prisma:deploy`, rồi kiểm tra với `npm run prisma:status`. Các lệnh migration đọc `.env` ở thư mục gốc giống backend. Hai migration `20261008010000_athlete_identity` và `20261008020000_athlete_identity_numbers` tạo bảng `AthleteIdentity` và các cột hash/số giấy tờ mã hóa; thiếu chúng sẽ làm API trả lỗi database thay vì kết quả kiểm tra trùng.
 
-Giao diện tự gọi `POST /participant-auth/identity/lookup` sau khi nhập đủ số giấy tờ. Nếu đã có hồ sơ, người dùng đối chiếu SĐT từng dùng (bao gồm SĐT người đại diện trong đăng ký cũ), hoặc họ tên và ngày sinh. Trước khi khớp, API chỉ trả hướng dẫn xác nhận; không trả họ tên, ngày sinh hay mã vé. Hồ sơ được điền sau khi khớp và cần được người dùng xác nhận.
+Đăng ký công khai yêu cầu số CCCD (12 chữ số) hoặc passport (5–20 ký tự chữ/số), kể cả khi OCR tắt. Trang `/events/[eventId]/register` chỉ kiểm tra trùng khi người dùng bấm gửi hồ sơ: gọi `POST /participant-auth/identity/check` trước khi tải ảnh lên và hiển thị lỗi API nếu giấy tờ đã được sử dụng. Backend kiểm tra lại trong transaction trước khi tạo hồ sơ. Toàn bộ danh sách đăng ký được rollback nếu một VĐV bị trùng. Nhập hoặc sửa số giấy tờ không gọi API tra cứu, không tự điền hồ sơ và không khóa nút gửi.
+
+Sau khi đủ thông tin VĐV và nội dung thi đấu, bước kiểm tra trùng chạy trước bước yêu cầu đủ ảnh: CCCD đã có sẽ báo trùng cả khi chưa chọn ảnh. Lỗi gửi hồ sơ được giữ trong khung đỏ cạnh nút gửi; không chỉ xuất hiện dưới dạng thông báo tự tắt. Sửa thông tin VĐV hoặc gửi lại sẽ xóa lỗi trước đó.
+
+API `POST /participant-auth/identity/lookup` vẫn hỗ trợ dùng lại hồ sơ, nhưng trang đăng ký công khai không sử dụng API này. Với client dùng API này, người dùng đối chiếu SĐT từng dùng (bao gồm SĐT người đại diện trong đăng ký cũ), hoặc họ tên và ngày sinh. Trước khi khớp, API chỉ trả hướng dẫn xác nhận; không trả họ tên, ngày sinh hay mã vé. Hồ sơ chỉ được dùng lại sau khi khớp và được người dùng xác nhận.
 
 Token xác nhận có thời hạn 30 phút, ràng buộc hồ sơ, số giấy tờ, sự kiện và SĐT dùng để đối chiếu. Backend xác minh token trước khi dùng lại hồ sơ. Người dùng không thể truyền athleteId bất kỳ để lấy hồ sơ của người khác. Dữ liệu cá nhân của hồ sơ cũ không bị ghi đè bởi form đăng ký.
 
@@ -23,7 +27,10 @@ Bảng `AthleteIdentity` lưu hash để đối chiếu và số CCCD/passport m
 
 Hồ sơ cũ lấy số từ dữ liệu OCR nếu có. Hash đã lưu trước đó không thể chuyển ngược thành số; hồ sơ không có số/OCR vẫn hiển thị ảnh giấy tờ, cần nhập lại số qua API quản trị hoặc xác nhận OCR để hiển thị số. Dữ liệu OCR cũ được đối chiếu khi kiểm tra. Advisory lock dùng chung cho các đường tạo hồ sơ để chặn hai yêu cầu đồng thời. Migration không gộp hoặc xóa hồ sơ cũ; cần rà soát hạng đấu, trận đấu và vé trước khi xử lý các bản trùng đã tồn tại.
 
-Chiều cao và cân nặng không bắt buộc khi đăng ký thi đấu (công khai hoặc CMS). Hồ sơ chỉ hiển thị hai thông số khi đã nhập. Nếu có cân nặng, hệ thống vẫn kiểm tra giới hạn hạng đấu; bỏ trống cân nặng không chặn đăng ký.
+Trang đăng ký công khai không có trường địa chỉ theo giấy tờ, chiều cao hoặc cân nặng. Backend và CMS vẫn hỗ trợ các thông tin này; chiều cao và cân nặng không bắt buộc. Hồ sơ chỉ hiển thị hai thông số khi đã nhập. Nếu có cân nặng, hệ thống vẫn kiểm tra giới hạn hạng đấu; bỏ trống cân nặng không chặn đăng ký.
 
 Kiểm tra database và API cục bộ:
+`npm run build:backend` rồi `node tests/integration/athlete-identity-live.mjs` khi backend đang chạy trên cổng 4000. Bài kiểm tra dùng PostgreSQL local thật, xác minh CCCD mới/sai định dạng/trùng (kể cả khoảng trắng), và xóa duy nhất hồ sơ giả do nó tạo.
+
+Kiểm tra bổ sung với môi trường Docker tương ứng:
 `Get-Content -Raw tests/integration/athlete-identity-database.cjs | docker compose exec -T backend node`

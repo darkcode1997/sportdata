@@ -945,16 +945,16 @@ export class MatchesService {
         include: { athlete: { include: {
           country: { select: { code: true, name: true, flagUrl: true } },
           federation: { select: { id: true, name: true } },
-          events: { where: { id: eventId }, select: { id: true } },
-          categories: { where: { id: categoryId }, select: { id: true } },
         } } },
       }),
       db.fop.findMany({ where: { eventId }, orderBy: { id: 'asc' }, select: { id: true, name: true } }),
     ]);
     if (!event) throw new NotFoundException('Không tìm thấy sự kiện');
     if (!category) throw new BadRequestException('Hạng đấu không thuộc sự kiện');
+    // CompetitionEntry records registration for this event/category; legacy
+    // athlete links must not exclude verified entries from the draw roster.
     const eligibleEntries = entries.filter((entry) => entry.status === EntryStatus.VERIFIED
-      && entry.type === 'INDIVIDUAL' && entry.athlete && entry.athlete.events.length && entry.athlete.categories.length);
+      && entry.type === 'INDIVIDUAL' && entry.athlete);
     return { event, category, entries, eligibleEntries, fops };
   }
 
@@ -968,7 +968,7 @@ export class MatchesService {
       return value;
     };
     return createHash('sha256').update(JSON.stringify(canonical({
-      algorithm: 2, event: input.event, category: input.category, entries: input.entries, fops: input.fops, pairs, options,
+      algorithm: 3, event: input.event, category: input.category, entries: input.entries, fops: input.fops, pairs, options,
     }))).digest('hex');
   }
 

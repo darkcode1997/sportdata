@@ -1,8 +1,17 @@
+'use client';
+
+import { useState } from 'react';
+import Image from 'next/image';
+import { UserRound } from 'lucide-react';
+import { imageUrl } from '@/lib/image-url';
 import styles from './MatchScoreboard.module.css';
 
 type Props = {
   side: 1 | 2;
+  athleteId?: string;
   athleteName: string;
+  athletePhotoUrl?: string | null;
+  athleteUnit: string;
   score: number;
   penalties: number;
   advantages: number;
@@ -14,11 +23,23 @@ type Props = {
   onPoints: (points: number) => void;
 };
 
-/** Structural conversion of one athlete row in scoreboard.html. */
-export function ScoreboardAthleteRow({ side, athleteName, score, penalties, advantages, submissionAwarded, disabled, onSubmission, onAdvantage, onPenalty, onPoints }: Props) {
+export function ScoreboardAthleteRow({ side, athleteId, athleteName, athletePhotoUrl, athleteUnit, score, penalties, advantages, submissionAwarded, disabled, onSubmission, onAdvantage, onPenalty, onPoints }: Props) {
   const corner = side === 1 ? 'Đỏ' : 'Xanh';
+  const avatarUrl = imageUrl(athletePhotoUrl || (athleteId ? `/api/participant-auth/avatar/${athleteId}` : undefined), 'portrait');
+  const [failedAvatarUrl, setFailedAvatarUrl] = useState<string>();
   return (
     <section className={`${styles.row} ${side === 1 ? styles.red : styles.cyan}`} aria-label={`Bảng điểm ${corner}: ${athleteName}`} title={`${corner}: ${athleteName}`}>
+      <div className={styles.athleteIdentity}>
+        <div className={styles.avatar}>
+          {avatarUrl && failedAvatarUrl !== avatarUrl ? (
+            <Image src={avatarUrl} alt={`Ảnh đại diện ${athleteName}`} fill unoptimized sizes="9vw" className={styles.avatarImage} onError={() => setFailedAvatarUrl(avatarUrl)} />
+          ) : <UserRound className={styles.avatarPlaceholder} aria-hidden="true" />}
+        </div>
+        <div className={styles.athleteInfo}>
+          <div className={styles.athleteName} title={athleteName}>{athleteName}</div>
+          <div className={styles.athleteUnit} title={athleteUnit}>{athleteUnit}</div>
+        </div>
+      </div>
       <div className={styles.actionGroup}>
         <div className={styles.actionColumn}>
           <div className={styles.submissionRow}>
@@ -52,7 +73,9 @@ export function ScoreboardAthleteRow({ side, athleteName, score, penalties, adva
           {[2, 3, 4].map((points) => <button type="button" key={points} className={styles.point} disabled={disabled} aria-label={`Cộng ${points} điểm cho ${athleteName}`} onClick={() => onPoints(points)}>{points}</button>)}
         </div>
       </div>
-      <span className={styles.score} aria-label={`Điểm ${athleteName}`}>{score}</span>
+      <div className={styles.scoreContainer}>
+        <span className={styles.score} aria-label={`Điểm ${athleteName}`}>{score}</span>
+      </div>
     </section>
   );
 }

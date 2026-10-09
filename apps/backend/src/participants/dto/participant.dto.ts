@@ -239,6 +239,12 @@ export class AdminCreateRegistrationDto {
   paymentNote?: string;
 }
 
+export class UpdateRegistrationCategoryDto {
+  @IsString()
+  @MinLength(1)
+  categoryId: string;
+}
+
 export class UpdateRegistrationStatusDto {
   @IsEnum(RegistrationStatus)
   status: RegistrationStatus;
