@@ -30,7 +30,6 @@ type Sport = {
 
 type EventItem = {
   id: string;
-  bannerUrl?: string | null;
   sportId?: string | null;
   sport?: Pick<Sport, 'id'> | null;
   sports?: Array<Pick<Sport, 'id'>>;
@@ -168,9 +167,9 @@ export default function EventPlatformsPage() {
           <div className={filteredSports.length <= 2 ? 'grid gap-6 md:grid-cols-2' : 'grid gap-6 md:grid-cols-2 xl:grid-cols-3'}>
             {filteredSports.map((sport, index) => {
               const sportEvents = events.filter((event) => belongsToSport(event, sport.id));
-              const cover = sport.backgroundUrl || sportEvents.find((event) => event.bannerUrl)?.bannerUrl;
+              const cover = imageUrl(sport.backgroundUrl, 'card');
               const backgroundImage = cover
-                ? `linear-gradient(180deg, rgba(5,8,18,.22) 0%, rgba(5,8,18,.52) 48%, rgba(5,8,18,.96) 100%), url("${imageUrl(cover, 'card')!.replace(/"/g, '%22')}")`
+                ? `linear-gradient(180deg, rgba(5,8,18,.22) 0%, rgba(5,8,18,.52) 48%, rgba(5,8,18,.96) 100%), url("${cover.replace(/"/g, '%22')}")`
                 : fallbackBackgrounds[index % fallbackBackgrounds.length];
               const lightBackground = cover
                 ? `linear-gradient(180deg, rgba(255,255,255,.78) 0%, rgba(255,255,255,.92) 48%, rgba(255,255,255,.98) 100%), url("${cover.replace(/"/g, '%22')}")`
