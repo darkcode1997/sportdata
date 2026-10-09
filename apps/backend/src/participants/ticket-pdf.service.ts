@@ -93,8 +93,8 @@ export class TicketPdfService {
       content: pages,
       info: {
         title: batch
-          ? `Bộ vé A6 ${batch.referenceCode}`
-          : `Vé A6 ${tickets[0]?.ticketCode || ""}`,
+          ? `Bộ thẻ ${batch.referenceCode}`
+          : `Thẻ ${tickets[0]?.ticketCode || ""}`,
         author: "SportData Việt Nam",
         subject: "Thẻ đeo vận động viên khổ A6",
       },
@@ -154,7 +154,7 @@ export class TicketPdfService {
                       margin: [0, 3, 0, 0],
                     },
                     {
-                      text: "Các trang tiếp theo là vé A6 riêng để in, cắt và cấp cho từng vận động viên.",
+                      text: "Các trang tiếp theo là thẻ riêng để in, cắt và cấp cho từng vận động viên.",
                       color: "#475569",
                       margin: [0, 12, 0, 0],
                     },
@@ -169,7 +169,7 @@ export class TicketPdfService {
           margin: [10, 0, 10, 0],
         },
         {
-          text: "Mỗi vé có QR độc lập để kiểm tra thông tin và trạng thái check-in.",
+          text: "Mỗi thẻ có QR độc lập để kiểm tra thông tin và trạng thái check-in.",
           color: "#cbd5e1",
           alignment: "center",
           fontSize: 8,
@@ -235,7 +235,7 @@ export class TicketPdfService {
         offset += length;
       }
     }
-    throw new Error('Ảnh nền vé không phải JPG/PNG hợp lệ');
+    throw new Error('Ảnh nền thẻ không phải JPG/PNG hợp lệ');
   }
 
   private dataUrl(data?: Buffer | null, mimeType?: string | null) {

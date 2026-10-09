@@ -3,6 +3,10 @@
 import { App, ConfigProvider, theme } from 'antd';
 import type { ThemeConfig } from 'antd';
 import viVN from 'antd/locale/vi_VN';
+import dayjs from 'dayjs';
+import 'dayjs/locale/vi';
+
+dayjs.locale('vi');
 
 export type SportdataColorMode = 'light' | 'dark';
 

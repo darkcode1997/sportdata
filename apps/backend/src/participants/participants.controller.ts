@@ -2,6 +2,7 @@ import { ImageVariant, ImageVariantPipe } from '../storage/image-variant';
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Header,
   Param,
@@ -311,6 +312,13 @@ export class ParticipantsController {
       dto.reason,
       request.user?.email || request.user?.username || request.user?.sub || 'CMS',
     );
+  }
+
+  @Delete('admin/registrations/:id')
+  @UseGuards(JwtAuthGuard)
+  @Roles(UserRole.ADMIN, UserRole.GAMES_ADMIN)
+  deleteRegistration(@Param('id') id: string) {
+    return this.service.deleteRegistration(id);
   }
 
   @Patch('admin/registrations/:id/payment-status')

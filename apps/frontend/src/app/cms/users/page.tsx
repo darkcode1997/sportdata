@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import useSWR from 'swr';
 import {
-  Alert,
   Avatar,
   Button,
   Form,
@@ -203,12 +202,6 @@ export default function CmsUsersPage() {
         description="Quản lý người vận hành, vai trò và quyền truy cập trung tâm quản trị."
         icon={<UserCog className="h-6 w-6" />}
         action={<Button type="primary" size="large" icon={<Plus className="h-4 w-4" />} onClick={create}>Thêm tài khoản</Button>}
-      />
-
-      <Alert
-        type="info"
-        showIcon
-        message="Đây là tài khoản nhân sự vận hành CMS, không phải tài khoản vận động viên hoặc đơn vị thể thao."
       />
       <Table<CmsUser>
         rowKey="id"

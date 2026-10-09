@@ -201,6 +201,31 @@ export class MatchesService {
     if (sportId) where.category = { sportId };
     if (fopId) where.fopId = fopId;
     const additionalFilters: Prisma.MatchWhereInput[] = [];
+    if (query.federationId) {
+      additionalFilters.push({ OR: [
+        { athlete1: { federationId: query.federationId } },
+        { athlete2: { federationId: query.federationId } },
+        { participants: { some: { athlete: { federationId: query.federationId } } } },
+      ] });
+    }
+    if (query.hideByes === 'true') {
+      additionalFilters.push({
+        OR: [
+          { winMethod: null },
+          { NOT: {
+            drawId: { not: null },
+            status: MatchStatus.FINISHED,
+            winMethod: WinMethod.WALKOVVER,
+            resultStatus: ResultStatus.DRAFT,
+            resultEnteredAt: null,
+            OR: [
+              { athlete1Id: null, team1Id: null },
+              { athlete2Id: null, team2Id: null },
+            ],
+          } },
+        ],
+      });
+    }
     const name = athleteName?.trim();
     const opponent = opponentName?.trim();
     if (name && opponent) {

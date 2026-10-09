@@ -1,10 +1,12 @@
 'use client';
 
+import { ToastNotice } from '@/components/ToastNotice';
+
 import { useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import axios from 'axios';
-import { Alert, Button, Card, Form, Input } from 'antd';
+import { Button, Card, Form, Input } from 'antd';
 import { ArrowLeft, Eye, EyeOff, KeyRound, Lock, Trophy } from 'lucide-react';
 import { useSportDataToast } from '@/hooks/useSportDataToast';
 
@@ -38,7 +40,6 @@ export function ResetPasswordForm() {
         password,
       });
       setSuccess(response.data.message);
-      toast.success(response.data.message);
       setPassword('');
       setConfirmation('');
     } catch (requestError: any) {
@@ -77,7 +78,7 @@ export function ResetPasswordForm() {
 
         <Card className="border-sdark-700 bg-sdark-900 shadow-2xl shadow-black/20">
           {!token && (
-            <Alert
+            <ToastNotice
               className="mb-5"
               type="error"
               showIcon

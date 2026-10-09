@@ -1,11 +1,13 @@
 'use client';
 
+import { ToastNotice } from '@/components/ToastNotice';
+
 import { imageUrl } from '@/lib/image-url';
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import useSWR from 'swr';
-import { Alert, Button, Empty, Input, Skeleton, Tag } from 'antd';
+import { Button, Empty, Input, Skeleton, Tag } from 'antd';
 import { ArrowRight, CalendarDays, Dumbbell, Search, Tags } from 'lucide-react';
 import { fetcher } from '@/lib/api';
 
@@ -71,7 +73,7 @@ export default function SportsDirectoryPage() {
         </div>
 
         {error && (
-          <Alert
+          <ToastNotice
             showIcon
             type="error"
             message="Không thể tải danh sách bộ môn"

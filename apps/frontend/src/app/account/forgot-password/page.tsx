@@ -1,8 +1,10 @@
 'use client';
 
+import { ToastNotice } from '@/components/ToastNotice';
+
 import { useState } from 'react';
 import Link from 'next/link';
-import { Alert, Button, Card, Form, Input } from 'antd';
+import { Button, Card, Form, Input } from 'antd';
 import { ArrowLeft, KeyRound, Mail } from 'lucide-react';
 import { useSportDataToast } from '@/hooks/useSportDataToast';
 import { participantApi, participantError } from '@/lib/participant-auth';
@@ -23,7 +25,6 @@ export default function ParticipantForgotPasswordPage() {
     try {
       const { data } = await participantApi.post<ForgotPasswordResponse>('/participant-auth/forgot-password', values);
       setResult(data);
-      toast.success(data.message);
     } catch (error) {
       toast.error(participantError(error, 'Không thể gửi yêu cầu lúc này. Vui lòng thử lại.'));
     } finally {
@@ -39,7 +40,7 @@ export default function ParticipantForgotPasswordPage() {
         </p>
 
         {result && (
-          <Alert
+          <ToastNotice
             className="mb-5"
             type="success"
             showIcon

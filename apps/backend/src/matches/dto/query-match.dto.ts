@@ -13,6 +13,16 @@ import { Type } from 'class-transformer';
 import { MatchStatus } from '@prisma/client';
 
 export class QueryMatchDto {
+  @ApiPropertyOptional({ description: 'Lọc trận có VĐV thuộc đơn vị / CLB' })
+  @IsString()
+  @IsOptional()
+  federationId?: string;
+
+  @ApiPropertyOptional({ description: 'Hide completed automatic bracket byes from match lists', enum: ['true', 'false'] })
+  @IsIn(['true', 'false'])
+  @IsOptional()
+  hideByes?: 'true' | 'false';
+
   @ApiPropertyOptional({ description: 'Tên VĐV, ở bất kỳ bên nào của trận' })
   @IsString()
   @IsOptional()

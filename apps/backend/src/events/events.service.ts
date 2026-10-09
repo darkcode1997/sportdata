@@ -7,6 +7,7 @@ import { StorageService } from '../storage/storage.service';
 import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
 import { QueryEventsDto } from './dto/query-events.dto';
+import { QueryRegistrationSummaryDto } from './dto/query-registration-summary.dto';
 import { QueryEligibleAthletesDto } from './dto/query-eligible-athletes.dto';
 import { CreateEventFopDto, UpdateEventFopDto } from './dto/event-fop.dto';
 import { EventAgeLimitMode, EventLevel, PaymentMode, PaymentProvider, Prisma } from '@prisma/client';
@@ -190,6 +191,73 @@ export class EventsService {
     }
 
     return this.serializeEvent(event);
+  }
+
+  async federationFilters(eventId: string) {
+    await this.ensureEvent(eventId);
+    return this.prisma.federation.findMany({
+      where: { OR: [
+        { participatingEvents: { some: { id: eventId } } },
+        { publicRegistrations: { some: { eventId, status: { in: ['SUBMITTED', 'CONFIRMED'] } } } },
+        { athletes: { some: { OR: [
+          { events: { some: { id: eventId } } },
+          { publicRegistrations: { some: { eventId, federationId: null, status: { in: ['SUBMITTED', 'CONFIRMED'] } } } },
+          { matchesAsAthlete1: { some: { eventId } } },
+          { matchesAsAthlete2: { some: { eventId } } },
+          { matchParticipants: { some: { match: { eventId } } } },
+        ] } } },
+      ] },
+      select: { id: true, name: true },
+      orderBy: [{ name: 'asc' }, { id: 'asc' }],
+    });
+  }
+
+  async registrationSummary(eventId: string, query: QueryRegistrationSummaryDto) {
+    await this.ensureEvent(eventId);
+    const scheduledMatch: Prisma.MatchWhereInput = { eventId };
+    if (query.fopId) scheduledMatch.fopId = query.fopId;
+    if (query.date) {
+      const start = new Date(`${query.date}T00:00:00+07:00`);
+      scheduledMatch.matchDate = { gte: start, lt: new Date(start.getTime() + 86_400_000) };
+    }
+    const categories = await this.prisma.category.findMany({
+      where: {
+        events: { some: { id: eventId } },
+        ...(query.sportId ? { sportId: query.sportId } : {}),
+        ...(query.categoryId ? { id: query.categoryId } : {}),
+        ...(query.date || query.fopId ? { matches: { some: scheduledMatch } } : {}),
+      },
+      select: { id: true, name: true, sport: { select: { id: true, name: true } },
+        discipline: true, uniform: true, beltLevel: true },
+      orderBy: [{ sportId: 'asc' }, { name: 'asc' }, { id: 'asc' }],
+    });
+    const where: Prisma.EventRegistrationWhereInput = {
+      eventId, categoryId: { in: categories.map((category) => category.id) },
+      status: { in: ['SUBMITTED', 'CONFIRMED'] },
+      ...(query.federationId ? { OR: [
+        { federationId: query.federationId },
+        { federationId: null, athlete: { federationId: query.federationId } },
+      ] } : {}),
+    };
+    const page = query.page || 1;
+    const limit = 20;
+    const [items, total] = await this.prisma.$transaction([
+      this.prisma.eventRegistration.findMany({
+        where, skip: (page - 1) * limit, take: limit,
+        orderBy: [{ category: { name: 'asc' } }, { athlete: { fullName: 'asc' } }, { id: 'asc' }],
+        select: {
+          id: true, status: true,
+          category: { select: { id: true, name: true, discipline: true, uniform: true, beltLevel: true,
+            sport: { select: { id: true, name: true } } } },
+          athlete: { select: { id: true, fullName: true,
+            country: { select: { code: true, name: true } },
+            federation: { select: { name: true } } } },
+          federation: { select: { name: true } },
+        },
+      }),
+      this.prisma.eventRegistration.count({ where }),
+    ]);
+    return { items, total, page, limit };
   }
 
   async createFop(eventId: string, dto: CreateEventFopDto) {
@@ -463,12 +531,12 @@ export class EventsService {
   }
 
   async uploadTicketBackground(id: string, file?: Express.Multer.File) {
-    if (!file) throw new BadRequestException('Vui lòng chọn ảnh nền vé');
+    if (!file) throw new BadRequestException('Vui lòng chọn ảnh nền thẻ');
     if (!['image/jpeg', 'image/png'].includes(file.mimetype)) {
-      throw new BadRequestException('Ảnh nền vé chỉ hỗ trợ JPG hoặc PNG để bảo đảm tương thích PDF');
+      throw new BadRequestException('Ảnh nền thẻ chỉ hỗ trợ JPG hoặc PNG để bảo đảm tương thích PDF');
     }
     if (file.size > 6 * 1024 * 1024) {
-      throw new BadRequestException('Ảnh nền vé không được vượt quá 6 MB');
+      throw new BadRequestException('Ảnh nền thẻ không được vượt quá 6 MB');
     }
     const validSignature = file.mimetype === 'image/jpeg'
       ? file.buffer.length >= 3 && file.buffer[0] === 0xff && file.buffer[1] === 0xd8 && file.buffer[2] === 0xff
@@ -514,7 +582,7 @@ export class EventsService {
     });
     if (!event) throw new NotFoundException(`Không tìm thấy sự kiện có mã ${id}`);
     if (!event.ticketBackgroundStorageKey || !event.ticketBackgroundMimeType) {
-      throw new NotFoundException('Sự kiện chưa có ảnh nền vé');
+      throw new NotFoundException('Sự kiện chưa có ảnh nền thẻ');
     }
     const url = await this.storage.imageUrl(event.ticketBackgroundStorageKey, variant);
     if (url) return { url };

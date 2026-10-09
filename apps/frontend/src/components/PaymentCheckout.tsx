@@ -1,7 +1,9 @@
 'use client';
 
+import { ToastNotice } from '@/components/ToastNotice';
+
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Button, Card, Descriptions, Image, Segmented, Spin, Tag } from 'antd';
+import { Button, Card, Descriptions, Image, Segmented, Spin, Tag } from 'antd';
 import { Banknote, Clock3, CreditCard, ExternalLink, QrCode, Smartphone } from 'lucide-react';
 import { participantApi, participantError } from '@/lib/participant-auth';
 import { useSportDataToast } from '@/hooks/useSportDataToast';
@@ -138,7 +140,7 @@ export function PaymentCheckout({ ticket, onPaid }: { ticket: ParticipationTicke
               ? checkout?.qrCodeUrl ? 'Tạo lại mã QR chuyển khoản' : 'Tạo mã QR chuyển khoản'
               : `Thanh toán qua ${providerLabels[provider]}`}
           </Button>
-          <Alert
+          <ToastNotice
             showIcon
             type="warning"
             message="Thời hạn hoàn tất thanh toán: 24 giờ"

@@ -10,6 +10,7 @@ import { fetcher } from '@/lib/api';
 import { useSportDataToast } from '@/hooks/useSportDataToast';
 import { participantApi, participantError, setParticipantSession } from '@/lib/participant-auth';
 import { vietnamCountryId } from '@/lib/countries';
+import { capitalizeRegistrationName } from '@/lib/registration-names';
 
 type Country = { id: string; code: string; name: string };
 export default function ParticipantRegisterPage() {
@@ -31,6 +32,7 @@ export default function ParticipantRegisterPage() {
     try {
       const payload = {
         ...values,
+        displayName: capitalizeRegistrationName(values.displayName),
         birthDate: values.birthDate.format('YYYY-MM-DD'),
       };
       const { data } = await participantApi.post('/participant-auth/register', payload);
@@ -53,7 +55,7 @@ export default function ParticipantRegisterPage() {
           <Row gutter={16}>
             <Col xs={24} md={12}>
               <Form.Item name="displayName" label="Họ và tên theo giấy tờ" rules={[{ required: true, min: 2 }]}>
-                <Input size="large" autoComplete="name" />
+                <Input size="large" autoComplete="name" autoCapitalize="words" onBlur={(event) => form.setFieldValue('displayName', capitalizeRegistrationName(event.target.value))} />
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>

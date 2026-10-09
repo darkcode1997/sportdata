@@ -1,17 +1,20 @@
 'use client';
 
+import { ToastNotice } from '@/components/ToastNotice';
+
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import useSWR from 'swr';
 import useSWRInfinite from 'swr/infinite';
-import { Alert, Button, Card, Empty, Form, Input, InputNumber, Select, Skeleton, Spin, Tag } from 'antd';
-import { ArrowRight, Building2, LogIn, Radio, ShieldCheck, TicketCheck, Trophy, UserRound, Users } from 'lucide-react';
+import { Button, Card, Empty, Form, Input, InputNumber, Select, Skeleton, Spin, Table, Tag } from 'antd';
+import { ArrowRight, Building2, CalendarDays, LogIn, MapPin, Radio, ShieldCheck, TicketCheck, Trophy, UserRound, Users } from 'lucide-react';
 import { MatchCard } from '@/components/MatchCard';
 import { MATCH_STATUS_META } from '@/lib/vi-labels';
 import { useSportDataToast } from '@/hooks/useSportDataToast';
 import { useEventScheduleStream } from '@/hooks/useEventScheduleStream';
 import { fetcher } from '@/lib/api';
+import { imageUrl } from '@/lib/image-url';
 import { getParticipantAccount, getParticipantToken, participantApi, participantError, type SportDataAccount } from '@/lib/participant-auth';
 
 interface Sport {
@@ -106,6 +109,8 @@ interface EventData {
   startDate: string;
   endDate: string;
   location?: string | null;
+  bannerUrl?: string | null;
+  logoUrl?: string | null;
   sport?: Sport;
   sports?: Sport[];
   categories?: EventCategory[];
@@ -117,6 +122,19 @@ interface EventData {
   registrationFee?: number;
   registrationCurrency?: string;
   paymentMode?: string;
+}
+
+interface RegistrationSummaryRow {
+  id: string;
+  status: 'SUBMITTED' | 'CONFIRMED';
+  category: EventCategory;
+  athlete: {
+    id: string;
+    fullName: string;
+    country?: { code: string; name: string } | null;
+    federation?: { name: string } | null;
+  };
+  federation?: { name: string } | null;
 }
 
 interface OwnRegistrationState {
@@ -214,6 +232,10 @@ export default function EventDetailPage() {
   const [selectedSportId, setSelectedSportId] = useState<string>();
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>();
   const [selectedFopId, setSelectedFopId] = useState<string>();
+  const [selectedFederationId, setSelectedFederationId] = useState<string>();
+  const { data: eventFederations, isLoading: federationsLoading, error: federationsError } = useSWR<{ id: string; name: string }[]>(
+    eventId ? `/events/${eventId}/federation-filters` : null, fetcher,
+  );
   const [filterForm] = Form.useForm<ScheduleFilters>();
   const [matchFilters, setMatchFilters] = useState<ScheduleFilters>({});
   const hasMatchFilters = Object.values(matchFilters).some((value) => value !== undefined && value !== null && String(value).trim());
@@ -254,7 +276,7 @@ export default function EventDetailPage() {
   useEffect(() => {
     if (!dateGroups.length) return;
     if (!selectedDate || (selectedDate !== 'all' && !dateGroups.some((group) => group.date === selectedDate))) {
-      setSelectedDate(dateGroups[0].date);
+      setSelectedDate('all');
     }
   }, [dateGroups, selectedDate]);
 
@@ -277,8 +299,9 @@ export default function EventDetailPage() {
     if (selectedSportId) query.set('sportId', selectedSportId);
     if (selectedCategoryId) query.set('categoryId', selectedCategoryId);
     if (selectedFopId) query.set('fopId', selectedFopId);
+    if (selectedFederationId) query.set('federationId', selectedFederationId);
     return `/matches?${query}`;
-  }, [eventId, matchFilters, selectedCategoryId, selectedDate, selectedFopId, selectedSportId]);
+  }, [eventId, matchFilters, selectedCategoryId, selectedDate, selectedFopId, selectedSportId, selectedFederationId]);
 
   const {
     data: matchPages,
@@ -338,6 +361,26 @@ export default function EventDetailPage() {
     [eventCategories, selectedSportId],
   );
 
+  const [registrationPage, setRegistrationPage] = useState(1);
+  useEffect(() => {
+    setRegistrationPage(1);
+  }, [selectedSportId, selectedCategoryId, selectedFopId, selectedDate, selectedFederationId]);
+  const registrationSummaryKey = useMemo(() => {
+    if (!eventId) return null;
+    const query = new URLSearchParams();
+    query.set('page', String(registrationPage));
+    if (selectedSportId) query.set('sportId', selectedSportId);
+    if (selectedCategoryId) query.set('categoryId', selectedCategoryId);
+    if (selectedFopId) query.set('fopId', selectedFopId);
+    if (selectedFederationId) query.set('federationId', selectedFederationId);
+    if (selectedDate && selectedDate !== 'all') query.set('date', selectedDate);
+    return `/events/${eventId}/registration-summary?${query}`;
+  }, [eventId, selectedSportId, selectedCategoryId, selectedFopId, selectedDate, registrationPage, selectedFederationId]);
+  const { data: registrationSummary, error: registrationSummaryError, isLoading: registrationSummaryLoading,
+    mutate: mutateRegistrationSummary } = useSWR<{ items: RegistrationSummaryRow[]; total: number }>(
+    registrationSummaryKey, fetcher, { refreshInterval: 15_000 },
+  );
+
   useEffect(() => {
     if (selectedCategoryId && !filteredCategories.some((category) => category.id === selectedCategoryId)) {
       setSelectedCategoryId(undefined);
@@ -381,6 +424,7 @@ export default function EventDetailPage() {
       setSelectedSportId(undefined);
       setSelectedCategoryId(undefined);
       setSelectedFopId(undefined);
+      setSelectedFederationId(undefined);
       setSize(1);
     }
     setPendingLiveMatchId(liveMatchTarget.id);
@@ -405,11 +449,11 @@ export default function EventDetailPage() {
       });
       toast.success({
         content: data.status === 'CONFIRMED'
-          ? `Đăng ký đã được xác nhận. Vé A6 ${data.ticketCode}${data.ticketEmailSent ? ' đã được gửi về email.' : data.ticketEmailQueued ? ' đã sẵn sàng và sẽ được gửi về email.' : ' đã sẵn sàng để tải.'}`
-          : `Đã tiếp nhận hồ sơ ${data.ticketCode}.${data.paymentStatus === 'PENDING' ? ' Mở trang hồ sơ để thanh toán lệ phí.' : ''} Vé A6 sẽ được phát hành và gửi email sau khi hồ sơ được duyệt.`,
+          ? `Đăng ký đã được xác nhận. Thẻ ${data.ticketCode}${data.ticketEmailSent ? ' đã được gửi về email.' : data.ticketEmailQueued ? ' đã sẵn sàng và sẽ được gửi về email.' : ' đã sẵn sàng để tải.'}`
+          : `Đã tiếp nhận hồ sơ ${data.ticketCode}.${data.paymentStatus === 'PENDING' ? ' Mở trang hồ sơ để thanh toán lệ phí.' : ''} Thẻ sẽ được phát hành và gửi email sau khi hồ sơ được duyệt.`,
         duration: 6,
       });
-      await mutateOwnRegistrationState();
+      await Promise.allSettled([mutateOwnRegistrationState(), mutateRegistrationSummary()]);
       if (data.paymentStatus === 'PENDING' && data.feeAmount > 0) {
         router.push(`/tickets/${encodeURIComponent(data.ticketCode)}?payment=1`);
       }
@@ -422,8 +466,23 @@ export default function EventDetailPage() {
 
   return (
     <div className="schedule-page min-h-screen pb-20">
-      <div className="mx-auto w-full max-w-[990px] px-3 pt-8 sm:px-3 sm:pt-10">
-        <header className="text-center">
+        <section className={`event-detail-hero${event?.bannerUrl ? ' has-banner' : ''}`}>
+          {event?.bannerUrl && (
+            <div className="event-detail-banner-wrap">
+              <div className="event-detail-banner-backdrop" style={{ backgroundImage: `url(${JSON.stringify(imageUrl(event.bannerUrl, 'hero'))})` }} aria-hidden="true" />
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img className="event-detail-banner" src={imageUrl(event.bannerUrl, 'hero')} alt={`Banner ${event.name}`} fetchPriority="high" decoding="async" />
+            </div>
+          )}
+        <header className="event-detail-heading">
+          <div className="event-detail-identity">
+            <span className="event-detail-logo">
+              {event?.logoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={imageUrl(event.logoUrl, 'logo')} alt={`Logo ${event.name}`} />
+              ) : <Trophy aria-hidden="true" className="h-10 w-10 text-sky-500" />}
+            </span>
+          </div>
           <h1 className="mx-auto max-w-4xl text-xl font-black uppercase leading-tight text-slate-100 sm:text-2xl lg:text-[1.7rem]">
             {event?.name || 'Lịch thi đấu'}
           </h1>
@@ -439,11 +498,19 @@ export default function EventDetailPage() {
             )}
           </p>
           {eventSports.length > 0 && (
-            <div className="mt-3 flex flex-wrap justify-center gap-2">
+            <div className="event-detail-sports mt-3 flex flex-wrap gap-2">
               {eventSports.map((sport) => <Tag color="blue" key={sport.id}>{sport.name}</Tag>)}
             </div>
           )}
+          {event && (
+            <div className="event-detail-meta">
+              <span><CalendarDays aria-hidden="true" size={16} />{new Date(event.startDate).toLocaleDateString('vi-VN')} – {new Date(event.endDate).toLocaleDateString('vi-VN')}</span>
+              {event.location && <span><MapPin aria-hidden="true" size={16} />{event.location}</span>}
+            </div>
+          )}
         </header>
+        </section>
+      <div className="mx-auto w-full max-w-[1200px] px-3 sm:px-5">
 
         {!registrationState.expired && (
           <Card className="schedule-registration-card mt-7 border-sky-400/20" title={<span className="flex items-center gap-2"><TicketCheck className="h-5 w-5 text-sky-400" />Đăng ký thi đấu</span>} extra={<Tag color={registrationState.open ? 'success' : 'default'}>{registrationState.label}</Tag>}>
@@ -491,7 +558,7 @@ export default function EventDetailPage() {
                       <div className="min-w-0">
                         <strong className="block text-emerald-200">Bạn đã đăng ký tham gia sự kiện này</strong>
                         <span className="mt-1 block truncate text-sm text-slate-400">
-                          {ownRegistrationState.registration.category.name} · {ownRegistrationState.registration.status === 'CONFIRMED' ? 'Mã vé' : 'Mã hồ sơ'} {ownRegistrationState.registration.ticketCode}
+                          {ownRegistrationState.registration.category.name} · {ownRegistrationState.registration.status === 'CONFIRMED' ? 'Mã thẻ' : 'Mã hồ sơ'} {ownRegistrationState.registration.ticketCode}
                         </span>
                       </div>
                     </div>
@@ -502,7 +569,7 @@ export default function EventDetailPage() {
                         {ownRegistrationState.registration.paymentStatus === 'PENDING'
                           ? `Thanh toán ${new Intl.NumberFormat('vi-VN').format(ownRegistrationState.registration.feeAmount)} ${ownRegistrationState.registration.currency}`
                           : ownRegistrationState.registration.status === 'CONFIRMED'
-                            ? 'Xem vé của tôi'
+                            ? 'Xem thẻ của tôi'
                             : 'Theo dõi hồ sơ'}
                       </Button>
                     </Link>
@@ -531,7 +598,7 @@ export default function EventDetailPage() {
                 <div className="flex flex-col gap-3 border-t border-white/10 pt-4 md:flex-row md:items-center md:justify-between">
                   <div>
                     <strong className="block text-slate-200">Đăng ký hộ vận động viên khác</strong>
-                    <span className="text-sm text-slate-400">Bạn là người liên hệ và quản lý các vé được tạo từ lần đăng ký này.</span>
+                    <span className="text-sm text-slate-400">Bạn là người liên hệ và quản lý các thẻ được tạo từ lần đăng ký này.</span>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <Link href={`/events/${eventId}/register?mode=individual&source=account`}>
@@ -571,7 +638,8 @@ export default function EventDetailPage() {
           </Card>
         )}
 
-        <div className="schedule-day-tabs mt-7 flex flex-wrap justify-center gap-2">
+        <div className="event-shared-filter-label mt-7"><strong>Bộ lọc chung</strong><span>Áp dụng cho bảng đăng ký và lịch thi đấu</span></div>
+        <div className="schedule-day-tabs mt-4 flex flex-wrap justify-center gap-2">
           <Button
             type={selectedDate === 'all' ? 'primary' : 'default'}
             shape="round"
@@ -597,8 +665,9 @@ export default function EventDetailPage() {
           })}
         </div>
 
-        <div className="schedule-filter-bar mt-4 grid gap-3 sm:grid-cols-3">
+        <div className="schedule-filter-bar mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Select
+            aria-label="Lọc bộ môn"
             allowClear
             size="large"
             placeholder="Tất cả bộ môn"
@@ -612,6 +681,7 @@ export default function EventDetailPage() {
             options={eventSports.map((sport) => ({ value: sport.id, label: sport.name }))}
           />
           <Select
+            aria-label="Lọc hạng cân / nội dung"
             allowClear
             showSearch
             size="large"
@@ -629,6 +699,7 @@ export default function EventDetailPage() {
             }))}
           />
           <Select
+            aria-label="Lọc sân / FOP"
             allowClear
             showSearch
             size="large"
@@ -642,8 +713,46 @@ export default function EventDetailPage() {
             }}
             options={(event?.fops || []).map((fop) => ({ value: fop.id, label: fop.name }))}
           />
+          <Select
+            aria-label="Lọc đơn vị / CLB"
+            allowClear
+            showSearch
+            size="large"
+            optionFilterProp="label"
+            placeholder="Tất cả đơn vị / CLB"
+            value={selectedFederationId}
+            loading={federationsLoading}
+            notFoundContent={federationsError ? 'Không thể tải đơn vị / CLB' : 'Chưa có đơn vị / CLB'}
+            onChange={(value) => {
+              setPendingLiveMatchId(undefined);
+              setSize(1);
+              setSelectedFederationId(value);
+            }}
+            options={(eventFederations || []).map((federation) => ({ value: federation.id, label: federation.name }))}
+          />
         </div>
 
+        <Card className="event-registration-summary mt-5" title={<span className="flex items-center gap-2"><Users className="h-5 w-5 text-sky-500" />Đăng ký theo hạng cân</span>}
+          extra={registrationSummary && !registrationSummaryError ? <Tag color="blue">{registrationSummary.total.toLocaleString('vi-VN')} lượt đăng ký</Tag> : undefined}>
+          <p className="event-summary-note">Danh sách VĐV tham gia từng hạng cân / nội dung. Chọn hạng cân ở bộ lọc trên để xem danh sách của hạng đó.</p>
+          {(selectedDate && selectedDate !== 'all' || selectedFopId) && <p className="event-summary-note">Đang hiển thị VĐV ở các hạng có lịch đấu trong ngày / sân đã chọn.</p>}
+          {registrationSummaryError ? <div className="event-roster-error">Không thể tải danh sách VĐV. <Button onClick={() => mutateRegistrationSummary()}>Thử lại</Button></div> : (
+            <Table<RegistrationSummaryRow> rowKey="id" size="middle" loading={registrationSummaryLoading} dataSource={registrationSummary?.items || []}
+              scroll={{ x: 900 }} pagination={{ current: registrationPage, pageSize: 20, total: registrationSummary?.total || 0,
+                onChange: setRegistrationPage, showSizeChanger: false, hideOnSinglePage: true }}
+              locale={{ emptyText: 'Chưa có VĐV đăng ký phù hợp với bộ lọc.' }}
+              columns={[
+                { title: 'STT', key: 'index', width: 60, render: (_, __, index) => (registrationPage - 1) * 20 + index + 1 },
+                { title: 'Vận động viên', key: 'athlete', width: 230, render: (_, row) => <strong className="event-roster-name">{row.athlete.fullName}</strong> },
+                { title: 'Đơn vị / CLB', key: 'federation', width: 180, render: (_, row) => row.federation?.name || row.athlete.federation?.name || 'Tự do' },
+                { title: 'Quốc gia', key: 'country', width: 130, render: (_, row) => row.athlete.country?.name || '—' },
+                { title: 'Hạng cân / Nội dung', key: 'category', render: (_, row) => <Link className="event-summary-category" href={`/events/${eventId}/categories/${row.category.id}`}>{categoryLabel(row.category)}<span className="event-roster-sport">{row.category.sport?.name}</span></Link> },
+                { title: 'Trạng thái', key: 'status', width: 140, render: (_, row) => <Tag color={row.status === 'CONFIRMED' ? 'success' : 'gold'}>{row.status === 'CONFIRMED' ? 'Đã xác nhận' : 'Chờ duyệt'}</Tag> },
+              ]} />
+          )}
+        </Card>
+
+        <div className="event-shared-filter-label mt-7"><strong>Lịch thi đấu</strong><span>Tìm kiếm chi tiết trận đấu bên dưới</span></div>
         <Card className="mt-4">
           <Form
             form={filterForm}
@@ -679,6 +788,7 @@ export default function EventDetailPage() {
                 setSelectedSportId(undefined);
                 setSelectedCategoryId(undefined);
                 setSelectedFopId(undefined);
+                setSelectedFederationId(undefined);
                 setPendingLiveMatchId(undefined);
                 setSize(1);
               }}>Xóa bộ lọc</Button>
@@ -689,7 +799,7 @@ export default function EventDetailPage() {
 
         <main className="mt-5 space-y-5">
           {matchesError ? (
-            <Alert type="error" showIcon message="Không thể tải danh sách trận đấu. Vui lòng thử lại." />
+            <ToastNotice type="error" showIcon message="Không thể tải danh sách trận đấu. Vui lòng thử lại." />
           ) : loading ? (
             <ScheduleSkeleton />
           ) : activeMatches.length ? (
@@ -734,7 +844,7 @@ export default function EventDetailPage() {
             <Card className="schedule-empty-card">
               <Empty
                 image={<Trophy className="mx-auto h-12 w-12 text-slate-600" />}
-                description={hasMatchFilters || selectedSportId || selectedCategoryId || selectedFopId
+                description={hasMatchFilters || selectedSportId || selectedCategoryId || selectedFopId || selectedFederationId
                   ? 'Không tìm thấy trận đấu phù hợp. Thử đổi bộ lọc hoặc chọn tất cả ngày.'
                   : selectedDate === 'all' ? 'Chưa có trận đấu trong sự kiện này.' : 'Chưa có trận đấu trong ngày này.'}
               />

@@ -1,9 +1,10 @@
 'use client';
 
+import { ToastNotice } from '@/components/ToastNotice';
+
 import { useState } from 'react';
 import useSWR from 'swr';
 import {
-  Alert,
   App as AntApp,
   Button,
   Card,
@@ -143,7 +144,7 @@ export function CompetitionEntriesPanel({
   return (
     <Space direction="vertical" size="large" className="w-full">
       <Card title="Đăng ký thi đấu" extra={<Space wrap><Button icon={<Users className="h-4 w-4" />} disabled={readOnly} onClick={() => { teamForm.setFieldsValue({ countryId: vietnamCountryId(countries), relay: false }); setTeamOpen(true); }}>Tạo đội/đội tiếp sức</Button><Button type="primary" icon={<Plus className="h-4 w-4" />} disabled={readOnly || !categoryId} onClick={() => setEntryOpen(true)}>Thêm lượt đăng ký</Button></Space>}>
-        <Alert className="mb-4" type="info" showIcon message="Chọn bộ môn → hạng mục → quốc gia → VĐV/đội" description="Danh sách VĐV được lọc phía server theo giới tính, tuổi và cân nặng của hạng mục." />
+        <ToastNotice className="mb-4" type="info" showIcon message="Chọn bộ môn → hạng mục → quốc gia → VĐV/đội" description="Danh sách VĐV được lọc phía server theo giới tính, tuổi và cân nặng của hạng mục." />
         <Typography.Text strong className="mb-2 block">Hạng mục thi đấu</Typography.Text>
         <Select
           showSearch
@@ -172,7 +173,7 @@ export function CompetitionEntriesPanel({
           pagination={{ pageSize: 20, showSizeChanger: true }}
           rowSelection={readOnly ? undefined : { selectedRowKeys: selectedEntryIds, onChange: setSelectedEntryIds }}
         />
-      </Card> : <Alert showIcon message="Chọn hạng mục để quản lý danh sách đăng ký." />}
+      </Card> : <ToastNotice showIcon message="Chọn hạng mục để quản lý danh sách đăng ký." />}
 
       <Modal title="Tạo đội hoặc đội tiếp sức" open={teamOpen} onCancel={() => setTeamOpen(false)} onOk={createTeam} width={680} destroyOnHidden>
         <Form form={teamForm} layout="vertical"><Row gutter={12}><Col span={12}><Form.Item name="sportId" label="Bộ môn" rules={[{ required: true }]}><Select options={sports.map((sport: any) => ({ value: sport.id, label: sport.name }))} /></Form.Item></Col><Col span={12}><Form.Item name="countryId" label="Quốc gia" rules={[{ required: true }]}><Select showSearch optionFilterProp="label" options={countries.map((country: any) => ({ value: country.id, label: `${country.name} · ${country.code}` }))} /></Form.Item></Col></Row><Row gutter={12}><Col span={16}><Form.Item name="name" label="Tên đội" rules={[{ required: true }]}><Input /></Form.Item></Col><Col span={8}><Form.Item name="code" label="Mã đội"><Input /></Form.Item></Col></Row><Form.Item name="relay" label="Loại đội"><Radio.Group options={[{ value: false, label: 'Đội thông thường' }, { value: true, label: 'Đội tiếp sức' }]} /></Form.Item><Form.Item name="memberIds" label="Thành viên theo thứ tự thi đấu" rules={[{ required: true, type: 'array', min: 1 }]}><RemoteAthleteSelect mode="multiple" eventId={eventId} countryId={teamCountryId} maxTagCount={2} selectionLabel="thành viên" showPageControls /></Form.Item></Form>
@@ -183,7 +184,7 @@ export function CompetitionEntriesPanel({
       </Modal>
 
       <Modal title={generator === 'HEAT' ? 'Tạo lượt đấu và phân làn' : 'Tạo vòng tròn'} open={Boolean(generator)} onCancel={() => setGenerator(undefined)} onOk={generate} destroyOnHidden>
-        <Alert className="mb-4" type="info" showIcon message={`Đã chọn ${selectedEntryIds.length} lượt đăng ký`} />
+        <ToastNotice className="mb-4" type="info" showIcon message={`Đã chọn ${selectedEntryIds.length} lượt đăng ký`} />
         <Form form={generatorForm} layout="vertical" initialValues={generator === 'HEAT' ? { laneCount: category?.laneCount || 8, round: 1, namePrefix: 'Lượt' } : { groupCount: 1, namePrefix: 'Bảng' }}>
           {generator === 'HEAT' ? <><Form.Item name="laneCount" label="Số làn"><InputNumber min={2} max={16} className="w-full" /></Form.Item><Form.Item name="round" label="Vòng"><InputNumber min={1} className="w-full" /></Form.Item><Form.Item name="namePrefix" label="Tiền tố"><Input /></Form.Item></> : <><Form.Item name="groupCount" label="Số bảng"><InputNumber min={1} className="w-full" /></Form.Item><Form.Item name="namePrefix" label="Tên bảng"><Input /></Form.Item></>}
         </Form>

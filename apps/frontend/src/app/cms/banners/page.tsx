@@ -1,11 +1,12 @@
 'use client';
 
+import { ToastNotice } from '@/components/ToastNotice';
+
 import { imageUrl } from '@/lib/image-url';
 
 import { useEffect, useMemo, useState } from 'react';
 import useSWR from 'swr';
 import {
-  Alert,
   Button,
   Card,
   Flex,
@@ -285,7 +286,7 @@ export default function BannerManagementPage() {
         )}
       />
 
-      <Alert
+      <ToastNotice
         type="info"
         showIcon
         message="Ảnh đề xuất: 1920 × 720 px hoặc cùng tỷ lệ, dung lượng tối đa 4 MB."

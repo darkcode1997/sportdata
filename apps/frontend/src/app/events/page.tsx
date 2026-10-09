@@ -1,11 +1,13 @@
 'use client';
 
+import { ToastNotice } from '@/components/ToastNotice';
+
 import { imageUrl } from '@/lib/image-url';
 
 import Link from 'next/link';
 import { useMemo, useState, type CSSProperties } from 'react';
 import useSWR from 'swr';
-import { Alert, Button, Empty, Input, Select, Skeleton } from 'antd';
+import { Button, Empty, Input, Select, Skeleton } from 'antd';
 import { ArrowUpRight, CalendarCheck2, Layers3, Search, SlidersHorizontal, Trophy } from 'lucide-react';
 import { fetcher } from '@/lib/api';
 
@@ -147,7 +149,7 @@ export default function EventPlatformsPage() {
         </div>
 
         {sportsError && (
-          <Alert
+          <ToastNotice
             className="mb-6"
             showIcon
             type="error"

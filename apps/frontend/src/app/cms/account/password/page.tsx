@@ -1,8 +1,10 @@
 'use client';
 
+import { ToastNotice } from '@/components/ToastNotice';
+
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Alert, Button, Card, Form, Input } from 'antd';
+import { Button, Card, Form, Input } from 'antd';
 import { KeyRound } from 'lucide-react';
 import { CmsPageHeader } from '@/components/cms/CmsPageHeader';
 import { useSportDataToast } from '@/hooks/useSportDataToast';
@@ -43,7 +45,7 @@ export default function ChangePasswordPage() {
       />
 
       <Card className="max-w-2xl">
-        <Alert
+        <ToastNotice
           type="info"
           showIcon
           className="mb-6"

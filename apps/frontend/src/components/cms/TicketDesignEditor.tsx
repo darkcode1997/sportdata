@@ -7,7 +7,7 @@ import { TICKET_HEIGHT, TICKET_WIDTH, TICKET_FIELDS, defaultTicketDesign, type T
 import type { ParticipationTicket } from '@/lib/ticket-types';
 
 const fieldLabels: Record<TicketField, string> = {
-  CUSTOM: 'Nội dung tự nhập', ATHLETE_NAME: 'Tên vận động viên', FEDERATION: 'Đơn vị / CLB', COUNTRY: 'Quốc gia', EVENT_NAME: 'Tên sự kiện', CATEGORY: 'Hạng đấu', SPORT: 'Bộ môn', EVENT_DATE: 'Ngày tổ chức', LOCATION: 'Địa điểm', TICKET_CODE: 'Mã vé', STATUS: 'Trạng thái vé',
+  CUSTOM: 'Nội dung tự nhập', ATHLETE_NAME: 'Tên vận động viên', FEDERATION: 'Đơn vị / CLB', COUNTRY: 'Quốc gia', EVENT_NAME: 'Tên sự kiện', CATEGORY: 'Hạng đấu', SPORT: 'Bộ môn', EVENT_DATE: 'Ngày tổ chức', LOCATION: 'Địa điểm', TICKET_CODE: 'Mã thẻ', STATUS: 'Trạng thái thẻ',
 };
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 type Point = { x: number; y: number };
@@ -100,7 +100,7 @@ export function TicketDesignEditor({ ticket, design, onChange, disabled = false 
         <Button disabled={!historyLength} onClick={() => { const previous = history.current.pop(); if (previous) { current.current = previous; onChange(previous); setHistoryLength(history.current.length); } }}>Hoàn tác</Button>
         <Button onClick={() => { change(defaultTicketDesign()); setSelectedId('photo'); setDrawing(false); }}>Bố cục mặc định</Button>
       </div>}
-      <p className="mb-4 text-sm text-slate-500">{disabled ? 'Bố cục đang áp dụng cho vé A6.' : drawing ? 'Kéo trên thẻ để vẽ vùng chữ (tối thiểu 5 × 3 mm), sau đó nhập nội dung bên phải.' : 'Kéo ảnh, QR hoặc chữ để di chuyển. Kéo góc dưới phải để đổi kích thước QR và vùng chữ. Dùng phím mũi tên để chỉnh vị trí.'}</p>
+      <p className="mb-4 text-sm text-slate-500">{disabled ? 'Bố cục đang áp dụng cho thẻ.' : drawing ? 'Kéo trên thẻ để vẽ vùng chữ (tối thiểu 5 × 3 mm), sau đó nhập nội dung bên phải.' : 'Kéo ảnh, QR hoặc chữ để di chuyển. Kéo góc dưới phải để đổi kích thước QR và vùng chữ. Dùng phím mũi tên để chỉnh vị trí.'}</p>
       <div className={editing ? 'grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_280px]' : 'block'}>
         <div ref={surface} className="ticket-editor-surface relative mx-auto aspect-[105/148] w-full max-w-[560px] shadow-lg" onPointerMove={move} onPointerUp={(event) => finish(event)} onPointerCancel={(event) => finish(event, true)}>
           <EventParticipationCard ticket={ticket} design={design} />

@@ -1,9 +1,11 @@
 'use client';
 
+import { ToastNotice } from '@/components/ToastNotice';
+
 import { useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { Alert, Button, Card, Form, Input } from 'antd';
+import { Button, Card, Form, Input } from 'antd';
 import { ArrowLeft, KeyRound, Lock } from 'lucide-react';
 import { useSportDataToast } from '@/hooks/useSportDataToast';
 import { participantApi, participantError } from '@/lib/participant-auth';
@@ -31,7 +33,6 @@ export function ParticipantResetPasswordForm() {
         password: values.password,
       });
       setSuccess(data.message);
-      toast.success(data.message);
     } catch (error) {
       toast.error(participantError(error, 'Không thể đặt lại mật khẩu. Vui lòng yêu cầu liên kết mới.'));
     } finally {
@@ -43,10 +44,10 @@ export function ParticipantResetPasswordForm() {
     <main className="account-gateway-page flex min-h-[calc(100vh-64px)] items-center justify-center px-4 py-10 sm:px-6">
       <Card className="w-full max-w-md" title={<span className="flex items-center gap-2"><Lock className="h-5 w-5" /> Đặt mật khẩu mới</span>}>
         {!token && (
-          <Alert className="mb-5" type="error" showIcon message="Liên kết không hợp lệ" description="Vui lòng yêu cầu một liên kết đặt lại mật khẩu mới." />
+          <ToastNotice className="mb-5" type="error" showIcon message="Liên kết không hợp lệ" description="Vui lòng yêu cầu một liên kết đặt lại mật khẩu mới." />
         )}
         {success ? (
-          <Alert className="mb-5" type="success" showIcon message={success} />
+          <ToastNotice className="mb-5" type="success" showIcon message={success} />
         ) : (
           <Form layout="vertical" requiredMark={false} onFinish={submit}>
             <Form.Item

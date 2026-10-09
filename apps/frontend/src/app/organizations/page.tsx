@@ -1,9 +1,11 @@
 'use client';
 
+import { ToastNotice } from '@/components/ToastNotice';
+
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import useSWR from 'swr';
-import { Alert, Button, Empty, Input, Select, Skeleton, Tag } from 'antd';
+import { Button, Empty, Input, Select, Skeleton, Tag } from 'antd';
 import { ArrowRight, Building2, CalendarDays, Flag, Search, Users } from 'lucide-react';
 import { fetcher } from '@/lib/api';
 
@@ -130,7 +132,7 @@ export default function OrganizationsDirectoryPage() {
           />
         </div>
 
-        {error && <Alert showIcon type="error" message="Không thể tải mạng lưới đơn vị thể thao" />}
+        {error && <ToastNotice showIcon type="error" message="Không thể tải mạng lưới đơn vị thể thao" />}
 
         {loading ? (
           <div className="directory-grid">

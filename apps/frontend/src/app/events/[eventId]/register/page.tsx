@@ -1,12 +1,13 @@
 'use client';
 
+import { ToastNotice } from '@/components/ToastNotice';
+
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import useSWR from 'swr';
 import dayjs, { type Dayjs } from 'dayjs';
 import {
-  Alert,
   Button,
   Card,
   DatePicker,
@@ -31,6 +32,7 @@ import { fetcher } from '@/lib/api';
 import { getParticipantAccount, getParticipantToken, participantApi, participantError, type SportDataAccount } from '@/lib/participant-auth';
 import type { ParticipationTicket } from '@/lib/ticket-types';
 import { vietnamCountryId } from '@/lib/countries';
+import { capitalizeRegistrationName } from '@/lib/registration-names';
 import { optimizeRegistrationMedia } from '@/lib/registration-media';
 
 type RegistrationMode = 'INDIVIDUAL' | 'GROUP';
@@ -207,7 +209,6 @@ export default function GuestEventRegistrationPage() {
   const [organizationName, setOrganizationName] = useState('');
   const [athletes, setAthletes] = useState<AthleteDraft[]>([emptyAthlete('athlete-1')]);
   const [submitting, setSubmitting] = useState(false);
-  const [submissionError, setSubmissionError] = useState<string>();
   const [result, setResult] = useState<SubmissionResult>();
   const [ocrReview, setOcrReview] = useState<{ athleteKey: string; result: IdentityOcrResult }>();
   const [ocrReadingKey, setOcrReadingKey] = useState<string>();
@@ -280,7 +281,6 @@ export default function GuestEventRegistrationPage() {
   );
 
   const updateAthlete = (key: string, patch: Partial<AthleteDraft>) => {
-    setSubmissionError(undefined);
     setAthletes((current) => current.map((athlete) => athlete.key === key ? { ...athlete, ...patch } : athlete));
   };
 
@@ -337,7 +337,7 @@ export default function GuestEventRegistrationPage() {
       documentNumber: fields.documentNumber,
     };
     if (applyToProfile) {
-      if (fields.fullName) patch.fullName = fields.fullName;
+      if (fields.fullName) patch.fullName = capitalizeRegistrationName(fields.fullName);
       if (fields.dateOfBirth && dayjs(fields.dateOfBirth).isValid()) patch.birthDate = dayjs(fields.dateOfBirth);
       const normalizedSex = fields.sex?.toLocaleLowerCase('vi').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
       if (normalizedSex === 'nam' || normalizedSex === 'male' || normalizedSex === 'm') patch.gender = 'MALE';
@@ -365,14 +365,13 @@ export default function GuestEventRegistrationPage() {
       link.remove();
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (requestError) {
-      toast.error(participantError(requestError, 'Chưa thể tải PDF vé. Vui lòng kiểm tra trạng thái duyệt của tất cả hồ sơ.'));
+      toast.error(participantError(requestError, 'Chưa thể tải PDF thẻ. Vui lòng kiểm tra trạng thái duyệt của tất cả hồ sơ.'));
     } finally {
       setDownloadingPdf(false);
     }
   };
 
   const submit = async () => {
-    setSubmissionError(undefined);
     if (!contactName.trim() || !contactEmail.trim() || !contactPhone.trim()) {
       toast.error('Vui lòng nhập đủ người liên hệ, email và số điện thoại.');
       return;
@@ -391,8 +390,7 @@ export default function GuestEventRegistrationPage() {
       || athlete.entries.some((entry) => !entry.categoryId)
     ));
     if (missingIndex >= 0) {
-      const message = `Vận động viên ${missingIndex + 1} chưa đủ họ tên, số giấy tờ, ngày sinh, giới tính, quốc gia hoặc nội dung thi đấu.`;
-      setSubmissionError(message);
+      const message = `${activeAthletes.length === 1 ? 'Vận động viên' : `Vận động viên ${missingIndex + 1}`} chưa đủ họ tên, số giấy tờ, ngày sinh, giới tính, quốc gia hoặc nội dung thi đấu.`;
       toast.error(message);
       return;
     }
@@ -401,7 +399,7 @@ export default function GuestEventRegistrationPage() {
     try {
       for (const athlete of activeAthletes) {
         await participantApi.post('/participant-auth/identity/check', {
-          fullName: athlete.fullName, birthDate: athlete.birthDate!.format('YYYY-MM-DD'),
+          fullName: capitalizeRegistrationName(athlete.fullName), birthDate: athlete.birthDate!.format('YYYY-MM-DD'),
           gender: athlete.gender, countryId: athlete.countryId, federationId: athlete.federationId,
           identityType: athlete.identityType, documentNumber: athlete.documentNumber,
           phone: athlete.phone || contactPhone,
@@ -412,8 +410,7 @@ export default function GuestEventRegistrationPage() {
         || (athlete.identityType === 'CCCD' ? !athlete.cccdFront || !athlete.cccdBack : !athlete.passport)
       ));
       if (missingMediaIndex >= 0) {
-        const message = `Vận động viên ${missingMediaIndex + 1} chưa đủ ảnh đại diện hoặc giấy tờ định danh.`;
-        setSubmissionError(message);
+        const message = `${activeAthletes.length === 1 ? 'Vận động viên' : `Vận động viên ${missingMediaIndex + 1}`} chưa đủ ảnh đại diện hoặc giấy tờ định danh.`;
         toast.error(message);
         return;
       }
@@ -434,7 +431,7 @@ export default function GuestEventRegistrationPage() {
           athlete.passport ? uploadMedia(athlete.passport, 'PASSPORT') : undefined,
         ]);
         athletesWithUploads.push({
-          fullName: athlete.fullName,
+          fullName: capitalizeRegistrationName(athlete.fullName),
           documentNumber: athlete.documentNumber,
           phone: athlete.phone || undefined,
           birthDate: athlete.birthDate!.format('YYYY-MM-DD'),
@@ -455,17 +452,17 @@ export default function GuestEventRegistrationPage() {
       const response = await participantApi.post<SubmissionResult>(endpoint, {
         eventId,
         type: mode,
-        contactName,
+        contactName: capitalizeRegistrationName(contactName),
         contactEmail,
         contactPhone,
-        organizationName: mode === 'GROUP' ? organizationName : undefined,
+        organizationName: mode === 'GROUP' ? capitalizeRegistrationName(organizationName) : undefined,
         athletes: athletesWithUploads,
       });
       const payableRegistration = response.data.registrations.length === 1
         ? response.data.registrations[0]
         : undefined;
       if (payableRegistration?.paymentStatus === 'PENDING' && payableRegistration.feeAmount > 0) {
-        toast.success('Đã tiếp nhận hồ sơ. Đang mở mã QR thanh toán; vé A6 sẽ được phát hành sau khi hồ sơ được duyệt.');
+        toast.success('Đã tiếp nhận hồ sơ. Đang mở mã QR thanh toán; thẻ sẽ được phát hành sau khi hồ sơ được duyệt.');
         router.push(`/tickets/${encodeURIComponent(payableRegistration.ticketCode)}?payment=1`);
         return;
       }
@@ -475,17 +472,16 @@ export default function GuestEventRegistrationPage() {
       ));
       toast.success(allTicketsIssued
         ? response.data.ticketEmailSent
-          ? 'Hồ sơ đã được duyệt. Bộ vé A6 đã được gửi về email và đang được tải xuống.'
+          ? 'Hồ sơ đã được duyệt. Bộ thẻ đã được gửi về email và đang được tải xuống.'
           : response.data.ticketEmailQueued
-            ? 'Hồ sơ đã được duyệt. Bộ vé A6 đã sẵn sàng và sẽ được gửi về email.'
-            : 'Hồ sơ đã được duyệt. Bộ vé A6 đã sẵn sàng để tải.'
-        : 'Đã tiếp nhận hồ sơ. Vé A6 sẽ được phát hành và gửi email sau khi hồ sơ được duyệt.');
+            ? 'Hồ sơ đã được duyệt. Bộ thẻ đã sẵn sàng và sẽ được gửi về email.'
+            : 'Hồ sơ đã được duyệt. Bộ thẻ đã sẵn sàng để tải.'
+        : 'Đã tiếp nhận hồ sơ. Thẻ sẽ được phát hành và gửi email sau khi hồ sơ được duyệt.');
       setResult(response.data);
       window.scrollTo({ top: 0, behavior: 'smooth' });
       if (allTicketsIssued && response.data.referenceCode && !response.data.hasExistingRegistrations) await downloadSubmissionPdf(response.data);
     } catch (requestError) {
       const message = participantError(requestError, 'Không thể gửi hồ sơ đăng ký');
-      setSubmissionError(message);
       toast.error(message);
     } finally {
       setSubmitting(false);
@@ -504,26 +500,26 @@ export default function GuestEventRegistrationPage() {
           <Result
             status="success"
             title="Đã tiếp nhận hồ sơ đăng ký"
-            subTitle={result.referenceCode ? `Mã hồ sơ ${result.referenceCode}. Vé được phát hành khi giấy tờ và thanh toán đã hoàn tất.` : 'Các hồ sơ đã có tại sự kiện. Mở từng vé bên dưới để xem trạng thái hoặc tiếp tục thanh toán.'}
+            subTitle={result.referenceCode ? `Mã hồ sơ ${result.referenceCode}. Thẻ được phát hành khi giấy tờ và thanh toán đã hoàn tất.` : 'Các hồ sơ đã có tại sự kiện. Mở từng thẻ bên dưới để xem trạng thái hoặc tiếp tục thanh toán.'}
             extra={[
               ...(allTicketsIssued && result.referenceCode && !result.hasExistingRegistrations ? [
                 <Button key="pdf" type="primary" loading={downloadingPdf} icon={<Download className="h-4 w-4" />} onClick={() => void downloadSubmissionPdf(result)}>
-                  {result.registrations.length > 1 ? `Tải bộ ${result.registrations.length} vé PDF` : 'Tải vé PDF'}
+                  {result.registrations.length > 1 ? `Tải bộ ${result.registrations.length} thẻ PDF` : 'Tải thẻ PDF'}
                 </Button>,
               ] : []),
               <Link key="event" href={`/events/${eventId}`}><Button>Quay lại sự kiện</Button></Link>,
             ]}
           />
           {!allTicketsIssued ? (
-            <Alert
+            <ToastNotice
               className="mb-6"
               showIcon
               type="info"
-              message="Đang chờ phát hành vé"
-              description="Bạn có thể hoàn tất thanh toán và theo dõi từng hồ sơ bên dưới. Khi được duyệt, vé A6 và mã QR check-in mới xuất hiện, đồng thời được gửi về email đăng ký."
+              message="Đang chờ phát hành thẻ"
+              description="Bạn có thể hoàn tất thanh toán và theo dõi từng hồ sơ bên dưới. Khi được duyệt, thẻ và mã QR check-in mới xuất hiện, đồng thời được gửi về email đăng ký."
             />
           ) : result.registrations.length > 1 && (
-            <Alert className="mb-6" showIcon type="info" message="Mỗi nội dung đăng ký có một vé và QR riêng" description="Bộ PDF gồm danh sách đăng ký và vé riêng cho từng nội dung thi đấu của mỗi VĐV." />
+            <ToastNotice className="mb-6" showIcon type="info" message="Mỗi nội dung đăng ký có một thẻ và QR riêng" description="Bộ PDF gồm danh sách đăng ký và thẻ riêng cho từng nội dung thi đấu của mỗi VĐV." />
           )}
           <div className="mx-auto max-w-3xl space-y-7">
             {result.registrations.map((registration) => {
@@ -590,7 +586,7 @@ export default function GuestEventRegistrationPage() {
                   <div className="mt-3 flex justify-end">
                     <div className="flex flex-wrap gap-2">
                       <Link href={`/tickets/${encodeURIComponent(registration.ticketCode)}`} target="_blank">
-                        <Button>{ticketIssued ? 'Xem vé' : 'Theo dõi hồ sơ'}</Button>
+                        <Button>{ticketIssued ? 'Xem thẻ' : 'Theo dõi hồ sơ'}</Button>
                       </Link>
                       {registration.paymentStatus === 'PENDING' && registration.feeAmount > 0 ? (
                         <Link href={`/tickets/${encodeURIComponent(registration.ticketCode)}?payment=1`}><Button type="primary">Thanh toán {new Intl.NumberFormat('vi-VN').format(registration.feeAmount)} {registration.currency}</Button></Link>
@@ -622,13 +618,13 @@ export default function GuestEventRegistrationPage() {
         <h1 className="mt-2 text-3xl font-black text-white">{event.name}</h1>
         <p className="mt-2 text-slate-400">
           {isAthleteAccount
-            ? 'Tài khoản của bạn là người liên hệ. Mỗi VĐV được đăng ký hộ có hồ sơ, giấy tờ và vé riêng.'
+            ? 'Tài khoản của bạn là người liên hệ. Mỗi VĐV được đăng ký hộ có hồ sơ, giấy tờ và thẻ riêng.'
             : 'Đăng ký cá nhân hoặc gửi danh sách cho đội/CLB. Mọi giấy tờ đều chuyển sang trạng thái chờ xác thực.'}
         </p>
       </div>
 
       {isFederationAccount && (
-        <Alert
+        <ToastNotice
           className="mb-6"
           showIcon
           type={federationProfile?.verificationStatus === 'VERIFIED' ? 'success' : 'warning'}
@@ -637,12 +633,12 @@ export default function GuestEventRegistrationPage() {
         />
       )}
       {isAthleteAccount && (
-        <Alert
+        <ToastNotice
           className="mb-6"
           showIcon
           type="info"
           message={`Bạn đang đăng ký hộ với tài khoản ${participantProfile?.displayName || sessionAccount?.displayName || 'SportData'}`}
-          description="Hồ sơ VĐV được tạo độc lập, không thay đổi thông tin VĐV cá nhân của bạn. Vé và email xác nhận sẽ được quản lý bằng tài khoản đang đăng nhập."
+          description="Hồ sơ VĐV được tạo độc lập, không thay đổi thông tin VĐV cá nhân của bạn. Thẻ và email xác nhận sẽ được quản lý bằng tài khoản đang đăng nhập."
         />
       )}
       <Card className="mb-6" title="Hình thức đăng ký">
@@ -659,10 +655,10 @@ export default function GuestEventRegistrationPage() {
 
       <Card className="mb-6" title="Người liên hệ hồ sơ">
         <div className="grid gap-4 md:grid-cols-2">
-          <div><label className="mb-2 block text-sm font-semibold">Họ tên người liên hệ *</label><Input disabled={isFederationAccount || isAthleteAccount} size="large" value={contactName} onChange={(event) => setContactName(event.target.value)} /></div>
+          <div><label className="mb-2 block text-sm font-semibold">Họ tên người liên hệ *</label><Input disabled={isFederationAccount || isAthleteAccount} size="large" autoCapitalize="words" value={contactName} onChange={(event) => setContactName(event.target.value)} onBlur={(event) => setContactName(capitalizeRegistrationName(event.target.value))} /></div>
           <div><label className="mb-2 block text-sm font-semibold">Email *</label><Input disabled={isFederationAccount || isAthleteAccount} size="large" type="email" value={contactEmail} onChange={(event) => setContactEmail(event.target.value)} /></div>
           <div><label className="mb-2 block text-sm font-semibold">Số điện thoại *</label><Input disabled={isFederationAccount} size="large" value={contactPhone} onChange={(event) => setContactPhone(event.target.value)} /></div>
-          {mode === 'GROUP' && <div><label className="mb-2 block text-sm font-semibold">Đội / CLB / đơn vị *</label><Input disabled={isFederationAccount} size="large" value={organizationName} onChange={(event) => setOrganizationName(event.target.value)} /></div>}
+          {mode === 'GROUP' && <div><label className="mb-2 block text-sm font-semibold">Đội / CLB / đơn vị *</label><Input disabled={isFederationAccount} size="large" autoCapitalize="words" value={organizationName} onChange={(event) => setOrganizationName(event.target.value)} onBlur={(event) => setOrganizationName(capitalizeRegistrationName(event.target.value))} /></div>}
         </div>
       </Card>
 
@@ -672,7 +668,7 @@ export default function GuestEventRegistrationPage() {
           return (
             <Card
               key={athlete.key}
-              title={`Vận động viên ${index + 1}`}
+              title={activeAthletes.length === 1 ? 'Vận động viên' : `Vận động viên ${index + 1}`}
               extra={mode === 'GROUP' && activeAthletes.length > 1
                 ? <Button danger type="text" icon={<Trash2 className="h-4 w-4" />} onClick={() => setAthletes((current) => current.filter((item) => item.key !== athlete.key))}>Xóa</Button>
                 : undefined}
@@ -680,7 +676,7 @@ export default function GuestEventRegistrationPage() {
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                 <div><label className="mb-2 block text-sm font-semibold">Loại giấy tờ *</label><Select className="w-full" size="large" value={athlete.identityType} onChange={(value) => updateAthlete(athlete.key, { identityType: value, documentNumber: '', identityOcr: undefined })} options={[{ value: 'CCCD', label: 'CCCD' }, { value: 'PASSPORT', label: 'Hộ chiếu' }]} /></div>
                 <div className="lg:col-span-2"><label className="mb-2 block text-sm font-semibold">Số {athlete.identityType === 'CCCD' ? 'CCCD' : 'hộ chiếu'} *</label><Input size="large" maxLength={30} value={athlete.documentNumber} placeholder={athlete.identityType === 'CCCD' ? '12 chữ số theo CCCD' : 'Số hộ chiếu theo giấy tờ'} onChange={(event) => updateAthlete(athlete.key, { documentNumber: event.target.value })} /></div>
-                <div className="lg:col-span-2"><label className="mb-2 block text-sm font-semibold">Họ và tên theo giấy tờ *</label><Input size="large" value={athlete.fullName} onChange={(event) => updateAthlete(athlete.key, { fullName: event.target.value })} /></div>
+                <div className="lg:col-span-2"><label className="mb-2 block text-sm font-semibold">Họ và tên theo giấy tờ *</label><Input size="large" autoCapitalize="words" value={athlete.fullName} onChange={(event) => updateAthlete(athlete.key, { fullName: event.target.value })} onBlur={(event) => updateAthlete(athlete.key, { fullName: capitalizeRegistrationName(event.target.value) })} /></div>
                 <div><label className="mb-2 block text-sm font-semibold">Ngày sinh *</label><DatePicker className="w-full" size="large" format="DD/MM/YYYY" value={athlete.birthDate} disabledDate={(date) => date.isAfter(dayjs(), 'day')} onChange={(value) => updateAthlete(athlete.key, { birthDate: value })} /></div>
                 <div><label className="mb-2 block text-sm font-semibold">Số điện thoại VĐV</label><Input size="large" type="tel" maxLength={30} value={athlete.phone} placeholder="Để trống nếu dùng số liên hệ" onChange={(event) => updateAthlete(athlete.key, { phone: event.target.value })} /></div>
                 <div><label className="mb-2 block text-sm font-semibold">Giới tính *</label><Select className="w-full" size="large" value={athlete.gender} onChange={(value) => updateAthlete(athlete.key, { gender: value })} options={[{ value: 'MALE', label: 'Nam' }, { value: 'FEMALE', label: 'Nữ' }]} /></div>
@@ -719,12 +715,11 @@ export default function GuestEventRegistrationPage() {
             : { countryId: defaultCountryId }),
         }])}>Thêm vận động viên</Button>
       )}
-      <p className="mt-6 text-sm text-slate-500">Lệ phí được tính riêng cho từng nội dung thi đấu. Mỗi nội dung có thanh toán và vé riêng sau khi giấy tờ và lệ phí được xác nhận.</p>
-      {submissionError && <Alert className="mt-6" type="error" showIcon message={submissionError} />}
+      <p className="mt-6 text-sm text-slate-500">Lệ phí được tính riêng cho từng nội dung thi đấu. Mỗi nội dung có thanh toán và thẻ riêng sau khi giấy tờ và lệ phí được xác nhận.</p>
       <div className="mt-6 flex flex-wrap justify-end gap-3">
         <Link href={`/events/${eventId}`}><Button size="large">Hủy</Button></Link>
         <Button type="primary" size="large" loading={submitting}
-          icon={<Send className="h-4 w-4" />} onClick={submit}>Gửi {activeAthletes.length} hồ sơ · {activeAthletes.reduce((count, athlete) => count + athlete.entries.filter((entry) => entry.categoryId).length, 0)} nội dung</Button>
+          icon={<Send className="h-4 w-4" />} onClick={submit}>Gửi hồ sơ</Button>
       </div>
       <IdentityOcrReviewModal
         open={Boolean(ocrReview)}

@@ -112,7 +112,7 @@ export default function SportPlatformPage() {
             <h1 className="text-5xl font-black tracking-tight text-white sm:text-6xl">{sport.displayName || sport.name}</h1>
             <p className="mt-5 max-w-2xl text-lg leading-8 text-slate-300">
               {sport.subtitle || sport.description || (isJiuJitsu
-                ? 'Đăng ký giải, quản lý hạng cân, lịch thi đấu và vé tham dự Ju‑Jitsu trên một nền tảng thống nhất.'
+                ? 'Đăng ký giải, quản lý hạng cân, lịch thi đấu và thẻ tham dự Ju‑Jitsu trên một nền tảng thống nhất.'
                 : `Theo dõi và đăng ký các sự kiện ${sport.name}.`)}
             </p>
             <div className="mt-8 flex flex-wrap gap-3">

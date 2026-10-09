@@ -1,9 +1,11 @@
 'use client';
 
+import { ToastNotice } from '@/components/ToastNotice';
+
 import { useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import useSWR, { useSWRConfig } from 'swr';
-import { Alert, Button, Card, Empty, InputNumber, Modal, Select, Space, Tag } from 'antd';
+import { Button, Card, Empty, InputNumber, Modal, Select, Space, Tag } from 'antd';
 import { api, fetcher } from '@/lib/api';
 import type { BracketDraw } from '@/components/brackets/SportdataBracket';
 import { useSportDataToast } from '@/hooks/useSportDataToast';
@@ -154,8 +156,8 @@ export function DrawPreconfiguration({ event, categoryId, drawType, actorId, ent
 
   return (
     <Card title="Pre-matches · Cặp đặt trước" loading={isLoading} extra={<Tag color={saving ? 'processing' : saveError ? 'error' : 'success'}>{saving ? 'Đang lưu…' : saveError ? 'Lưu thất bại' : partial ? 'Chọn đủ hai VĐV để lưu' : 'Đã lưu'}</Tag>}>
-      {error && <Alert type="error" className="mb-4" message="Không thể tải cấu hình" action={<Button onClick={() => void reload()}>Tải lại</Button>} />}
-      {saveError && <Alert type="error" className="mb-4" message={saveError} action={<Space><Button onClick={() => void save(pairs)}>Thử lưu lại</Button><Button onClick={() => void reload()}>Tải lại</Button></Space>} />}
+      {error && <ToastNotice type="error" className="mb-4" message="Không thể tải cấu hình" action={<Button onClick={() => void reload()}>Tải lại</Button>} />}
+      {saveError && <ToastNotice type="error" className="mb-4" message={saveError} action={<Space><Button onClick={() => void save(pairs)}>Thử lưu lại</Button><Button onClick={() => void reload()}>Tải lại</Button></Space>} />}
       <p className="mb-4 text-sm text-slate-500">Cặp đặt trước ưu tiên hơn hạt giống, CLB và quốc gia. Chọn đủ hai VĐV hoặc xóa cặp để tự lưu. {usesRoundRobin ? 'Cặp áp dụng ở lượt đầu, hai VĐV được xếp vào cùng bảng.' : 'Cặp áp dụng ở vòng đầu nhánh chính.'}</p>
       <div className={`mb-4 grid items-center gap-4 ${drawType === 'ROUND_ROBIN_POOL' ? 'max-w-2xl sm:grid-cols-[180px_minmax(0,1fr)]' : 'max-w-sm'}`}>
         {drawType === 'ROUND_ROBIN_POOL' && <div className="min-w-0">
@@ -181,7 +183,7 @@ export function DrawPreconfiguration({ event, categoryId, drawType, actorId, ent
         {!!data?.preview.length && !stale && <Button onClick={() => setPreviewOpen(true)}>Xem phương án đã lưu</Button>}
         <Button loading={historyLoading} onClick={() => void openHistory()}>Lịch sử thay đổi</Button>
       </Space>
-      {data && <Alert className="!mt-4" showIcon type={stale ? 'warning' : 'success'} message={stale ? 'Cần preview lại trước khi sinh nhánh.' : `Phương án đã lưu · phiên bản ${data.revision}`} />}
+      {data && <ToastNotice className="!mt-4" showIcon type={stale ? 'warning' : 'success'} message={stale ? 'Cần preview lại trước khi sinh nhánh.' : `Phương án đã lưu · phiên bản ${data.revision}`} />}
       <Modal open={previewOpen} onCancel={() => setPreviewOpen(false)} footer={null} width="95vw" title="Preview cây đấu">
         {data?.preview.length ? data.preview.map((draw) => <SportdataBracket key={draw.id} draw={draw} sourceMatches={data.preview.flatMap((item) => item.matches)} />) : <Empty description="Dữ liệu đã thay đổi. Hãy preview lại." />}
       </Modal>

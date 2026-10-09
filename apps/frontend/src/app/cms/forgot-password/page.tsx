@@ -1,9 +1,11 @@
 'use client';
 
+import { ToastNotice } from '@/components/ToastNotice';
+
 import { useState } from 'react';
 import Link from 'next/link';
 import axios from 'axios';
-import { Alert, Button, Card, Form, Input } from 'antd';
+import { Button, Card, Form, Input } from 'antd';
 import { ArrowLeft, KeyRound, Trophy, UserRound } from 'lucide-react';
 import { useSportDataToast } from '@/hooks/useSportDataToast';
 
@@ -26,7 +28,6 @@ export default function ForgotPasswordPage() {
         identifier: identifier.trim(),
       });
       setResult(response.data);
-      toast.success(response.data.message);
     } catch (requestError: any) {
       toast.error(
         requestError.response?.data?.message ||
@@ -52,7 +53,7 @@ export default function ForgotPasswordPage() {
 
         <Card className="border-sdark-700 bg-sdark-900 shadow-2xl shadow-black/20">
           {result?.resetUrl && (
-            <Alert
+            <ToastNotice
               className="mb-5"
               type="info"
               showIcon

@@ -1,11 +1,13 @@
 'use client';
 
+import { ToastNotice } from '@/components/ToastNotice';
+
 import { imageUrl } from '@/lib/image-url';
 
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import useSWR from 'swr';
-import { Alert, Skeleton } from 'antd';
+import { Skeleton } from 'antd';
 import { ArrowLeft, CalendarDays, Newspaper } from 'lucide-react';
 import { RichTextContent } from '@/components/RichTextContent';
 import { fetcher } from '@/lib/api';
@@ -28,7 +30,7 @@ export default function ArticleDetailPage() {
     return (
       <main className="news-article-page min-h-screen">
         <div className="mx-auto max-w-4xl px-4 py-16 sm:px-6">
-          <Alert type="error" showIcon message="Không tìm thấy bài viết" action={<Link href="/news">Về trang tin tức</Link>} />
+          <ToastNotice type="error" showIcon message="Không tìm thấy bài viết" action={<Link href="/news">Về trang tin tức</Link>} />
         </div>
       </main>
     );

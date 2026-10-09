@@ -51,16 +51,16 @@ export function defaultTicketDesign(): TicketDesign {
 export function validateTicketDesign(value: unknown): TicketDesign {
   const design = value as TicketDesign;
   if (!design || design.version !== 1 || !Array.isArray(design.elements) || design.elements.length < 2 || design.elements.length > 32) {
-    throw new Error('Bố cục vé phải có từ 2 đến 32 thành phần và phiên bản 1');
+    throw new Error('Bố cục thẻ phải có từ 2 đến 32 thành phần và phiên bản 1');
   }
   const ids = new Set<string>();
   const elements = design.elements.map((element) => {
-    if (!element || typeof element.id !== 'string' || !/^[a-zA-Z0-9_-]{1,80}$/.test(element.id || '') || ids.has(element.id)) throw new Error('Mã thành phần vé không hợp lệ hoặc trùng lặp');
+    if (!element || typeof element.id !== 'string' || !/^[a-zA-Z0-9_-]{1,80}$/.test(element.id || '') || ids.has(element.id)) throw new Error('Mã thành phần thẻ không hợp lệ hoặc trùng lặp');
     ids.add(element.id);
-    if (!['PHOTO', 'QR', 'TEXT'].includes(element.type)) throw new Error('Loại thành phần vé không hợp lệ');
+    if (!['PHOTO', 'QR', 'TEXT'].includes(element.type)) throw new Error('Loại thành phần thẻ không hợp lệ');
     if (![element.x, element.y, element.width, element.height].every((number) => typeof number === 'number' && Number.isFinite(number))
       || element.x < 0 || element.y < 0 || element.width <= 0 || element.height <= 0
-      || element.x + element.width > TICKET_WIDTH + 0.001 || element.y + element.height > TICKET_HEIGHT + 0.001) throw new Error('Thành phần phải nằm trong khung vé A6');
+      || element.x + element.width > TICKET_WIDTH + 0.001 || element.y + element.height > TICKET_HEIGHT + 0.001) throw new Error('Thành phần phải nằm trong khung thẻ');
     const mm = (value: number) => Math.round(value * 1000) / 1000;
     const base: TicketElement = { id: element.id, type: element.type, x: mm(element.x), y: mm(element.y), width: mm(element.width), height: mm(element.height) };
     if (element.type === 'PHOTO' && (Math.abs(element.width - 40) > 0.001 || Math.abs(element.height - 60) > 0.001)) throw new Error('Ảnh thẻ phải giữ kích thước 4 × 6 cm');
@@ -72,7 +72,7 @@ export function validateTicketDesign(value: unknown): TicketDesign {
     if (element.text !== undefined && (typeof element.text !== 'string' || element.text.length > 1000)) throw new Error('Nội dung chữ tối đa 1000 ký tự');
     return { ...base, field: element.field, text: element.text || '', fontSize: element.fontSize, color: element.color, bold: element.bold, align: element.align };
   });
-  if (elements.filter((item) => item.type === 'PHOTO').length !== 1 || elements.filter((item) => item.type === 'QR').length !== 1) throw new Error('Vé cần đúng một ảnh thẻ và một mã QR');
+  if (elements.filter((item) => item.type === 'PHOTO').length !== 1 || elements.filter((item) => item.type === 'QR').length !== 1) throw new Error('Thẻ cần đúng một ảnh thẻ và một mã QR');
   return { version: 1, elements };
 }
 

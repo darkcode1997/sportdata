@@ -1,5 +1,7 @@
 'use client';
 
+import { ToastNotice } from '@/components/ToastNotice';
+
 import { ProtectedImage } from '@/components/ProtectedImage';
 
 import { useEffect, useMemo, useState, type ComponentProps } from 'react';
@@ -7,7 +9,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import useSWR from 'swr';
 import dayjs, { type Dayjs } from 'dayjs';
-import { Alert, Avatar, Button, Card, Col, DatePicker, Empty, Form, Input, InputNumber, Modal, Row, Segmented, Select, Spin, Tag, Upload } from 'antd';
+import { Avatar, Button, Card, Col, DatePicker, Empty, Form, Input, InputNumber, Modal, Row, Segmented, Select, Spin, Tag, Upload } from 'antd';
 import { CreditCard, Download, Eye, FileCheck2, FileText, ImagePlus, Pencil, Save, ScanText, TicketCheck, UploadCloud, UserRound } from 'lucide-react';
 import { CameraCaptureButton } from '@/components/CameraCaptureButton';
 import { EventParticipationCard } from '@/components/EventParticipationCard';
@@ -351,7 +353,7 @@ export default function ParticipantAccountPage() {
     return (
       <main className="account-gateway-page grid min-h-[60vh] place-items-center px-4 py-10">
         <Card className="w-full max-w-lg" title="Không thể tải hồ sơ SportData">
-          <Alert
+          <ToastNotice
             showIcon
             type="error"
             message="Tài khoản chưa được liên kết với hồ sơ vận động viên"
@@ -397,7 +399,7 @@ export default function ParticipantAccountPage() {
           onChange={(value) => setTab(value as typeof tab)}
           options={[
             { value: 'profile', label: 'Thông tin & giấy tờ', icon: <CreditCard className="h-4 w-4" /> },
-            { value: 'tickets', label: `Vé & hồ sơ đã đăng ký (${registrations.length})`, icon: <TicketCheck className="h-4 w-4" /> },
+            { value: 'tickets', label: `Thẻ & hồ sơ đã đăng ký (${registrations.length})`, icon: <TicketCheck className="h-4 w-4" /> },
           ]}
         />
 
@@ -527,7 +529,7 @@ export default function ParticipantAccountPage() {
                       </Tag>
                     </div>
                     <p className="mt-4 text-sm text-slate-500">
-                      Vé A6 và mã QR check-in chỉ được phát hành sau khi hồ sơ được duyệt.
+                      Thẻ và mã QR check-in chỉ được phát hành sau khi hồ sơ được duyệt.
                     </p>
                   </Card>
                 )}
@@ -543,7 +545,7 @@ export default function ParticipantAccountPage() {
                   </p>
                   <div className="flex flex-wrap gap-2">
                     <Link href={`/tickets/${encodeURIComponent(registration.ticketCode)}`} target="_blank">
-                      <Button icon={<Eye className="h-4 w-4" />}>{ticketIssued ? 'Xem vé' : 'Theo dõi hồ sơ'}</Button>
+                      <Button icon={<Eye className="h-4 w-4" />}>{ticketIssued ? 'Xem thẻ' : 'Theo dõi hồ sơ'}</Button>
                     </Link>
                     {ticketIssued ? (
                       <Button href={`/api/participant-auth/tickets/${encodeURIComponent(registration.ticketCode)}/pdf`} icon={<Download className="h-4 w-4" />}>Tải PDF</Button>
@@ -555,7 +557,7 @@ export default function ParticipantAccountPage() {
             })}
           </div>
         ) : (
-          <Card><Empty description="Bạn chưa có vé tham dự nào" /></Card>
+          <Card><Empty description="Bạn chưa có thẻ tham dự nào" /></Card>
         )}
       </div>
       <Modal

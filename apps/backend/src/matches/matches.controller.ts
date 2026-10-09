@@ -71,6 +71,7 @@ export class MatchesController {
   @ApiQuery({ name: 'limit', required: false, type: Number, example: 20 })
   @ApiQuery({ name: 'pagination', required: false, enum: ['page', 'cursor'] })
   @ApiQuery({ name: 'cursor', required: false, type: String })
+  @ApiQuery({ name: 'hideByes', required: false, enum: ['true', 'false'] })
   @UseGuards(OptionalJwtAuthGuard)
   findAll(@Query() query: QueryMatchDto, @Req() request: { user?: unknown }) {
     return this.matchesService.findAll(query, Boolean(request.user));

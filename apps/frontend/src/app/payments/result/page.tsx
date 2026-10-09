@@ -27,10 +27,10 @@ export default function PaymentResultPage() {
     return <main className="grid min-h-[70vh] place-items-center"><Spin size="large" /></main>;
   }
   if (error) {
-    return <main className="grid min-h-[70vh] place-items-center"><Result status="error" title="Không thể kiểm tra giao dịch" subTitle="Vui lòng mở lại vé để kiểm tra trạng thái thanh toán." extra={<Link href="/events"><Button>Sự kiện</Button></Link>} /></main>;
+    return <main className="grid min-h-[70vh] place-items-center"><Result status="error" title="Không thể kiểm tra giao dịch" subTitle="Vui lòng mở lại thẻ để kiểm tra trạng thái thanh toán." extra={<Link href="/events"><Button>Sự kiện</Button></Link>} /></main>;
   }
   if (data?.status === 'PAID') {
-    return <main className="grid min-h-[70vh] place-items-center"><Result status="success" title="Thanh toán thành công" subTitle={`Mã giao dịch ${data.orderId}. Hồ sơ đang chờ ban tổ chức duyệt giấy tờ.`} extra={<Link href={`/tickets/${encodeURIComponent(data.ticketCode)}`}><Button type="primary">Xem vé tham dự</Button></Link>} /></main>;
+    return <main className="grid min-h-[70vh] place-items-center"><Result status="success" title="Thanh toán thành công" subTitle={`Mã giao dịch ${data.orderId}. Hồ sơ đang chờ ban tổ chức duyệt giấy tờ.`} extra={<Link href={`/tickets/${encodeURIComponent(data.ticketCode)}`}><Button type="primary">Xem thẻ tham dự</Button></Link>} /></main>;
   }
   if (data?.status === 'PENDING') {
     return <main className="grid min-h-[70vh] place-items-center"><Result icon={<Spin size="large" />} title="Đang xác nhận thanh toán" subTitle="Hệ thống đang chờ callback bảo mật từ cổng thanh toán. Trang sẽ tự cập nhật." /></main>;

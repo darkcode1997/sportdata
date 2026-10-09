@@ -1,8 +1,10 @@
 'use client';
 
+import { ToastNotice } from '@/components/ToastNotice';
+
 import { useState } from 'react';
 import useSWR from 'swr';
-import { Alert, Button, Card, Input, Popconfirm, Select, Skeleton, Tag, Typography } from 'antd';
+import { Button, Card, Input, Popconfirm, Select, Skeleton, Tag, Typography } from 'antd';
 import { api, fetcher } from '@/lib/api';
 import { useSportDataToast } from '@/hooks/useSportDataToast';
 
@@ -46,14 +48,14 @@ export function IntegrationSettings({ onSaved }: { onSaved: () => void }) {
   return (
     <section className="space-y-4">
       <Typography.Title level={4}>Cấu hình dịch vụ tích hợp</Typography.Title>
-      <Alert type="info" showIcon message="Cấu hình CMS được ưu tiên hơn ENV"
+      <ToastNotice type="info" showIcon message="Cấu hình CMS được ưu tiên hơn ENV"
         description="Thay đổi áp dụng cho các yêu cầu tiếp theo. Khóa bí mật được mã hóa và không hiển thị lại. Xóa giá trị CMS để sử dụng ENV. Database, JWT và cấu hình triển khai được quản lý trên máy chủ." />
-      {error ? <Alert type="error" showIcon message="Không thể tải cấu hình" action={<Button onClick={() => void mutate()}>Thử lại</Button>} /> : !data ? <Skeleton active /> :
+      {error ? <ToastNotice type="error" showIcon message="Không thể tải cấu hình" action={<Button onClick={() => void mutate()}>Thử lại</Button>} /> : !data ? <Skeleton active /> :
         ['SMTP', 'FPT.AI', 'MoMo', 'VNPAY', 'Cloudflare R2'].map((group) => (
           <Card key={group} title={group}>
             <div className="space-y-5">
               {group === 'Cloudflare R2' ? (
-                <Alert type="info" showIcon message="Lưu ảnh và tài liệu trên Cloudflare R2"
+                <ToastNotice type="info" showIcon message="Lưu ảnh và tài liệu trên Cloudflare R2"
                   description="Lưu tên bucket, Account ID (hoặc S3 API endpoint) và hai khóa R2 trước khi chọn Cloudflare R2 làm nơi lưu file mới. Để endpoint trống nếu dùng Account ID. File cũ không tự chuyển; giữ cấu hình để tiếp tục đọc file. Khi đổi bucket, hãy chuyển dữ liệu cũ sang bucket mới trước." />
               ) : null}
               {data.filter((field) => field.group === group).map((field) => {

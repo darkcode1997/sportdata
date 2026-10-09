@@ -81,7 +81,7 @@ export function RegistrationDisciplines({ categories, entries, existingRegistrat
               <div key={registration.ticketCode} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-sky-500/5 p-3 text-sm">
                 <span>{category ? registrationCategoryLabel(category) : 'Hạng đấu đã đăng ký'}</span>
                 <Link href={`/tickets/${encodeURIComponent(registration.ticketCode)}${payment ? '?payment=1' : ''}`}>
-                  <Button size="small">{payment ? 'Tiếp tục thanh toán' : 'Xem trạng thái / vé'}</Button>
+                  <Button size="small">{payment ? 'Tiếp tục thanh toán' : 'Xem trạng thái / thẻ'}</Button>
                 </Link>
               </div>
             );

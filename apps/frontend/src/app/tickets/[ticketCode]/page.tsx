@@ -1,9 +1,11 @@
 'use client';
 
+import { ToastNotice } from '@/components/ToastNotice';
+
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import useSWR from 'swr';
-import { Alert, Button, Card, Descriptions, Result, Skeleton, Statistic, Tag } from 'antd';
+import { Button, Card, Descriptions, Result, Skeleton, Statistic, Tag } from 'antd';
 import { ArrowLeft, CheckCircle2, FileCheck2, Medal, Printer, ShieldCheck, Swords, Trophy } from 'lucide-react';
 import { EventParticipationCard } from '@/components/EventParticipationCard';
 import { PaymentCheckout } from '@/components/PaymentCheckout';
@@ -11,7 +13,7 @@ import { fetcher } from '@/lib/api';
 import type { ParticipationTicket, TicketStatistics } from '@/lib/ticket-types';
 
 const statusLabels: Record<string, { label: string; color: string }> = {
-  CONFIRMED: { label: 'Vé hợp lệ', color: 'success' },
+  CONFIRMED: { label: 'Thẻ hợp lệ', color: 'success' },
   SUBMITTED: { label: 'Đang chờ xác nhận', color: 'processing' },
   REJECTED: { label: 'Hồ sơ bị từ chối', color: 'error' },
   CANCELLED: { label: 'Hồ sơ đã hủy', color: 'default' },
@@ -59,8 +61,8 @@ export default function TicketVerificationPage() {
       <main className="ticket-verification-page grid min-h-[75vh] place-items-center px-4">
         <Result
           status="404"
-          title="Không tìm thấy hồ sơ hoặc vé tham dự"
-          subTitle="Mã hồ sơ, mã QR hoặc mã vé không tồn tại. Vui lòng kiểm tra lại với ban tổ chức SportData."
+          title="Không tìm thấy hồ sơ hoặc thẻ tham dự"
+          subTitle="Mã hồ sơ, mã QR hoặc mã thẻ không tồn tại. Vui lòng kiểm tra lại với ban tổ chức SportData."
           extra={<Link href="/events"><Button type="primary">Xem sự kiện</Button></Link>}
         />
       </main>
@@ -89,22 +91,22 @@ export default function TicketVerificationPage() {
               target="_blank"
               icon={<Printer className="h-4 w-4" />}
             >
-              Tải vé A6 PDF
+              Tải thẻ PDF
             </Button>
           ) : null}
         </div>
 
         <div className="ticket-page-controls ticket-status-panel">
-          <Alert
+          <ToastNotice
             showIcon
             type={ticket.isValid ? 'success' : ticket.status === 'REJECTED' ? 'error' : 'warning'}
             icon={ticket.isValid ? <CheckCircle2 className="h-5 w-5" /> : undefined}
-            message={ticket.isValid ? 'Vé tham dự đã được phát hành' : status.label}
+            message={ticket.isValid ? 'Thẻ tham dự đã được phát hành' : status.label}
             description={ticket.isValid
-              ? 'Hồ sơ đã được SportData duyệt. Vé A6 này có thể dùng để check-in sự kiện.'
+              ? 'Hồ sơ đã được SportData duyệt. Thẻ này có thể dùng để check-in sự kiện.'
               : ticket.status === 'REJECTED' || ticket.status === 'CANCELLED'
-                ? 'Hồ sơ không được phát hành vé. Vui lòng liên hệ ban tổ chức nếu cần hỗ trợ.'
-                : 'Đây là trang theo dõi hồ sơ. Vé A6 chỉ được phát hành sau khi hồ sơ được SportData duyệt.'}
+                ? 'Hồ sơ không được phát hành thẻ. Vui lòng liên hệ ban tổ chức nếu cần hỗ trợ.'
+                : 'Đây là trang theo dõi hồ sơ. Thẻ chỉ được phát hành sau khi hồ sơ được SportData duyệt.'}
           />
         </div>
 
@@ -118,10 +120,10 @@ export default function TicketVerificationPage() {
           <div className="ticket-pass-stage">
             <Card className="ticket-page-controls border-sky-500/20 text-center">
               <FileCheck2 className="mx-auto h-10 w-10 text-sky-400" />
-              <h2 className="mt-3 text-lg font-bold">Vé A6 chưa được phát hành</h2>
+              <h2 className="mt-3 text-lg font-bold">Thẻ chưa được phát hành</h2>
               <p className="mx-auto mt-2 max-w-xl text-sm text-slate-500">
                 Bạn vẫn có thể theo dõi hồ sơ và hoàn tất thanh toán tại trang này. Khi hồ sơ được duyệt,
-                vé sẽ xuất hiện tại đây và được gửi tới email đăng ký.
+                thẻ sẽ xuất hiện tại đây và được gửi tới email đăng ký.
               </p>
             </Card>
           </div>

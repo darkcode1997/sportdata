@@ -1,7 +1,9 @@
 'use client';
 
+import { ToastNotice } from '@/components/ToastNotice';
+
 import { useEffect } from 'react';
-import { Alert, Checkbox, DatePicker, Form, Input, Modal, Progress, Select, Tag } from 'antd';
+import { Checkbox, DatePicker, Form, Input, Modal, Progress, Select, Tag } from 'antd';
 import dayjs from 'dayjs';
 import { ScanText, ShieldAlert } from 'lucide-react';
 
@@ -97,7 +99,7 @@ export function IdentityOcrReviewModal({
       onCancel={onCancel}
       destroyOnHidden
     >
-      <Alert
+      <ToastNotice
         className="mb-5"
         showIcon
         icon={<ShieldAlert className="h-5 w-5" />}

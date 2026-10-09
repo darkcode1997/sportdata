@@ -1,11 +1,13 @@
 'use client';
 
+import { ToastNotice } from '@/components/ToastNotice';
+
 import { imageUrl } from '@/lib/image-url';
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import useSWR from 'swr';
-import { Alert, Button, Card, Empty, Input, Pagination, Skeleton } from 'antd';
+import { Button, Card, Empty, Input, Pagination, Skeleton } from 'antd';
 import { ArrowRight, ArrowUpRight, CalendarDays, Newspaper, Search } from 'lucide-react';
 import { fetcher } from '@/lib/api';
 
@@ -54,7 +56,7 @@ export default function NewsPage() {
               onChange={(event) => { setSearch(event.target.value); setPage(1); }} />
           </div>
         </div>
-        {error ? <Alert type="error" showIcon message="Không thể tải tin tức"
+        {error ? <ToastNotice type="error" showIcon message="Không thể tải tin tức"
           action={<Button onClick={() => void mutate()}>Thử lại</Button>} /> : isLoading ? (
           <div className="news-grid">
             {Array.from({ length: 6 }).map((_, index) => <Card className="public-surface h-80" key={index}><Skeleton active paragraph={{ rows: 4 }} /></Card>)}

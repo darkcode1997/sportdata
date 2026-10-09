@@ -102,7 +102,7 @@ export default function CmsRegistrationsPage() {
     <div>
       <CmsPageHeader
         title="Đăng ký thi đấu"
-        description="Duyệt hồ sơ, đối chiếu giấy tờ và quản lý vé tham dự của vận động viên."
+        description="Duyệt hồ sơ, đối chiếu giấy tờ và quản lý thẻ tham dự của vận động viên."
         icon={<TicketCheck className="h-6 w-6" />}
       />
       <Card className="cms-surface mb-6">
@@ -201,7 +201,7 @@ export default function CmsRegistrationsPage() {
               ) : <Tag>Tài khoản SportData</Tag>,
             },
             {
-              title: 'Vé',
+              title: 'Thẻ',
               dataIndex: 'ticketCode',
               width: 190,
               render: (value) => <code>{value}</code>,

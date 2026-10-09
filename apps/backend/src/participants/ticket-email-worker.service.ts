@@ -21,7 +21,7 @@ export class TicketEmailWorkerService implements OnApplicationBootstrap, OnModul
   onApplicationBootstrap() {
     if (this.started || this.stopping) return;
     this.started = true;
-    this.logger.log('Đã bật xử lý vé/email nền trong backend');
+    this.logger.log('Đã bật xử lý thẻ/email nền trong backend');
     this.schedule(1000);
   }
 
@@ -40,7 +40,7 @@ export class TicketEmailWorkerService implements OnApplicationBootstrap, OnModul
       this.activeTask = this.processNext()
         .then((processed) => { this.schedule(processed ? 0 : 1000); })
         .catch((error) => {
-          this.logger.error('Không thể đọc hàng đợi gửi vé', error instanceof Error ? error.stack : String(error));
+          this.logger.error('Không thể đọc hàng đợi gửi thẻ', error instanceof Error ? error.stack : String(error));
           this.schedule(5000);
         })
         .finally(() => { this.activeTask = undefined; });
@@ -53,7 +53,7 @@ export class TicketEmailWorkerService implements OnApplicationBootstrap, OnModul
     if (!job) return false;
     const heartbeat = setInterval(() => {
       void this.queue.renew(job).catch((error) => {
-        this.logger.error(`Không thể gia hạn tác vụ gửi vé ${job.id}`, error instanceof Error ? error.stack : String(error));
+        this.logger.error(`Không thể gia hạn tác vụ gửi thẻ ${job.id}`, error instanceof Error ? error.stack : String(error));
       });
     }, 30_000);
     try {
@@ -74,7 +74,7 @@ export class TicketEmailWorkerService implements OnApplicationBootstrap, OnModul
       } else {
         await this.queue.retry(job, error);
       }
-      this.logger.error(`Không thể xử lý tác vụ gửi vé ${job.id} (lần ${job.attempts})`, error instanceof Error ? error.stack : String(error));
+      this.logger.error(`Không thể xử lý tác vụ gửi thẻ ${job.id} (lần ${job.attempts})`, error instanceof Error ? error.stack : String(error));
     } finally {
       clearInterval(heartbeat);
     }

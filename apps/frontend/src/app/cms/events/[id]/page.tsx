@@ -21,7 +21,7 @@ export default function EventWorkspacePage() {
       <CmsPageHeader
         backHref="/cms/events"
         title={event?.name || 'Quản lý sự kiện'}
-        description="Sàn/FOP, đăng ký, vé A6, payment, trận đấu và thể thức được quản lý tập trung theo sự kiện."
+        description="Sàn/FOP, đăng ký, thẻ, thanh toán, trận đấu và thể thức được quản lý tập trung theo sự kiện."
         icon={<CalendarDays className="h-6 w-6" />}
       />
       {error ? (

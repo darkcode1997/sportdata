@@ -1012,7 +1012,7 @@ export class ParticipantsService {
           const conflicting = existingRegistrations.find((registered) => registered.categoryId !== category.id
             && registrationDisciplineKey(registered.category) === registrationDisciplineKey(category));
           if (conflicting) {
-            throw new ConflictException(`${item.fullName}: đã đăng ký một hạng đấu trong nội dung này (vé ${conflicting.ticketCode})`);
+            throw new ConflictException(`${item.fullName}: đã đăng ký một hạng đấu trong nội dung này (thẻ ${conflicting.ticketCode})`);
           }
         }
         const newCategories = item.categories.filter((category) => !existingRegistrations.some((registered) => registered.categoryId === category.id));
@@ -1240,7 +1240,7 @@ export class ParticipantsService {
           where: { eventId: event.id, athleteId: profile.athlete.id }, include: { category: true },
         });
         const conflicting = existing.find((registration) => registrationDisciplineKey(registration.category) === registrationDisciplineKey(category));
-        if (conflicting) throw new ConflictException(`Bạn đã đăng ký nội dung này với vé ${conflicting.ticketCode}`);
+        if (conflicting) throw new ConflictException(`Bạn đã đăng ký nội dung này với thẻ ${conflicting.ticketCode}`);
         const payment = this.registrationPayment(event);
         canConfirmImmediately = identity.verified && payment.paymentStatus === PaymentStatus.NOT_REQUIRED;
         const registration = await transaction.eventRegistration.create({
@@ -1492,7 +1492,7 @@ export class ParticipantsService {
     const ticket = await this.getTicket(ticketCode, includeAssets);
     if (!ticket.isValid) {
       throw new TicketNotIssuedException(
-        'Vé A6 chỉ được phát hành sau khi hồ sơ được duyệt và thanh toán đã hoàn tất',
+        'Thẻ chỉ được phát hành sau khi hồ sơ được duyệt và thanh toán đã hoàn tất',
       );
     }
     return ticket;
@@ -1509,7 +1509,7 @@ export class ParticipantsService {
       },
     });
     if (!submission || submission.contactEmail.toLowerCase() !== contactEmail.trim().toLowerCase()) {
-      throw new TicketNotFoundException('Không tìm thấy bộ vé với mã hồ sơ và email này');
+      throw new TicketNotFoundException('Không tìm thấy bộ thẻ với mã hồ sơ và email này');
     }
     const hasUnissuedTicket = submission.registrations.some((item) => (
       item.status !== RegistrationStatus.CONFIRMED
@@ -1517,7 +1517,7 @@ export class ParticipantsService {
     ));
     if (hasUnissuedTicket) {
       throw new TicketNotIssuedException(
-        'Bộ vé A6 chỉ được phát hành sau khi tất cả hồ sơ được duyệt và thanh toán đã hoàn tất',
+        'Bộ thẻ chỉ được phát hành sau khi tất cả hồ sơ được duyệt và thanh toán đã hoàn tất',
       );
     }
     const tickets = await Promise.all(
@@ -1825,6 +1825,60 @@ export class ParticipantsService {
     }
 
     return { event, category, athlete, athleteId: existingAthlete?.id, reasons: [...new Set(reasons)], warnings };
+  }
+
+  async deleteRegistration(id: string) {
+    try {
+      return await this.prisma.$transaction(async (transaction) => {
+        const current = await transaction.eventRegistration.findUnique({ where: { id } });
+        if (!current) throw new NotFoundException('Không tìm thấy lượt đăng ký');
+        await transaction.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${current.eventId}))`;
+        await transaction.$queryRaw`SELECT "id" FROM "Event" WHERE "id" = ${current.eventId} FOR UPDATE`;
+        await transaction.$queryRaw`SELECT "id" FROM "Athlete" WHERE "id" = ${current.athleteId} FOR UPDATE`;
+        const registration = await transaction.eventRegistration.findUnique({ where: { id } });
+        if (!registration) throw new NotFoundException('Không tìm thấy lượt đăng ký');
+
+        const competitionWhere = { eventId: registration.eventId, categoryId: registration.categoryId };
+        const counts = await Promise.all([
+          transaction.draw.count({ where: competitionWhere }),
+          transaction.match.count({ where: competitionWhere }),
+          transaction.heat.count({ where: competitionWhere }),
+          transaction.roundRobinGroup.count({ where: competitionWhere }),
+        ]);
+        if (counts.some(Boolean)) {
+          throw new ConflictException('Hạng đấu đã có nhánh đấu hoặc lịch thi đấu. Hãy thu hồi nhánh đấu/lịch thi đấu trước khi xóa đăng ký.');
+        }
+
+        const entryWhere = { ...competitionWhere, athleteId: registration.athleteId };
+        const entries = await transaction.competitionEntry.findMany({ where: entryWhere, select: { id: true } });
+        const entryIds = new Set(entries.map((entry) => entry.id));
+        const configurations = await transaction.drawPreconfiguration.findMany({ where: competitionWhere });
+        for (const configuration of configurations) {
+          const pairs = configuration.pairs as Array<{ entry1Id: string; entry2Id: string }>;
+          await transaction.drawPreconfiguration.update({
+            where: { id: configuration.id },
+            data: {
+              pairs: pairs.filter((pair) => !entryIds.has(pair.entry1Id) && !entryIds.has(pair.entry2Id)),
+              revision: { increment: 1 },
+              inputVersion: null,
+              slots: Prisma.DbNull,
+              plan: Prisma.DbNull,
+              previewedAt: null,
+            },
+          });
+        }
+        await transaction.competitionEntry.deleteMany({ where: entryWhere });
+        await transaction.ticketEmailJob.deleteMany({ where: { ticketCode: registration.ticketCode } });
+        await transaction.eventRegistration.delete({ where: { id } });
+        return { id, success: true };
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 30000 });
+    } catch (error: any) {
+      if (error?.code === 'P2034'
+        || (error?.code === 'P2010' && ['40001', '40P01'].includes(String(error.meta?.code)))) {
+        throw new ConflictException('Dữ liệu vừa thay đổi. Hãy tải lại và thử xóa đăng ký lần nữa.');
+      }
+      throw error;
+    }
   }
 
   async updateRegistrationCategory(id: string, categoryId: string, changedBy?: string) {

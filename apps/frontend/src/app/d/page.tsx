@@ -1,9 +1,10 @@
 'use client';
 
+import { ToastNotice } from '@/components/ToastNotice';
+
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  Alert,
   App,
   Button,
   Card,
@@ -232,7 +233,7 @@ export default function HiddenBackupPage() {
           <Button href="/cms" icon={<ArrowLeft className="h-4 w-4" />}>Trở về CMS</Button>
         </Flex>
 
-        <Alert
+        <ToastNotice
           className="mb-6"
           type="warning"
           showIcon
@@ -339,7 +340,7 @@ export default function HiddenBackupPage() {
         </div>
 
         {lastImport && (
-          <Alert
+          <ToastNotice
             className="mt-6"
             type="success"
             showIcon

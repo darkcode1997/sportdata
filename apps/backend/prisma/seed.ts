@@ -8,14 +8,13 @@ import {
   MatchType,
   Prisma,
   PrismaClient,
-  UserRole,
   UniformType,
   WinMethod,
 } from '@prisma/client';
-import * as bcrypt from 'bcrypt';
 import worldCountries from 'world-countries';
 import { seedSeaGamesDemo } from './sea-games.seed';
 import { seedOperationalDemoAccounts } from './demo-accounts.seed';
+import { seedAdmin } from './admin.seed';
 
 const prisma = new PrismaClient();
 
@@ -35,34 +34,7 @@ function vietnamTime(day: number, minutesFromMidnight: number) {
 async function main() {
   console.log('Seeding SportData database...');
 
-  const adminEmail = (process.env.ADMIN_EMAIL || 'admin@sportdata.vn').trim().toLowerCase();
-  const adminUsername = (process.env.ADMIN_USERNAME || 'admin').trim().toLowerCase();
-  const adminName = process.env.ADMIN_NAME || 'SportData Administrator';
-  const adminPassword = process.env.ADMIN_PASSWORD || 'SportData@ChangeMe2026!';
-  const configuredRole = process.env.ADMIN_ROLE?.trim().toUpperCase();
-  const adminRole = configuredRole === 'CONTENT' || configuredRole === 'EDITOR'
-    ? UserRole.CONTENT
-    : UserRole.ADMIN;
-  const hashedPassword = await bcrypt.hash(adminPassword, 12);
-  const syncPassword = process.env.ADMIN_SYNC_PASSWORD === 'true';
-
-  await prisma.user.upsert({
-    where: { email: adminEmail },
-    update: {
-      username: adminUsername,
-      name: adminName,
-      role: adminRole,
-      ...(syncPassword ? { password: hashedPassword, passwordChangedAt: new Date() } : {}),
-    },
-    create: {
-      email: adminEmail,
-      username: adminUsername,
-      name: adminName,
-      password: hashedPassword,
-      role: adminRole,
-    },
-  });
-  console.log(`Admin configured: ${adminUsername} (${adminEmail}) - ${adminRole}`);
+  await seedAdmin(prisma);
 
   if (process.env.SEED_DEMO_ACCOUNTS === 'true') {
     const demoAccounts = await seedOperationalDemoAccounts(prisma);

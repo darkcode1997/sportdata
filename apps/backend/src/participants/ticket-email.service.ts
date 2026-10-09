@@ -18,17 +18,17 @@ export class TicketEmailService {
 
   async send(to: string, tickets: TicketPayload[], batch?: TicketBatchMeta) {
     if (!tickets.length || tickets.some((ticket) => ticket.isValid !== true)) {
-      this.logger.warn('Bỏ qua gửi email vì hồ sơ chưa đủ điều kiện phát hành vé');
+      this.logger.warn('Bỏ qua gửi email vì hồ sơ chưa đủ điều kiện phát hành thẻ');
       return false;
     }
     if (!await this.isEnabled()) {
-      this.logger.warn('Bỏ qua gửi vé email vì tính năng email đang tắt hoặc SMTP chưa được cấu hình');
+      this.logger.warn('Bỏ qua gửi thẻ email vì tính năng email đang tắt hoặc SMTP chưa được cấu hình');
       return false;
     }
 
     const integration = await this.settings.integrationValues();
     if (!integration.SMTP_HOST) {
-      this.logger.warn('Bỏ qua gửi vé email vì chưa cấu hình SMTP_HOST');
+      this.logger.warn('Bỏ qua gửi thẻ email vì chưa cấu hình SMTP_HOST');
       return false;
     }
     try {
@@ -53,9 +53,9 @@ export class TicketEmailService {
       await transporter.sendMail({
         from: integration.SMTP_FROM || integration.SMTP_USER || 'SportData',
         to,
-        subject: `[SportData] Vé tham dự ${eventName}`,
-        text: `Hồ sơ ${athleteSummary} đã được SportData duyệt. Vé A6 chính thức được đính kèm trong email này và có thể dùng để check-in sự kiện.`,
-        html: `<div style="font-family:Arial,sans-serif;color:#0f172a;line-height:1.6"><h2 style="color:#0284c7">Vé tham dự ${this.escape(eventName)}</h2><p>Hồ sơ <strong>${this.escape(athleteSummary)}</strong> đã được SportData duyệt.</p><p>Vé A6 chính thức để in và đeo tại sự kiện được đính kèm. Mỗi vận động viên có một mã QR riêng để ban tổ chức check-in.</p></div>`,
+        subject: `[SportData] Thẻ tham dự ${eventName}`,
+        text: `Hồ sơ ${athleteSummary} đã được SportData duyệt. Thẻ chính thức được đính kèm trong email này và có thể dùng để check-in sự kiện.`,
+        html: `<div style="font-family:Arial,sans-serif;color:#0f172a;line-height:1.6"><h2 style="color:#0284c7">Thẻ tham dự ${this.escape(eventName)}</h2><p>Hồ sơ <strong>${this.escape(athleteSummary)}</strong> đã được SportData duyệt.</p><p>Thẻ chính thức để in và đeo tại sự kiện được đính kèm. Mỗi vận động viên có một mã QR riêng để ban tổ chức check-in.</p></div>`,
         attachments: [{
           filename: `sportdata-${fileCode}-A6.pdf`,
           content: pdf,
@@ -64,7 +64,7 @@ export class TicketEmailService {
       });
       return true;
     } catch (error) {
-      this.logger.error(`Không thể gửi vé đến ${to}`, error instanceof Error ? error.stack : String(error));
+      this.logger.error(`Không thể gửi thẻ đến ${to}`, error instanceof Error ? error.stack : String(error));
       throw error;
     }
   }

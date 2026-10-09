@@ -6418,3 +6418,146 @@ html[data-app-theme="light"] .registration-document-empty {
 @media (prefers-reduced-motion: reduce) {
   .news-lead-cover img, .news-lead-arrow, .news-editorial-card .news-card-cover img { transition: none; }
 }
+.cms-match-table .ant-table-thead > tr > th,
+.cms-match-table .ant-table-column-title {
+  white-space: nowrap;
+}
+
+.cms-match-table .ant-table-filter-column {
+  gap: 8px;
+}
+
+.cms-match-table .ant-table-column-title {
+  min-width: max-content;
+}
+
+.event-detail-hero {
+  overflow: hidden;
+  width: 100%;
+  background: linear-gradient(135deg, #0c2444, #071326 65%, #10304c);
+  border-bottom: 1px solid rgba(56, 189, 248, 0.2);
+}
+
+.event-detail-banner-wrap {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  height: clamp(240px, 32vw, 540px);
+  background: #e2e8f0;
+}
+
+.event-detail-banner-backdrop {
+  position: absolute;
+  inset: -40px;
+  z-index: -1;
+  background-position: center;
+  background-size: cover;
+  filter: blur(28px);
+  opacity: 0.5;
+}
+
+.event-detail-banner {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.event-detail-heading {
+  position: relative;
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  column-gap: 28px;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 32px 20px;
+  text-align: left;
+}
+
+.event-detail-heading h1 {
+  margin: 0;
+  max-width: 100%;
+  font-size: clamp(22px, 2.2vw, 34px);
+  line-height: 1.25;
+  letter-spacing: -0.025em;
+}
+
+.event-detail-heading > :not(.event-detail-identity) {
+  grid-column: 2;
+}
+
+.event-detail-identity {
+  grid-column: 1;
+  grid-row: 1 / span 4;
+  align-self: start;
+}
+
+.event-detail-logo {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 120px;
+  height: 120px;
+  padding: 12px;
+  border: 1px solid #dbeafe;
+  border-radius: 22px;
+  background: #fff;
+  box-shadow: 0 8px 28px rgba(2, 132, 199, 0.16);
+}
+
+.has-banner .event-detail-logo {
+  margin-top: -56px;
+}
+
+.event-detail-logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.event-detail-meta {
+  display: flex;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+  margin-top: 18px;
+  color: #cbd5e1;
+  font-size: 14px;
+}
+
+.event-detail-meta > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.event-shared-filter-label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 16px;
+}
+
+.event-shared-filter-label strong { font-size: 20px; }
+.event-shared-filter-label > span,
+.event-summary-note { color: #94a3b8; font-size: 13px; }
+.event-summary-note { margin-bottom: 16px; line-height: 1.6; }
+.event-registration-summary .ant-card-head { flex-wrap: wrap; }
+.event-summary-category { font-weight: 600; }
+.event-roster-name { display: block; line-height: 1.5; }
+.event-roster-sport { display: block; margin-top: 4px; color: #94a3b8; font-size: 12px; font-weight: 400; }
+.event-roster-error { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+
+.public-theme-light .event-detail-hero { background: linear-gradient(135deg, #fff, #f0f9ff); border-color: #cbdff1; }
+.public-theme-light .event-detail-meta { color: #475569; }
+.public-theme-light .event-shared-filter-label > span,
+.public-theme-light .event-summary-note,
+.public-theme-light .event-roster-sport { color: #64748b; }
+
+@media (max-width: 640px) {
+  .event-detail-heading { display: block; padding: 20px 16px 24px; }
+  .event-detail-identity { margin-bottom: 16px; }
+  .event-detail-logo { width: 80px; height: 80px; border-radius: 16px; }
+  .has-banner .event-detail-logo { margin-top: -48px; }
+  .event-registration-summary .ant-card-head-wrapper { flex-wrap: wrap; gap: 8px; padding: 12px 0; }
+}

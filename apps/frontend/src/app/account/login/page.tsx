@@ -14,13 +14,13 @@ const modes: Array<{ key: LoginMode; title: string; description: string; icon: R
   {
     key: 'ATHLETE',
     title: 'Cá nhân / Vận động viên',
-    description: 'Hồ sơ cá nhân, giấy tờ, đăng ký thi đấu và vé tham dự.',
+    description: 'Hồ sơ cá nhân, giấy tờ, đăng ký thi đấu và thẻ tham dự.',
     icon: <UserRound className="h-5 w-5" />,
   },
   {
     key: 'FEDERATION',
     title: 'Liên đoàn / CLB',
-    description: 'Đăng ký danh sách VĐV và quản lý bộ vé của đơn vị.',
+    description: 'Đăng ký danh sách VĐV và quản lý bộ thẻ của đơn vị.',
     icon: <Building2 className="h-5 w-5" />,
   },
   {

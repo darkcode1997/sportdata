@@ -71,7 +71,7 @@ docker compose up --build
 
 Cổng bên trong Docker không đổi nên website vẫn kết nối API bình thường.
 
-Lần chạy đầu, hệ thống tự tạo cấu trúc cơ sở dữ liệu. Chỉ nạp dữ liệu mẫu khi đặt `SEED_DATABASE=true`. Tài khoản CMS local mặc định được cấu hình trong `.env`.
+Lần chạy đầu, hệ thống tự tạo cấu trúc cơ sở dữ liệu và tài khoản CMS từ các biến `ADMIN_*` trong `.env`, kể cả khi `SEED_DATABASE=false`. Chỉ nạp dữ liệu mẫu khi đặt `SEED_DATABASE=true`. Mật khẩu của tài khoản đã tồn tại được giữ nguyên; đặt `ADMIN_SYNC_PASSWORD=true` nếu muốn đồng bộ lại mật khẩu từ `.env` khi khởi động backend.
 
 Dừng hệ thống:
 

@@ -1,8 +1,10 @@
 'use client';
 
+import { ToastNotice } from '@/components/ToastNotice';
+
 import { useState } from 'react';
 import useSWR from 'swr';
-import { Alert, Card, Divider, Skeleton, Space, Switch, Tag, Typography } from 'antd';
+import { Card, Divider, Skeleton, Space, Switch, Tag, Typography } from 'antd';
 import {
   BadgeDollarSign,
   CreditCard,
@@ -139,7 +141,7 @@ export default function SystemSettingsPage() {
         icon={<Settings className="h-6 w-6" />}
       />
 
-      <Alert
+      <ToastNotice
         type="info"
         showIcon
         message="Quản lý cấu hình và trạng thái dịch vụ"
@@ -154,7 +156,7 @@ export default function SystemSettingsPage() {
           <section className="space-y-4">
             <div>
               <Typography.Title level={4} className="!mb-1">Xác minh & thông báo</Typography.Title>
-              <Typography.Text type="secondary">Dịch vụ xử lý hồ sơ vận động viên và gửi vé.</Typography.Text>
+              <Typography.Text type="secondary">Dịch vụ xử lý hồ sơ vận động viên và gửi thẻ.</Typography.Text>
             </div>
             <div className="grid gap-4 lg:grid-cols-2">
               <SettingCard
@@ -169,9 +171,9 @@ export default function SystemSettingsPage() {
               />
               <SettingCard
                 settingKey="ticketEmailEnabled"
-                title="Gửi vé A6 qua email"
+                title="Gửi thẻ qua email"
                 code="TICKET_EMAIL_ENABLED"
-                description="Gửi PDF vé cho người đăng ký sau khi hồ sơ được tiếp nhận. Cần cấu hình máy chủ SMTP để hoạt động."
+                description="Gửi PDF thẻ cho người đăng ký sau khi hồ sơ được tiếp nhận. Cần cấu hình máy chủ SMTP để hoạt động."
                 icon={<MailCheck className="h-5 w-5" />}
                 settings={settings}
                 saving={savingKey === 'ticketEmailEnabled'}

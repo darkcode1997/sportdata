@@ -5,6 +5,9 @@ echo "Preparing SportData database..."
 npx prisma migrate deploy --schema=apps/backend/prisma/schema.prisma
 npx prisma db execute --schema=apps/backend/prisma/schema.prisma --file=apps/backend/prisma/sql/match-schedule-constraints.sql
 
+# Bootstrap the CMS account even when demo data seeding is disabled.
+node apps/backend/dist/prisma/seed-admin.js
+
 if [ "${SEED_DATABASE:-false}" = "true" ]; then
   npm run seed
 fi

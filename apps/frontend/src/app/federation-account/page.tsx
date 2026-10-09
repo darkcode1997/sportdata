@@ -1,10 +1,12 @@
 'use client';
 
+import { ToastNotice } from '@/components/ToastNotice';
+
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import useSWR from 'swr';
-import { Alert, Button, Card, Empty, Spin, Statistic, Tag } from 'antd';
+import { Button, Card, Empty, Spin, Statistic, Tag } from 'antd';
 import { Building2, CalendarDays, Download, MapPin, TicketCheck, Users } from 'lucide-react';
 import { getParticipantAccount, getParticipantToken, participantApi, participantError } from '@/lib/participant-auth';
 import { useSportDataToast } from '@/hooks/useSportDataToast';
@@ -69,7 +71,7 @@ export default function FederationAccountPage() {
       link.remove();
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (requestError) {
-      toast.error(participantError(requestError, 'Không thể tải bộ vé'));
+      toast.error(participantError(requestError, 'Không thể tải bộ thẻ'));
     } finally {
       setDownloading(undefined);
     }
@@ -96,7 +98,7 @@ export default function FederationAccountPage() {
         </header>
 
         {!approved && (
-          <Alert
+          <ToastNotice
             className="mb-6"
             showIcon
             type={profile.verificationStatus === 'REJECTED' ? 'error' : 'warning'}
@@ -111,7 +113,7 @@ export default function FederationAccountPage() {
         </div>
 
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-          <div><h2 className="text-2xl font-black text-white">Hồ sơ đăng ký theo đoàn</h2><p className="mt-1 text-sm text-slate-400">Mỗi VĐV vẫn có mã vé và QR độc lập.</p></div>
+          <div><h2 className="text-2xl font-black text-white">Hồ sơ đăng ký theo đoàn</h2><p className="mt-1 text-sm text-slate-400">Mỗi VĐV vẫn có mã thẻ và QR độc lập.</p></div>
           {approved && <Link href="/events"><Button type="primary" size="large" icon={<Users className="h-4 w-4" />}>Chọn sự kiện để đăng ký đoàn</Button></Link>}
         </div>
 
@@ -128,7 +130,7 @@ export default function FederationAccountPage() {
                       <span>{submission.registrations.length} VĐV</span>
                     </p>
                   </div>
-                  <Button loading={downloading === submission.referenceCode} icon={<Download className="h-4 w-4" />} onClick={() => void downloadBatch(submission.referenceCode)}>Tải bộ vé PDF</Button>
+                  <Button loading={downloading === submission.referenceCode} icon={<Download className="h-4 w-4" />} onClick={() => void downloadBatch(submission.referenceCode)}>Tải bộ thẻ PDF</Button>
                 </div>
               </Card>
             ))}

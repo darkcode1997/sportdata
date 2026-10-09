@@ -10,6 +10,7 @@ import {
   Query,
   HttpCode,
   HttpStatus,
+  Header,
   UseGuards,
   UploadedFile,
   UseInterceptors,
@@ -22,6 +23,7 @@ import { EventsService } from './events.service';
 import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
 import { QueryEventsDto } from './dto/query-events.dto';
+import { QueryRegistrationSummaryDto } from './dto/query-registration-summary.dto';
 import { QueryEligibleAthletesDto } from './dto/query-eligible-athletes.dto';
 import { CreateEventFopDto, UpdateEventFopDto } from './dto/event-fop.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -57,6 +59,20 @@ export class EventsController {
     @Query() query: QueryEligibleAthletesDto,
   ) {
     return this.eventsService.findEligibleAthletes(id, categoryId, query);
+  }
+
+  @Get(':id/registration-summary')
+  @Header('Cache-Control', 'no-store')
+  @Header('Vercel-CDN-Cache-Control', 'no-store')
+  @ApiOperation({ summary: 'Danh sách VĐV đăng ký theo hạng cân, dùng bộ lọc chung của sự kiện' })
+  registrationSummary(@Param('id') id: string, @Query() query: QueryRegistrationSummaryDto) {
+    return this.eventsService.registrationSummary(id, query);
+  }
+
+  @Get(':id/federation-filters')
+  @ApiOperation({ summary: 'Danh sách đơn vị / CLB trong sự kiện cho bộ lọc chung' })
+  federationFilters(@Param('id') id: string) {
+    return this.eventsService.federationFilters(id);
   }
 
   @Get(':id/admin-detail')

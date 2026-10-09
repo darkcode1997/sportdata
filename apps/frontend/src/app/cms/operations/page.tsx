@@ -1,10 +1,11 @@
 'use client';
 
+import { ToastNotice } from '@/components/ToastNotice';
+
 import { useEffect, useMemo, useState } from 'react';
 import dayjs from 'dayjs';
 import useSWR from 'swr';
 import {
-  Alert,
   App as AntApp,
   Button,
   Card,
@@ -374,9 +375,9 @@ export default function OperationsPage() {
         </Row>
       </Card>
 
-      {!eventId ? <Alert showIcon message="Chọn một kỳ đại hội để bắt đầu." /> : (
+      {!eventId ? <ToastNotice showIcon message="Chọn một kỳ đại hội để bắt đầu." /> : (
         <Space direction="vertical" size="large" className="w-full">
-          {currentUser?.role === 'READ_ONLY' && <Alert showIcon type="info" message="Bạn đang ở chế độ chỉ xem" description="Các nút thay đổi dữ liệu được ẩn hoặc vô hiệu hóa theo vai trò tài khoản." />}
+          {currentUser?.role === 'READ_ONLY' && <ToastNotice showIcon type="info" message="Bạn đang ở chế độ chỉ xem" description="Các nút thay đổi dữ liệu được ẩn hoặc vô hiệu hóa theo vai trò tài khoản." />}
 
           <Card
             className="cms-surface"
@@ -401,7 +402,7 @@ export default function OperationsPage() {
             )}
           >
             {readinessError ? (
-              <Alert
+              <ToastNotice
                 showIcon
                 type="error"
                 message="Không thể chạy kiểm tra sẵn sàng"
@@ -419,7 +420,7 @@ export default function OperationsPage() {
                 />
               </Col>
               <Col xs={24} md={19}>
-                <Alert
+                <ToastNotice
                   showIcon
                   type={readiness?.ready ? (readiness?.summary?.warn ? 'warning' : 'success') : 'error'}
                   message={readiness?.ready ? 'Không còn lỗi kỹ thuật bắt buộc' : 'Chưa được phép chốt lịch vận hành'}
@@ -441,7 +442,7 @@ export default function OperationsPage() {
                 scroll={{ x: 760 }}
               />
             ) : (
-              <Alert className="mt-5" showIcon type="success" message="Toàn bộ kiểm tra đều đạt." />
+              <ToastNotice className="mt-5" showIcon type="success" message="Toàn bộ kiểm tra đều đạt." />
             )}
             </>
             )}
@@ -454,7 +455,7 @@ export default function OperationsPage() {
               onChange={(index) => setActiveTab(workflow[index].tab)}
               items={workflow.map((step) => ({ title: step.title, description: step.description, status: step.ready ? 'finish' : 'wait' }))}
             />
-            <Alert
+            <ToastNotice
               className="mt-5"
               showIcon
               type={completedSteps === workflow.length ? 'success' : 'info'}
@@ -477,7 +478,7 @@ export default function OperationsPage() {
                   <Col xs={12} lg={6}><Card><Statistic title="Xung đột" value={conflictReport?.conflictCount || 0} valueStyle={{ color: conflictReport?.valid ? '#22c55e' : '#ef4444' }} /></Card></Col>
                 </Row>
                 <Card title="Địa điểm → Sân/sàn → Ca thi đấu → Khung giờ" extra={<Space wrap><Button icon={<MapPin className="h-4 w-4" />} disabled={!canCreateVenue} onClick={() => setVenueOpen(true)}>Thêm địa điểm</Button><Button icon={<CalendarClock className="h-4 w-4" />} disabled={!canManageSessions || !venues.length} onClick={openSessionForm}>Thêm ca</Button><Button disabled={!canManageRules || !sports.length} onClick={openRuleForm}>Quy tắc bộ môn</Button></Space>}>
-                  {!event?.fops?.length && <Alert className="mb-4" showIcon type="warning" message="Sự kiện chưa có sân/sàn thi đấu" description="Tạo sân/sàn tại trang Sự kiện trước khi sinh khung giờ." />}
+                  {!event?.fops?.length && <ToastNotice className="mb-4" showIcon type="warning" message="Sự kiện chưa có sân/sàn thi đấu" description="Tạo sân/sàn tại trang Sự kiện trước khi sinh khung giờ." />}
                   <Table rowKey="id" size="small" pagination={false} columns={sessionColumns} dataSource={sessions} scroll={{ x: 800 }} />
                 </Card>
               </Space>
@@ -494,14 +495,14 @@ export default function OperationsPage() {
             children: (
               <Space direction="vertical" size="large" className="w-full">
                 <Card title="Bộ xếp lịch" extra={<Space wrap><Button icon={<ScanSearch className="h-4 w-4" />} disabled={!canSchedule || !counts.timeSlots || !counts.matches} loading={scheduling} onClick={() => autoSchedule(true)}>1. Mô phỏng</Button><Button type="primary" icon={<Play className="h-4 w-4" />} disabled={!canSchedule || !scheduleResult?.dryRun || scheduleResult?.unscheduled > 0} loading={scheduling} onClick={confirmApplySchedule}>2. Áp dụng lịch</Button></Space>}>
-                  {!counts.timeSlots && <Alert className="mb-4" showIcon type="warning" message="Chưa có khung giờ thi đấu" description="Hoàn thành bước Tài nguyên trước khi xếp lịch." action={<Button onClick={() => setActiveTab('resources')}>Sang bước 1</Button>} />}
+                  {!counts.timeSlots && <ToastNotice className="mb-4" showIcon type="warning" message="Chưa có khung giờ thi đấu" description="Hoàn thành bước Tài nguyên trước khi xếp lịch." action={<Button onClick={() => setActiveTab('resources')}>Sang bước 1</Button>} />}
                   {scheduleResult ? <Descriptions bordered size="small" column={{ xs: 1, sm: 4 }}><Descriptions.Item label="Chế độ">{scheduleResult.dryRun ? 'Mô phỏng' : 'Đã ghi lịch'}</Descriptions.Item><Descriptions.Item label="Yêu cầu">{scheduleResult.requested}</Descriptions.Item><Descriptions.Item label="Đã xếp">{scheduleResult.scheduled}</Descriptions.Item><Descriptions.Item label="Chưa xếp">{scheduleResult.unscheduled}</Descriptions.Item></Descriptions> : <Typography.Text type="secondary">Bước 1: Mô phỏng. Bước 2: kiểm tra số trận chưa xếp. Bước 3: áp dụng lịch.</Typography.Text>}
                 </Card>
                 <Card title="Lịch đã xếp và khóa thủ công" extra={<Tag color="gold">{counts.lockedSchedules || 0} trận đã khóa</Tag>}>
                   <Table rowKey="id" size="small" columns={scheduleColumns} dataSource={matches} pagination={{ pageSize: 10, showSizeChanger: true }} scroll={{ x: 900 }} />
                 </Card>
                 <Card title="Báo cáo xung đột" extra={<Button onClick={() => Promise.all([mutateConflicts(), mutateReadiness()])}>Kiểm tra lại</Button>}>
-                  {conflictReport?.valid ? <Alert showIcon type="success" message="Lịch hiện tại không có xung đột cứng." /> : <Table rowKey={(_, index) => String(index)} size="small" pagination={{ pageSize: 20 }} columns={conflictColumns} dataSource={conflictReport?.conflicts || []} scroll={{ x: 800 }} />}
+                  {conflictReport?.valid ? <ToastNotice showIcon type="success" message="Lịch hiện tại không có xung đột cứng." /> : <Table rowKey={(_, index) => String(index)} size="small" pagination={{ pageSize: 20 }} columns={conflictColumns} dataSource={conflictReport?.conflicts || []} scroll={{ x: 800 }} />}
                 </Card>
               </Space>
             ),
@@ -608,7 +609,7 @@ function ResultWorkflowModal({ match, role, open, onClose, onChanged }: { match:
             title: resultLabels[status].shortLabel || resultLabels[status].label,
           }))}
         />
-        <Alert
+        <ToastNotice
           showIcon
           type={state === 'LOCKED' ? 'success' : 'info'}
           message={resultLabels[state]?.label || 'Chưa xác định trạng thái'}
