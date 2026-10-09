@@ -16,7 +16,9 @@ RUN --mount=type=cache,target=/root/.npm \
 COPY apps/backend ./apps/backend
 COPY docker/backend-entrypoint.sh ./docker/backend-entrypoint.sh
 
-RUN npm run prisma:generate \
+# Normalize Windows checkout line endings before running the Linux entrypoint.
+RUN sed -i 's/\r$//' docker/backend-entrypoint.sh \
+  && npm run prisma:generate \
   && npm run build:backend
 
 EXPOSE 4000
