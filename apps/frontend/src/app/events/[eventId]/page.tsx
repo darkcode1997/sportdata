@@ -503,6 +503,8 @@ export default function EventDetailPage() {
                         </span>
                       </div>
                     </div>
+                    <div className="flex flex-wrap gap-2">
+                    <Link href={`/events/${eventId}/register?mode=individual&source=account`}><Button>Đăng ký thêm nội dung</Button></Link>
                     <Link href={`/tickets/${encodeURIComponent(ownRegistrationState.registration.ticketCode)}${ownRegistrationState.registration.paymentStatus === 'PENDING' ? '?payment=1' : ''}`}>
                       <Button type={ownRegistrationState.registration.paymentStatus === 'PENDING' ? 'primary' : 'default'}>
                         {ownRegistrationState.registration.paymentStatus === 'PENDING'
@@ -512,6 +514,7 @@ export default function EventDetailPage() {
                             : 'Theo dõi hồ sơ'}
                       </Button>
                     </Link>
+                    </div>
                   </div>
                 ) : (
                   <div className="grid items-end gap-4 md:grid-cols-[1fr_auto]">
