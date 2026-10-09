@@ -2,5 +2,6 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "npm run vercel-build",
   "fluid": true,
+  "crons": [{ "path": "/api/marketing/cron", "schedule": "0 0 * * *" }],
   "regions": ["sin1"]
 }

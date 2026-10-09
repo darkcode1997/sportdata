@@ -1,5 +1,7 @@
 'use client';
 
+import { PersonNameInput } from '@/components/PersonNameInput';
+
 import { useState } from 'react';
 import useSWR from 'swr';
 import {
@@ -204,12 +206,6 @@ export default function CmsUsersPage() {
         icon={<UserCog className="h-6 w-6" />}
         action={<Button type="primary" size="large" icon={<Plus className="h-4 w-4" />} onClick={create}>Thêm tài khoản</Button>}
       />
-
-      <Alert
-        type="info"
-        showIcon
-        message="Đây là tài khoản nhân sự vận hành CMS, không phải tài khoản vận động viên hoặc đơn vị thể thao."
-      />
       <Table<CmsUser>
         rowKey="id"
         columns={columns}
@@ -231,7 +227,7 @@ export default function CmsUsersPage() {
       >
         <Form form={form} layout="vertical" requiredMark={false} className="pt-3">
           <Form.Item name="name" label="Tên hiển thị" rules={[{ required: true, message: 'Nhập tên hiển thị' }, { min: 2, message: 'Tên phải có ít nhất 2 ký tự' }]}>
-            <Input placeholder="Nguyễn Văn A" />
+            <PersonNameInput placeholder="Nguyễn Văn A" />
           </Form.Item>
           <div className="grid gap-x-4 sm:grid-cols-2">
             <Form.Item

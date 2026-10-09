@@ -60,7 +60,7 @@ export class AthletesService {
       limit = 30,
     } = query;
 
-    const where: any = {};
+    const where: any = { isArchived: false };
 
     if (search) {
       where.OR = [

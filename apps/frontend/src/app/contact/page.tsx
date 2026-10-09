@@ -1,5 +1,7 @@
 'use client';
 
+import { PersonNameInput } from '@/components/PersonNameInput';
+
 import { useState } from 'react';
 import { Button, Card, Col, Form, Input, Result, Row } from 'antd';
 import { ArrowUpRight, CheckCircle2, Clock3, Mail, MapPin, MessageSquareText, Send } from 'lucide-react';
@@ -93,7 +95,7 @@ export default function ContactPage() {
                 <Row gutter={16}>
                   <Col xs={24} md={12}>
                     <Form.Item name="fullName" label="Họ và tên" rules={[{ required: true, message: 'Vui lòng nhập họ và tên' }, { min: 2, max: 120 }]}>
-                      <Input size="large" autoComplete="name" placeholder="Nguyễn Văn A" />
+                      <PersonNameInput size="large" autoComplete="name" placeholder="Nguyễn Văn A" />
                     </Form.Item>
                   </Col>
                   <Col xs={24} md={12}>

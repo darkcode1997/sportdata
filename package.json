@@ -16,6 +16,7 @@
     "prisma:migrate": "npm run prisma:migrate --workspace=@sportdata/backend",
     "prisma:deploy": "npm run prisma:deploy --workspace=@sportdata/backend",
     "seed": "npm run seed --workspace=@sportdata/backend",
+    "seed:countries": "npm run seed:countries --workspace=@sportdata/backend",
     "seed:demo-accounts": "npm run seed:demo-accounts --workspace=@sportdata/backend",
     "seed:domestic-centers": "npm run seed:domestic-centers --workspace=@sportdata/backend",
     "seed:national-jujitsu": "npm run seed:national-jujitsu --workspace=@sportdata/backend",

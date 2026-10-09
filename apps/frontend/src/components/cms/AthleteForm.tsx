@@ -1,5 +1,7 @@
 'use client';
 
+import { PersonNameInput } from '@/components/PersonNameInput';
+
 import { imageUrl } from '@/lib/image-url';
 
 import { useRouter } from 'next/navigation';
@@ -365,13 +367,13 @@ export function AthleteForm({ athleteId, initialData, returnTo = '/cms/athletes'
       <Card className="cms-surface" title="Thông tin vận động viên">
         <Row gutter={[20, 2]}>
           <ControlledField name="firstName" control={control} label="Họ" error={errors.firstName?.message}>
-            {(field) => <Input {...field} size="large" placeholder="Nguyễn" />}
+            {(field) => <PersonNameInput {...field} size="large" placeholder="Nguyễn" />}
           </ControlledField>
           <ControlledField name="lastName" control={control} label="Tên" error={errors.lastName?.message}>
-            {(field) => <Input {...field} size="large" placeholder="Minh Anh" />}
+            {(field) => <PersonNameInput {...field} size="large" placeholder="Minh Anh" />}
           </ControlledField>
           <ControlledField name="fullName" control={control} label="Tên hiển thị" error={errors.fullName?.message} wide>
-            {(field) => <Input {...field} size="large" placeholder="Ví dụ: Nguyễn Minh Anh" />}
+            {(field) => <PersonNameInput {...field} size="large" placeholder="Ví dụ: Nguyễn Minh Anh" />}
           </ControlledField>
           <ControlledField name="email" control={control} label="Email" error={errors.email?.message}>
             {(field) => <Input {...field} size="large" type="email" placeholder="email@example.com" />}

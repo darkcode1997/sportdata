@@ -25,11 +25,13 @@ import { PaymentsModule } from './payments/payments.module';
 import { SystemSettingsModule } from './system-settings/system-settings.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { StorageModule } from './storage/storage.module';
+import { MarketingModule } from './marketing/marketing.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, envFilePath: '../../.env' }),
     StorageModule,
+    MarketingModule,
     PrismaModule,
     AuthModule,
     SportsModule,

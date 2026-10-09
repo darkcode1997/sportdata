@@ -1,5 +1,7 @@
 'use client';
 
+import { PersonNameInput } from '@/components/PersonNameInput';
+
 import { useEffect } from 'react';
 import { Alert, Checkbox, DatePicker, Form, Input, Modal, Progress, Select, Tag } from 'antd';
 import dayjs from 'dayjs';
@@ -113,7 +115,7 @@ export function IdentityOcrReviewModal({
       <Form form={form} layout="vertical" requiredMark="optional">
         <div className="grid gap-x-5 md:grid-cols-2">
           <Form.Item label="Số giấy tờ" name="documentNumber" rules={[{ required: true, message: 'Vui lòng kiểm tra số giấy tờ' }]}><Input /></Form.Item>
-          <Form.Item label="Họ và tên" name="fullName" rules={[{ required: true, message: 'Vui lòng kiểm tra họ tên' }]}><Input /></Form.Item>
+          <Form.Item label="Họ và tên" name="fullName" rules={[{ required: true, message: 'Vui lòng kiểm tra họ tên' }]}><PersonNameInput /></Form.Item>
           <Form.Item label="Ngày sinh" name="dateOfBirth"><DatePicker className="w-full" format="DD/MM/YYYY" /></Form.Item>
           <Form.Item label="Giới tính" name="sex"><Select allowClear options={[{ value: 'Nam', label: 'Nam' }, { value: 'Nữ', label: 'Nữ' }, { value: 'Male', label: 'Male' }, { value: 'Female', label: 'Female' }]} /></Form.Item>
           <Form.Item label="Quốc tịch" name="nationality"><Input /></Form.Item>

@@ -3,26 +3,48 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateArticleDto } from './dto/create-article.dto';
 import { QueryArticlesDto } from './dto/query-articles.dto';
 import { UpdateArticleDto } from './dto/update-article.dto';
+import { MarketingService } from '../marketing/marketing.service';
+import { MarketingWorkerService } from '../marketing/marketing-worker.service';
+import { Prisma, Article } from '@prisma/client';
 
 @Injectable()
 export class ArticlesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly marketing: MarketingService,
+    private readonly marketingWorker: MarketingWorkerService,
+  ) {}
+
+  private async enqueue(tx: Prisma.TransactionClient, article: Article) {
+    if (!article.isPublished) return;
+    await this.marketing.enqueuePublication(tx, {
+      id: article.id, kind: 'ARTICLE', title: article.title,
+      summary: article.excerpt || article.content, path: `/news/${encodeURIComponent(article.slug)}`,
+      imageUrl: article.coverImageUrl, availableAt: article.publishedAt || new Date(),
+    });
+  }
 
   async create(dto: CreateArticleDto) {
     const slug = await this.uniqueSlug(dto.slug || dto.title);
     const isPublished = dto.isPublished ?? false;
-    return this.prisma.article.create({
-      data: {
-        title: dto.title.trim(),
-        slug,
-        excerpt: this.optional(dto.excerpt),
-        content: dto.content.trim(),
-        coverImageUrl: this.optional(dto.coverImageUrl),
-        isPublished,
-        isFeatured: dto.isFeatured ?? false,
-        publishedAt: isPublished ? new Date(dto.publishedAt || Date.now()) : null,
-      },
-    });
+    const article = await this.prisma.$transaction(async tx => {
+      const created = await tx.article.create({
+        data: {
+          title: dto.title.trim(),
+          slug,
+          excerpt: this.optional(dto.excerpt),
+          content: dto.content.trim(),
+          coverImageUrl: this.optional(dto.coverImageUrl),
+          isPublished,
+          isFeatured: dto.isFeatured ?? false,
+          publishedAt: isPublished ? new Date(dto.publishedAt || Date.now()) : null,
+        },
+      });
+      await this.enqueue(tx, created);
+      return created;
+    }, { timeout: 15000 });
+    if (article.isPublished) this.marketingWorker.kick();
+    return article;
   }
 
   findPublished(query: QueryArticlesDto) {
@@ -54,23 +76,29 @@ export class ArticlesService {
       ? await this.uniqueSlug(dto.slug, id)
       : existing.slug;
 
-    return this.prisma.article.update({
-      where: { id },
-      data: {
-        ...(dto.title !== undefined ? { title: dto.title.trim() } : {}),
-        slug: nextSlug,
-        ...(dto.excerpt !== undefined ? { excerpt: this.optional(dto.excerpt) } : {}),
-        ...(dto.content !== undefined ? { content: dto.content.trim() } : {}),
-        ...(dto.coverImageUrl !== undefined
-          ? { coverImageUrl: this.optional(dto.coverImageUrl) }
-          : {}),
-        isPublished,
-        ...(dto.isFeatured !== undefined ? { isFeatured: dto.isFeatured } : {}),
-        publishedAt: isPublished
-          ? new Date(dto.publishedAt || existing.publishedAt || Date.now())
-          : null,
-      },
-    });
+    const article = await this.prisma.$transaction(async tx => {
+      const updated = await tx.article.update({
+        where: { id },
+        data: {
+          ...(dto.title !== undefined ? { title: dto.title.trim() } : {}),
+          slug: nextSlug,
+          ...(dto.excerpt !== undefined ? { excerpt: this.optional(dto.excerpt) } : {}),
+          ...(dto.content !== undefined ? { content: dto.content.trim() } : {}),
+          ...(dto.coverImageUrl !== undefined
+            ? { coverImageUrl: this.optional(dto.coverImageUrl) }
+            : {}),
+          isPublished,
+          ...(dto.isFeatured !== undefined ? { isFeatured: dto.isFeatured } : {}),
+          publishedAt: isPublished
+            ? new Date(dto.publishedAt || existing.publishedAt || Date.now())
+            : null,
+        },
+      });
+      if (!existing.isPublished) await this.enqueue(tx, updated);
+      return updated;
+    }, { timeout: 15000 });
+    if (article.isPublished && !existing.isPublished) this.marketingWorker.kick();
+    return article;
   }
 
   async remove(id: string) {

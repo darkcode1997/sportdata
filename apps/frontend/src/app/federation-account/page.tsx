@@ -44,7 +44,7 @@ export default function FederationAccountPage() {
 
   useEffect(() => {
     if (!getParticipantToken()) router.replace('/account/login');
-    else if (session?.accountType && session.accountType !== 'FEDERATION') router.replace('/account');
+    else if (session?.accountType && !['FEDERATION', 'TEAM_LEADER'].includes(session.accountType)) router.replace('/account');
   }, [router, session?.accountType]);
 
   useEffect(() => {
@@ -94,6 +94,7 @@ export default function FederationAccountPage() {
             {approved ? 'Đã được SportData duyệt' : profile.verificationStatus === 'REJECTED' ? 'Yêu cầu bị từ chối' : 'Chờ SportData duyệt'}
           </Tag>
         </header>
+        <Link href="/account/email-preferences" className="mb-6 inline-block text-sm text-sky-400">Quản lý email sự kiện và tin tức →</Link>
 
         {!approved && (
           <Alert

@@ -1,10 +1,13 @@
 'use client';
 
+import { PersonNameInput } from '@/components/PersonNameInput';
+import { PERSONAL_ACCOUNT_OPTIONS } from '@/lib/account-roles';
+
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import useSWR from 'swr';
-import { Button, Card, Col, DatePicker, Form, Input, Row, Select } from 'antd';
+import { Button, Card, Checkbox, Col, DatePicker, Form, Input, Row, Select } from 'antd';
 import { UserPlus } from 'lucide-react';
 import { fetcher } from '@/lib/api';
 import { useSportDataToast } from '@/hooks/useSportDataToast';
@@ -16,6 +19,11 @@ export default function ParticipantRegisterPage() {
   const router = useRouter();
   const toast = useSportDataToast();
   const [form] = Form.useForm();
+  const accountType = Form.useWatch('accountType', form) || 'GENERAL';
+  const isAthlete = accountType === 'ATHLETE';
+  const isProfessional = !['GENERAL', 'ATHLETE'].includes(accountType);
+  const { data: federations = [] } = useSWR<Array<{ id: string; name: string; countryId: string }>>('/federations', fetcher);
+  const countryId = Form.useWatch('countryId', form);
   const [loading, setLoading] = useState(false);
   const { data: countries = [] } = useSWR<Country[]>('/countries', fetcher);
 
@@ -31,7 +39,7 @@ export default function ParticipantRegisterPage() {
     try {
       const payload = {
         ...values,
-        birthDate: values.birthDate.format('YYYY-MM-DD'),
+        birthDate: values.birthDate?.format('YYYY-MM-DD'),
       };
       const { data } = await participantApi.post('/participant-auth/register', payload);
       setParticipantSession(data.accessToken, data.account);
@@ -50,10 +58,14 @@ export default function ParticipantRegisterPage() {
       <Card className="w-full" title="Đăng ký tài khoản SportData">
         <p className="mb-6 text-sm text-slate-400">Tài khoản cá nhân dùng chung cho mọi sự kiện và bộ môn trên nền tảng.</p>
         <Form form={form} layout="vertical" requiredMark={false} onFinish={submit}>
+          <Form.Item name="accountType" label="Bạn đăng ký với tư cách nào?" initialValue="GENERAL" rules={[{ required: true }]}>
+            <Select size="large" options={[...PERSONAL_ACCOUNT_OPTIONS]} />
+          </Form.Item>
+          <p className="mb-6 text-sm text-slate-400">{isAthlete ? 'Tạo hồ sơ vận động viên để đăng ký thi đấu và quản lý vé.' : isProfessional ? 'Hồ sơ chuyên môn chờ SportData xác minh. Nhiệm vụ tại mỗi sự kiện được ban tổ chức duyệt riêng.' : 'Tài khoản để theo dõi sự kiện, tin tức và quản lý lựa chọn nhận email.'}</p>
           <Row gutter={16}>
             <Col xs={24} md={12}>
               <Form.Item name="displayName" label="Họ và tên theo giấy tờ" rules={[{ required: true, min: 2 }]}>
-                <Input size="large" autoComplete="name" />
+                <PersonNameInput size="large" autoComplete="name" />
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
@@ -72,12 +84,12 @@ export default function ParticipantRegisterPage() {
               </Form.Item>
             </Col>
             <Col xs={24} md={8}>
-              <Form.Item name="birthDate" label="Ngày sinh" rules={[{ required: true }]}>
+              <Form.Item name="birthDate" label="Ngày sinh" rules={[{ required: isAthlete }]}>
                 <DatePicker size="large" className="w-full" format="DD/MM/YYYY" />
               </Form.Item>
             </Col>
             <Col xs={24} md={8}>
-              <Form.Item name="gender" label="Giới tính" rules={[{ required: true }]}>
+              <Form.Item name="gender" label="Giới tính" rules={[{ required: isAthlete }]}>
                 <Select size="large" options={[{ value: 'MALE', label: 'Nam' }, { value: 'FEMALE', label: 'Nữ' }]} />
               </Form.Item>
             </Col>
@@ -92,6 +104,17 @@ export default function ParticipantRegisterPage() {
               </Form.Item>
             </Col>
           </Row>
+          {isProfessional && <>
+            <Form.Item name="federationId" label="Đơn vị / CLB" rules={[{ required: accountType === 'TEAM_LEADER', message: 'Trưởng đoàn cần chọn đơn vị đại diện' }]}>
+              <Select allowClear showSearch optionFilterProp="label" options={federations.filter(item => item.countryId === countryId).map(item => ({ value: item.id, label: item.name }))} />
+            </Form.Item>
+            <Form.Item name="professionalSummary" label="Chuyên môn, chứng chỉ và kinh nghiệm" rules={[{ required: true, message: 'Vui lòng giới thiệu chuyên môn để ban tổ chức xác minh' }, { max: 2000 }]}>
+              <Input.TextArea rows={4} placeholder="Bộ môn, cấp trọng tài/HLV, chuyên ngành y tế, đơn vị công tác hoặc kinh nghiệm trưởng đoàn…" />
+            </Form.Item>
+          </>}
+          <Form.Item name="marketingEnabled" valuePropName="checked" initialValue={false}>
+            <Checkbox>Tôi muốn nhận email giới thiệu sự kiện và bài viết mới từ SportData. Có thể hủy bất cứ lúc nào.</Checkbox>
+          </Form.Item>
           <Button block size="large" type="primary" htmlType="submit" loading={loading} icon={<UserPlus className="h-4 w-4" />}>
             Tạo tài khoản
           </Button>

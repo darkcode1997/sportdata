@@ -13,8 +13,8 @@ type LoginMode = 'ATHLETE' | 'FEDERATION' | 'EVENT_MANAGER';
 const modes: Array<{ key: LoginMode; title: string; description: string; icon: React.ReactNode }> = [
   {
     key: 'ATHLETE',
-    title: 'Cá nhân / Vận động viên',
-    description: 'Hồ sơ cá nhân, giấy tờ, đăng ký thi đấu và vé tham dự.',
+    title: 'Tài khoản cá nhân SportData',
+    description: 'Tài khoản thường, vận động viên, trọng tài, trưởng đoàn, HLV và nhân viên y tế.',
     icon: <UserRound className="h-5 w-5" />,
   },
   {
@@ -41,7 +41,7 @@ export default function SportDataLoginPage() {
     if (mode === 'EVENT_MANAGER') return;
     setLoading(true);
     try {
-      const { data } = await participantApi.post('/participant-auth/login', { ...values, accountType: mode });
+      const { data } = await participantApi.post('/participant-auth/login', { ...values, ...(mode === 'FEDERATION' ? { accountType: mode } : {}) });
       setParticipantSession(data.accessToken, data.account);
       toast.success(`Đăng nhập thành công. Xin chào ${data.account.displayName}.`);
       const next = new URLSearchParams(window.location.search).get('next');

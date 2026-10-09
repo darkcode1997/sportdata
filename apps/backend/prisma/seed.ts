@@ -13,7 +13,7 @@ import {
   WinMethod,
 } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
-import worldCountries from 'world-countries';
+import { seedCountries } from './countries.seed';
 import { seedSeaGamesDemo } from './sea-games.seed';
 import { seedOperationalDemoAccounts } from './demo-accounts.seed';
 
@@ -223,28 +223,8 @@ Danh sách nhân vật và thành tích nổi bật đang được ban biên t�
   })));
   console.log(`Demo articles synchronized: ${articles.length}`);
 
-  // Use the IOC code when available because this is a sports platform, then
-  // fall back to ISO alpha-3 for territories that do not have an IOC code.
-  // The complete ISO list also gives every country a stable flag image.
-  const countrySeeds = worldCountries
-    .map((country) => ({
-      code: country.cioc || country.cca3,
-      name: country.name.common,
-      flag: country.cca2.toLowerCase(),
-    }))
-    .sort((a, b) => a.name.localeCompare(b.name));
-
-  // Serverless PostgreSQL providers intentionally expose a small connection
-  // pool. Seeding the complete country list in one Promise.all can exhaust it
-  // before queued upserts get a connection, so keep this import sequential.
-  const countries = [];
-  for (const { code, name, flag } of countrySeeds) {
-    countries.push(await prisma.country.upsert({
-      where: { code },
-      update: { name, flagUrl: `https://flagcdn.com/w40/${flag}.png` },
-      create: { code, name, flagUrl: `https://flagcdn.com/w40/${flag}.png` },
-    }));
-  }
+  await seedCountries(prisma);
+  const countries = await prisma.country.findMany();
   console.log(`Countries synchronized: ${countries.length}`);
   const countryByCode = new Map(countries.map((country) => [country.code, country]));
 

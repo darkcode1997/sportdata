@@ -4,7 +4,7 @@ export function findVietnamCountry<T extends CountryLike>(countries: T[]): T | u
   return countries.find((country) => {
     const code = String(country.code || '').toUpperCase();
     const name = String(country.name || '').trim().toLocaleLowerCase('vi');
-    return code === 'VN' || code === 'VNM' || name === 'việt nam' || name === 'vietnam';
+    return code === 'VN' || code === 'VNM' || code === 'VIE' || name === 'việt nam' || name === 'vietnam';
   });
 }
 

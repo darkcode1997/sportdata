@@ -1,10 +1,12 @@
 'use client';
 
+import { PersonNameInput } from '@/components/PersonNameInput';
+
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import useSWR from 'swr';
-import { Alert, Button, Card, Form, Input, Select } from 'antd';
+import { Alert, Button, Card, Checkbox, Form, Input, Select } from 'antd';
 import { Building2, UserPlus } from 'lucide-react';
 import { fetcher } from '@/lib/api';
 import { useSportDataToast } from '@/hooks/useSportDataToast';
@@ -24,7 +26,7 @@ export default function FederationAccountRegisterPage() {
   const [loading, setLoading] = useState(false);
   const { data: federations = [] } = useSWR<Federation[]>('/federations', fetcher);
 
-  const submit = async (values: Record<string, string>) => {
+  const submit = async (values: Record<string, string | boolean>) => {
     setLoading(true);
     try {
       const { data } = await participantApi.post('/participant-auth/register/federation', values);
@@ -63,12 +65,15 @@ export default function FederationAccountRegisterPage() {
               />
             </Form.Item>
             <div className="grid gap-x-4 md:grid-cols-2">
-              <Form.Item name="displayName" label="Họ tên người đại diện" rules={[{ required: true, min: 2 }]}><Input size="large" /></Form.Item>
+              <Form.Item name="displayName" label="Họ tên người đại diện" rules={[{ required: true, min: 2 }]}><PersonNameInput size="large" /></Form.Item>
               <Form.Item name="representativePosition" label="Chức vụ tại đơn vị" rules={[{ required: true, min: 2 }]}><Input size="large" placeholder="Ví dụ: Tổng thư ký, quản lý đội" /></Form.Item>
               <Form.Item name="phone" label="Số điện thoại công việc" rules={[{ required: true, min: 8 }]}><Input size="large" autoComplete="tel" /></Form.Item>
               <Form.Item name="email" label="Email đăng nhập" rules={[{ required: true }, { type: 'email' }]}><Input size="large" autoComplete="email" /></Form.Item>
               <Form.Item className="md:col-span-2" name="password" label="Mật khẩu" rules={[{ required: true, min: 8, message: 'Mật khẩu tối thiểu 8 ký tự' }]}><Input.Password size="large" autoComplete="new-password" /></Form.Item>
             </div>
+            <Form.Item name="marketingEnabled" valuePropName="checked" initialValue={false}>
+              <Checkbox>Tôi muốn nhận email giới thiệu sự kiện và bài viết mới từ SportData. Có thể hủy bất cứ lúc nào.</Checkbox>
+            </Form.Item>
             <Button block size="large" type="primary" htmlType="submit" loading={loading} icon={<UserPlus className="h-4 w-4" />}>Gửi yêu cầu đăng ký</Button>
           </Form>
           <p className="mt-6 text-center text-sm text-slate-400">Đã có tài khoản? <Link className="font-semibold text-sky-400" href="/account/login">Đăng nhập</Link></p>

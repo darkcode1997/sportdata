@@ -1,4 +1,5 @@
 import axios from 'axios';
+import type { SportDataAccountType } from './account-roles';
 
 const TOKEN_KEY = 'participant_token';
 const ACCOUNT_KEY = 'participant_account';
@@ -29,7 +30,7 @@ export type SportDataAccount = {
   id: string;
   email: string;
   displayName: string;
-  accountType?: 'ATHLETE' | 'FEDERATION';
+  accountType?: SportDataAccountType;
   verificationStatus?: 'PENDING' | 'VERIFIED' | 'REJECTED';
   federationId?: string | null;
 };

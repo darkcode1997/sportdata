@@ -159,6 +159,18 @@ export class ParticipantsController {
     return this.service.updateProfile(request.participant.id, dto);
   }
 
+  @Post('me/athlete-profile')
+  @UseGuards(ParticipantAuthGuard)
+  createAthleteProfile(@Req() request: ParticipantRequest, @Body() dto: UpdateParticipantProfileDto) {
+    return this.service.createAthleteProfile(request.participant.id, dto);
+  }
+
+  @Patch('me/athlete-profile')
+  @UseGuards(ParticipantAuthGuard)
+  updateAthleteProfile(@Req() request: ParticipantRequest, @Body() dto: UpdateParticipantProfileDto) {
+    return this.service.updateProfile(request.participant.id, dto, true);
+  }
+
   @Post('me/media/:type')
   @UseGuards(ParticipantAuthGuard)
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 8 * 1024 * 1024 } }))

@@ -445,6 +445,7 @@ export default function EventDetailPage() {
           )}
         </header>
 
+        <Link className="mt-6 inline-block text-sky-400" href={`/events/${eventId}/staff`}>Đăng ký trọng tài, HLV, trưởng đoàn hoặc nhân viên y tế →</Link>
         {!registrationState.expired && (
           <Card className="schedule-registration-card mt-7 border-sky-400/20" title={<span className="flex items-center gap-2"><TicketCheck className="h-5 w-5 text-sky-400" />Đăng ký thi đấu</span>} extra={<Tag color={registrationState.open ? 'success' : 'default'}>{registrationState.label}</Tag>}>
             {hasParticipantSession && participantAccountType === 'FEDERATION' ? (
@@ -461,6 +462,13 @@ export default function EventDetailPage() {
                   <Link href="/federation-account"><Button>Quản lý tài khoản</Button></Link>
                   <Link href={`/events/${eventId}/register?mode=group`}><Button type="primary" size="large" disabled={!registrationState.open} icon={<Users className="h-4 w-4" />}>Đăng ký danh sách VĐV</Button></Link>
                 </div>
+              </div>
+            ) : hasParticipantSession && participantAccountType !== 'ATHLETE' ? (
+              <div className="space-y-4">
+                <p>{participantAccount?.displayName}</p>
+                <Link href={`/events/${eventId}/staff`}><Button type="primary">Đăng ký nhiệm vụ sự kiện</Button></Link>
+                <Link className="ml-4 text-sky-400" href="/account">Hồ sơ tài khoản</Link>
+                {participantAccountType === 'TEAM_LEADER' && <Link className="block text-sky-400" href={`/events/${eventId}/register`}>Đăng ký danh sách đoàn · cần xác minh quyền đại diện</Link>}
               </div>
             ) : hasParticipantSession ? (
               <div className="space-y-4">

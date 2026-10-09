@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { AccountRolesService } from './account-roles.service';
+import { AccountRolesController } from './account-roles.controller';
 import { AuthModule } from '../auth/auth.module';
 import { ParticipantsController } from './participants.controller';
 import { ParticipantAuthGuard } from './participant-auth.guard';
@@ -14,8 +16,8 @@ import { AthletesModule } from '../athletes/athletes.module';
 
 @Module({
   imports: [AuthModule, SystemSettingsModule, NotificationsModule, AthletesModule],
-  controllers: [ParticipantsController],
-  providers: [ParticipantsService, ParticipantAuthGuard, IdentityOcrService, TicketPdfService, TicketEmailService, TicketEmailQueueService, TicketEmailWorkerService],
+  controllers: [ParticipantsController, AccountRolesController],
+  providers: [ParticipantsService, ParticipantAuthGuard, IdentityOcrService, TicketPdfService, TicketEmailService, TicketEmailQueueService, TicketEmailWorkerService, AccountRolesService],
   exports: [ParticipantsService],
 })
 export class ParticipantsModule {}

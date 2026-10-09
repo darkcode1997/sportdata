@@ -11,10 +11,30 @@ import { QueryEligibleAthletesDto } from './dto/query-eligible-athletes.dto';
 import { CreateEventFopDto, UpdateEventFopDto } from './dto/event-fop.dto';
 import { EventAgeLimitMode, EventLevel, PaymentMode, PaymentProvider, Prisma } from '@prisma/client';
 import { createHash } from 'crypto';
+import { MarketingService } from '../marketing/marketing.service';
+import { MarketingWorkerService } from '../marketing/marketing-worker.service';
 
 @Injectable()
 export class EventsService {
-  constructor(private readonly prisma: PrismaService, private readonly storage: StorageService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly storage: StorageService,
+    private readonly marketing: MarketingService,
+    private readonly marketingWorker: MarketingWorkerService,
+  ) {}
+
+  private async enqueueMarketing(tx: Prisma.TransactionClient, event: {
+    id: string; name: string; description: string | null; isPublished: boolean;
+    bannerUrl: string | null; location: string | null; startDate: Date;
+  }) {
+    if (!event.isPublished) return;
+    const date = event.startDate.toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
+    await this.marketing.enqueuePublication(tx, {
+      id: event.id, kind: 'EVENT', title: event.name,
+      summary: `${date}${event.location ? ` · ${event.location}` : ''}. ${event.description || 'Thông tin, lịch thi đấu và đăng ký tham dự đã có trên SportData.'}`,
+      path: `/events/${encodeURIComponent(event.id)}`, imageUrl: event.bannerUrl,
+    });
+  }
 
   async create(createEventDto: CreateEventDto) {
     const {
@@ -67,27 +87,32 @@ export class EventsService {
       data.paymentProviders,
     ));
 
-    const event = await this.prisma.event.create({
-      data: {
-        ...data,
-        ...(ticketDesign !== undefined ? { ticketDesign: this.designInput(ticketDesign) } : {}),
-        level,
-        allowIndependentAthletes,
-        sport: { connect: { id: selectedSportIds[0] } },
-        sports: { connect: selectedSportIds.map((id) => ({ id })) },
-        organizer: organizerId ? { connect: { id: organizerId } } : undefined,
-        participatingFederations: selectedFederationIds.length
-          ? { connect: selectedFederationIds.map((id) => ({ id })) }
-          : undefined,
-        categories: selectedCategoryIds.length
-          ? { connect: selectedCategoryIds.map((id) => ({ id })) }
-          : undefined,
-        athletes: selectedAthleteIds.length
-          ? { connect: selectedAthleteIds.map((id) => ({ id })) }
-          : undefined,
-      },
-      include: this.getEventInclude(true),
-    });
+    const event = await this.prisma.$transaction(async tx => {
+      const created = await tx.event.create({
+        data: {
+          ...data,
+          ...(ticketDesign !== undefined ? { ticketDesign: this.designInput(ticketDesign) } : {}),
+          level,
+          allowIndependentAthletes,
+          sport: { connect: { id: selectedSportIds[0] } },
+          sports: { connect: selectedSportIds.map((id) => ({ id })) },
+          organizer: organizerId ? { connect: { id: organizerId } } : undefined,
+          participatingFederations: selectedFederationIds.length
+            ? { connect: selectedFederationIds.map((id) => ({ id })) }
+            : undefined,
+          categories: selectedCategoryIds.length
+            ? { connect: selectedCategoryIds.map((id) => ({ id })) }
+            : undefined,
+          athletes: selectedAthleteIds.length
+            ? { connect: selectedAthleteIds.map((id) => ({ id })) }
+            : undefined,
+        },
+        include: this.getEventInclude(true),
+      });
+      await this.enqueueMarketing(tx, created);
+      return created;
+    }, { timeout: 15000 });
+    if (event.isPublished) this.marketingWorker.kick();
     return this.serializeEvent(event);
   }
 
@@ -429,36 +454,41 @@ export class EventsService {
       data.paymentProviders ?? existingEvent.paymentProviders,
     ));
 
-    const event = await this.prisma.event.update({
-      where: { id },
-      data: {
-        ...data,
-        ...(ticketDesign !== undefined ? { ticketDesign: this.designInput(ticketDesign) } : {}),
-        ...(level !== undefined ? { level } : {}),
-        ...(allowIndependentAthletes !== undefined ? { allowIndependentAthletes } : {}),
-        ...(organizerId !== undefined
-          ? organizerId
-            ? { organizer: { connect: { id: organizerId } } }
-            : { organizer: { disconnect: true } }
-          : {}),
-        participatingFederations: {
-          set: resultingFederationIds.map((fedId) => ({ id: fedId })),
+    const event = await this.prisma.$transaction(async tx => {
+      const updated = await tx.event.update({
+        where: { id },
+        data: {
+          ...data,
+          ...(ticketDesign !== undefined ? { ticketDesign: this.designInput(ticketDesign) } : {}),
+          ...(level !== undefined ? { level } : {}),
+          ...(allowIndependentAthletes !== undefined ? { allowIndependentAthletes } : {}),
+          ...(organizerId !== undefined
+            ? organizerId
+              ? { organizer: { connect: { id: organizerId } } }
+              : { organizer: { disconnect: true } }
+            : {}),
+          participatingFederations: {
+            set: resultingFederationIds.map((fedId) => ({ id: fedId })),
+          },
+          ...(selectedSportIds
+            ? {
+                sport: { connect: { id: selectedSportIds[0] } },
+                sports: { set: selectedSportIds.map((id) => ({ id })) },
+              }
+            : {}),
+          categories: categoryIds !== undefined
+            ? { set: resultingCategoryIds.map((catId) => ({ id: catId })) }
+            : undefined,
+          athletes: athleteIds !== undefined
+            ? { set: resultingAthleteIds.map((athId) => ({ id: athId })) }
+            : undefined,
         },
-        ...(selectedSportIds
-          ? {
-              sport: { connect: { id: selectedSportIds[0] } },
-              sports: { set: selectedSportIds.map((id) => ({ id })) },
-            }
-          : {}),
-        categories: categoryIds !== undefined
-          ? { set: resultingCategoryIds.map((catId) => ({ id: catId })) }
-          : undefined,
-        athletes: athleteIds !== undefined
-          ? { set: resultingAthleteIds.map((athId) => ({ id: athId })) }
-          : undefined,
-      },
-      include: this.getEventInclude(true),
-    });
+        include: this.getEventInclude(true),
+      });
+      if (!existingEvent.isPublished) await this.enqueueMarketing(tx, updated);
+      return updated;
+    }, { timeout: 15000 });
+    if (event.isPublished && !existingEvent.isPublished) this.marketingWorker.kick();
     return this.serializeEvent(event);
   }
 

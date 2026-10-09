@@ -214,6 +214,11 @@ enum RegistrationSubmissionType {
 enum SportDataAccountType {
   ATHLETE
   FEDERATION
+  GENERAL
+  REFEREE
+  TEAM_LEADER
+  COACH
+  MEDICAL
 }
 
 enum AccountVerificationStatus {
@@ -258,6 +263,7 @@ enum PaymentTransactionStatus {
 }
 
 model Country {
+  participantAccounts ParticipantAccount[]
   id          String             @id @default(cuid())
   code        String             @unique
   name        String
@@ -342,12 +348,28 @@ model ParticipantAccount {
   password               String
   displayName            String
   phone                  String?
-  accountType            SportDataAccountType      @default(ATHLETE)
+  accountType            SportDataAccountType      @default(GENERAL)
+  countryId              String?
+  country                Country? @relation(fields: [countryId], references: [id], onDelete: SetNull)
+  gender                 Gender?
+  birthDate              DateTime?
+  professionalSummary    String? @db.Text
+  verificationReviewedBy String?
+  verificationReviewedAt DateTime?
+  verificationNote       String? @db.Text
+  staffRegistrations     EventStaffRegistration[]
   verificationStatus     AccountVerificationStatus @default(VERIFIED)
   representativePosition String?
   federationId           String?
   federation             Federation?               @relation(fields: [federationId], references: [id], onDelete: SetNull)
   isActive               Boolean                   @default(true)
+  marketingEnabled       Boolean                   @default(false)
+  marketingEvents        Boolean                   @default(true)
+  marketingArticles      Boolean                   @default(true)
+  marketingConsentAt     DateTime?
+  marketingUnsubscribedAt DateTime?
+  marketingToken         String                    @unique @default(uuid())
+  marketingDeliveries    MarketingDelivery[]
   resetPasswordTokenHash String?                   @unique
   resetPasswordExpiresAt DateTime?
   resetPasswordRequestedAt DateTime?
@@ -361,6 +383,43 @@ model ParticipantAccount {
   @@index([isActive])
   @@index([accountType, verificationStatus])
   @@index([federationId])
+}
+
+model MarketingCampaign {
+  id         String   @id @default(cuid())
+  kind       String
+  sourceId   String
+  title      String
+  summary    String   @db.Text
+  path       String
+  imageUrl   String?
+  enabled    Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  deliveries MarketingDelivery[]
+
+  @@unique([kind, sourceId])
+  @@index([createdAt])
+}
+
+model MarketingDelivery {
+  id          String   @id @default(cuid())
+  campaignId  String
+  accountId   String
+  campaign    MarketingCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  account     ParticipantAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  status      String   @default("PENDING")
+  attempts    Int      @default(0)
+  availableAt DateTime @default(now())
+  lockedAt    DateTime?
+  lockToken   String?
+  sentAt      DateTime?
+  lastError   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([campaignId, accountId])
+  @@index([status, availableAt])
+  @@index([status, lockedAt])
 }
 
 model Article {
@@ -379,6 +438,26 @@ model Article {
   @@index([isPublished, publishedAt])
   @@index([isPublished, isFeatured, publishedAt])
   @@index([createdAt])
+}
+
+model EventStaffRegistration {
+  id           String @id @default(cuid())
+  eventId      String
+  accountId    String
+  event        Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  account      ParticipantAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  role         String
+  status       String @default("PENDING")
+  note         String? @db.Text
+  reviewNote   String? @db.Text
+  reviewedBy   String?
+  reviewedAt   DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([eventId, accountId])
+  @@index([eventId, status])
+  @@index([accountId, createdAt])
 }
 
 model Banner {
@@ -497,6 +576,7 @@ enum EventAgeLimitMode {
 }
 
 model Event {
+  staffRegistrations EventStaffRegistration[]
   drawPreconfigurations DrawPreconfiguration[]
   id                       String                   @id @default(cuid())
   name                     String
@@ -569,6 +649,8 @@ model Event {
 }
 
 model Athlete {
+  isArchived           Boolean @default(false)
+  profileConfirmed     Boolean @default(true)
   identity             AthleteIdentity?
   id                   String              @id @default(cuid())
   firstName            String

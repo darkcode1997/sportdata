@@ -1,5 +1,9 @@
 'use client';
 
+import { PersonNameInput } from '@/components/PersonNameInput';
+import { EventStaffPanel } from './EventStaffPanel';
+import { vietnamCountryId } from '@/lib/countries';
+
 import { imageUrl } from '@/lib/image-url';
 
 import { useEffect, useMemo, useState } from 'react';
@@ -590,6 +594,12 @@ function RegistrationsTab({ event, canOperate, canConfirmPayment }: { event: any
   const [createdRegistration, setCreatedRegistration] = useState<Registration>();
   const [registrationForm] = Form.useForm();
   const selectedCountryId = Form.useWatch(['athlete', 'countryId'], registrationForm);
+  useEffect(() => {
+    const countryId = vietnamCountryId(countries);
+    if (createOpen && createMode === 'new' && countryId && !registrationForm.getFieldValue(['athlete', 'countryId'])) {
+      registrationForm.setFieldValue(['athlete', 'countryId'], countryId);
+    }
+  }, [countries, createOpen, createMode, registrationForm, selectedCountryId]);
   const selectedPaymentStatus = Form.useWatch('paymentStatus', registrationForm) || 'PENDING';
   const availableFederations = federations.filter((item) => !selectedCountryId || item.countryId === selectedCountryId);
   const filteredRegistrations = useMemo(() => {
@@ -795,6 +805,7 @@ function RegistrationsTab({ event, canOperate, canConfirmPayment }: { event: any
       styles={{ body: { padding: 0 } }}
     >
       <div className="border-b border-slate-300/10 p-4">
+        {canOperate && <EventStaffPanel eventId={eventId} />}
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(240px,1.4fr)_repeat(4,minmax(150px,1fr))_auto]">
           <Input
             allowClear
@@ -1043,8 +1054,8 @@ function RegistrationsTab({ event, canOperate, canConfirmPayment }: { event: any
         ) : (
           <div className="rounded-xl border border-slate-300/15 p-4">
             <Row gutter={[16, 0]}>
-              <Col xs={24} md={12}><Form.Item name={['athlete', 'firstName']} label="Họ" rules={[{ required: true, message: 'Vui lòng nhập họ' }]}><Input placeholder="Nguyễn" /></Form.Item></Col>
-              <Col xs={24} md={12}><Form.Item name={['athlete', 'lastName']} label="Tên" rules={[{ required: true, message: 'Vui lòng nhập tên' }]}><Input placeholder="Minh Anh" /></Form.Item></Col>
+              <Col xs={24} md={12}><Form.Item name={['athlete', 'firstName']} label="Họ" rules={[{ required: true, message: 'Vui lòng nhập họ' }]}><PersonNameInput placeholder="Nguyễn" /></Form.Item></Col>
+              <Col xs={24} md={12}><Form.Item name={['athlete', 'lastName']} label="Tên" rules={[{ required: true, message: 'Vui lòng nhập tên' }]}><PersonNameInput placeholder="Minh Anh" /></Form.Item></Col>
               <Col xs={24} md={12}><Form.Item name={['athlete', 'email']} label="Email" rules={[{ required: true, message: 'Vui lòng nhập email' }, { type: 'email', message: 'Email không hợp lệ' }]}><Input type="email" placeholder="email@example.com" /></Form.Item></Col>
               <Col xs={24} md={12}><Form.Item name={['athlete', 'phone']} label="Số điện thoại" rules={[{ required: true, message: 'Vui lòng nhập số điện thoại' }, { min: 8, message: 'Số điện thoại phải có ít nhất 8 ký tự' }]}><Input type="tel" placeholder="0901234567" /></Form.Item></Col>
               <Col xs={24} md={12}><Form.Item name={['athlete', 'gender']} label="Giới tính" rules={[{ required: true }]}><Select options={[{ value: 'MALE', label: 'Nam' }, { value: 'FEMALE', label: 'Nữ' }, { value: 'MIXED', label: 'Khác / hỗn hợp' }]} /></Form.Item></Col>

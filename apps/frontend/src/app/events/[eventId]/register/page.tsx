@@ -1,5 +1,8 @@
 'use client';
 
+import { PersonNameInput } from '@/components/PersonNameInput';
+import { StaffEventRegistration } from '@/components/StaffEventRegistration';
+
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
@@ -29,7 +32,7 @@ import { PaymentCheckout } from '@/components/PaymentCheckout';
 import { IdentityOcrReviewModal, type IdentityOcrFields, type IdentityOcrResult } from '@/components/IdentityOcrReviewModal';
 import { useSportDataToast } from '@/hooks/useSportDataToast';
 import { fetcher } from '@/lib/api';
-import { getParticipantAccount, getParticipantToken, participantApi, participantError, type SportDataAccount } from '@/lib/participant-auth';
+import { getParticipantAccount, getParticipantToken, participantApi, participantError, setParticipantSession, type SportDataAccount } from '@/lib/participant-auth';
 import type { ParticipationTicket } from '@/lib/ticket-types';
 import { vietnamCountryId } from '@/lib/countries';
 import { optimizeRegistrationMedia } from '@/lib/registration-media';
@@ -208,7 +211,7 @@ function DocumentPicker({
   );
 }
 
-export default function GuestEventRegistrationPage() {
+function GuestEventRegistrationPage({ athleteMode = false }: { athleteMode?: boolean }) {
   const router = useRouter();
   const toast = useSportDataToast();
   const params = useParams<{ eventId: string }>();
@@ -227,8 +230,8 @@ export default function GuestEventRegistrationPage() {
   const [ocrReadingKey, setOcrReadingKey] = useState<string>();
   const [downloadingPdf, setDownloadingPdf] = useState(false);
   const [sessionAccount, setSessionAccount] = useState<SportDataAccount | null>(null);
-  const isFederationAccount = Boolean(getParticipantToken() && sessionAccount?.accountType === 'FEDERATION');
-  const isAthleteAccount = Boolean(getParticipantToken() && sessionAccount?.accountType !== 'FEDERATION' && sessionAccount);
+  const isFederationAccount = Boolean(!athleteMode && getParticipantToken() && ['FEDERATION', 'TEAM_LEADER'].includes(sessionAccount?.accountType || ''));
+  const isAthleteAccount = Boolean(getParticipantToken() && (athleteMode || sessionAccount?.accountType === 'ATHLETE') && sessionAccount);
   const { data: event, isLoading } = useSWR<EventData>(eventId ? `/events/${eventId}` : null, fetcher);
   const { data: countries = [] } = useSWR<Country[]>('/countries', fetcher);
   const { data: federations = [] } = useSWR<Federation[]>('/federations', fetcher);
@@ -736,7 +739,7 @@ export default function GuestEventRegistrationPage() {
 
       <Card className="mb-6" title="Người liên hệ hồ sơ">
         <div className="grid gap-4 md:grid-cols-2">
-          <div><label className="mb-2 block text-sm font-semibold">Họ tên người liên hệ *</label><Input disabled={isFederationAccount || isAthleteAccount} size="large" value={contactName} onChange={(event) => setContactName(event.target.value)} /></div>
+          <div><label className="mb-2 block text-sm font-semibold">Họ tên người liên hệ *</label><PersonNameInput disabled={isFederationAccount || isAthleteAccount} size="large" value={contactName} onChange={(event) => setContactName(event.target.value)} /></div>
           <div><label className="mb-2 block text-sm font-semibold">Email *</label><Input disabled={isFederationAccount || isAthleteAccount} size="large" type="email" value={contactEmail} onChange={(event) => setContactEmail(event.target.value)} /></div>
           <div><label className="mb-2 block text-sm font-semibold">Số điện thoại *</label><Input disabled={isFederationAccount} size="large" value={contactPhone} onChange={(event) => setContactPhone(event.target.value)} /></div>
           {mode === 'GROUP' && <div><label className="mb-2 block text-sm font-semibold">Đội / CLB / đơn vị *</label><Input disabled={isFederationAccount} size="large" value={organizationName} onChange={(event) => setOrganizationName(event.target.value)} /></div>}
@@ -763,7 +766,7 @@ export default function GuestEventRegistrationPage() {
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                 <div><label className="mb-2 block text-sm font-semibold">Loại giấy tờ *</label><Select className="w-full" size="large" value={athlete.identityType} onChange={(value) => updateAthlete(athlete.key, { identityType: value, documentNumber: '', identityOcr: undefined })} options={[{ value: 'CCCD', label: 'CCCD' }, { value: 'PASSPORT', label: 'Hộ chiếu' }]} /></div>
                 <div className="lg:col-span-2"><label className="mb-2 block text-sm font-semibold">Số {athlete.identityType === 'CCCD' ? 'CCCD' : 'hộ chiếu'} *</label><Input size="large" maxLength={30} value={athlete.documentNumber} placeholder={athlete.identityType === 'CCCD' ? '12 chữ số theo CCCD' : 'Số hộ chiếu theo giấy tờ'} onChange={(event) => updateAthlete(athlete.key, { documentNumber: event.target.value })} /></div>
-                <div className="lg:col-span-2"><label className="mb-2 block text-sm font-semibold">Họ và tên theo giấy tờ *</label><Input disabled={Boolean(athlete.reuseToken)} size="large" value={athlete.fullName} onChange={(event) => updateAthlete(athlete.key, { fullName: event.target.value })} /></div>
+                <div className="lg:col-span-2"><label className="mb-2 block text-sm font-semibold">Họ và tên theo giấy tờ *</label><PersonNameInput disabled={Boolean(athlete.reuseToken)} size="large" value={athlete.fullName} onChange={(event) => updateAthlete(athlete.key, { fullName: event.target.value })} /></div>
                 <div><label className="mb-2 block text-sm font-semibold">Ngày sinh *</label><DatePicker disabled={Boolean(athlete.reuseToken)} className="w-full" size="large" format="DD/MM/YYYY" value={athlete.birthDate} disabledDate={(date) => date.isAfter(dayjs(), 'day')} onChange={(value) => updateAthlete(athlete.key, { birthDate: value })} /></div>
                 <div className="lg:col-span-2"><label className="mb-2 block text-sm font-semibold">Địa chỉ theo giấy tờ</label><Input size="large" maxLength={500} value={athlete.address} onChange={(event) => updateAthlete(athlete.key, { address: event.target.value })} /></div>
                 <div><label className="mb-2 block text-sm font-semibold">Số điện thoại VĐV</label><Input size="large" type="tel" maxLength={30} value={athlete.phone} placeholder="Để trống nếu dùng số liên hệ" onChange={(event) => updateAthlete(athlete.key, { phone: event.target.value })} /></div>
@@ -826,4 +829,25 @@ export default function GuestEventRegistrationPage() {
       />
     </main>
   );
+}
+
+export default function EventRegistrationPage() {
+  const params = useParams<{ eventId: string }>();
+  const [ready, setReady] = useState(false);
+  const { data: account, error } = useSWR<any>(ready && getParticipantToken() ? '/participant-auth/me' : null, url => participantApi.get(url).then(response => response.data));
+  useEffect(() => { setReady(true); }, []);
+  useEffect(() => {
+    const token = getParticipantToken();
+    const previous = getParticipantAccount();
+    if (token && account && (previous?.accountType !== account.accountType || previous?.verificationStatus !== account.verificationStatus || previous?.federationId !== account.federationId)) {
+      setParticipantSession(token, { id: account.id, email: account.email, displayName: account.displayName, accountType: account.accountType, verificationStatus: account.verificationStatus, federationId: account.federationId });
+    }
+  }, [account]);
+  if (!ready || (getParticipantToken() && !account && !error)) return <main className="grid min-h-[60vh] place-items-center"><Spin /></main>;
+  if (error) return <main className="mx-auto max-w-xl px-4 py-12"><Alert type="error" showIcon message="Không thể tải tài khoản SportData" /><Link href="/account/login">Đăng nhập lại</Link></main>;
+  const athleteMode = ready && new URLSearchParams(window.location.search).get('mode') === 'athlete' && Boolean(account?.athlete && !account.athlete.isArchived);
+  if (account && !athleteMode && !['ATHLETE', 'FEDERATION'].includes(account.accountType) && !(account.accountType === 'TEAM_LEADER' && account.federationId && account.verificationStatus === 'VERIFIED')) {
+    return <StaffEventRegistration eventId={params.eventId} accountType={account.accountType} />;
+  }
+  return <GuestEventRegistrationPage athleteMode={athleteMode} />;
 }

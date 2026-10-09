@@ -27,6 +27,18 @@ import {
 } from '@prisma/client';
 
 export class ParticipantRegisterDto {
+  @IsOptional()
+  @IsIn(['GENERAL', 'ATHLETE', 'REFEREE', 'TEAM_LEADER', 'COACH', 'MEDICAL'])
+  accountType?: SportDataAccountType;
+
+  @ValidateIf(dto => ['REFEREE', 'TEAM_LEADER', 'COACH', 'MEDICAL'].includes(dto.accountType) || dto.professionalSummary !== undefined)
+  @IsString()
+  @MinLength(5)
+  @MaxLength(2000)
+  professionalSummary?: string;
+  @IsOptional()
+  @IsBoolean()
+  marketingEnabled?: boolean;
   @IsEmail()
   email: string;
 
@@ -42,14 +54,17 @@ export class ParticipantRegisterDto {
   @IsString()
   phone?: string;
 
+  @ValidateIf(dto => dto.accountType === 'ATHLETE' || dto.gender !== undefined)
   @IsEnum(Gender)
-  gender: Gender;
+  gender?: Gender;
 
+  @ValidateIf(dto => dto.accountType === 'ATHLETE' || dto.birthDate !== undefined)
   @IsDateString()
-  birthDate: string;
+  birthDate?: string;
 
+  @IsOptional()
   @IsString()
-  countryId: string;
+  countryId?: string;
 
   @IsOptional()
   @IsString()
@@ -94,6 +109,9 @@ export class ParticipantResetPasswordDto {
 }
 
 export class FederationAccountRegisterDto {
+  @IsOptional()
+  @IsBoolean()
+  marketingEnabled?: boolean;
   @IsEmail()
   email: string;
 
@@ -118,6 +136,10 @@ export class FederationAccountRegisterDto {
 }
 
 export class UpdateParticipantProfileDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  professionalSummary?: string;
   @IsOptional()
   @IsString()
   @MinLength(2)
