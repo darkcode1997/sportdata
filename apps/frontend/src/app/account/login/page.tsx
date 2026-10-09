@@ -3,12 +3,12 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
-import { Alert, Button, Card, Form, Input, Tag } from 'antd';
-import { Building2, ChevronRight, LockKeyhole, LogIn, Mail, ShieldCheck, UserRound } from 'lucide-react';
+import { Button, Card, Form, Input, Tag } from 'antd';
+import { Building2, ChevronRight, LockKeyhole, LogIn, Mail, UserRound } from 'lucide-react';
 import { useSportDataToast } from '@/hooks/useSportDataToast';
 import { participantApi, participantError, setParticipantSession } from '@/lib/participant-auth';
 
-type LoginMode = 'ATHLETE' | 'FEDERATION' | 'EVENT_MANAGER';
+type LoginMode = 'ATHLETE' | 'FEDERATION';
 
 const modes: Array<{ key: LoginMode; title: string; description: string; icon: React.ReactNode }> = [
   {
@@ -23,12 +23,7 @@ const modes: Array<{ key: LoginMode; title: string; description: string; icon: R
     description: 'Đăng ký danh sách VĐV và quản lý bộ thẻ của đơn vị.',
     icon: <Building2 className="h-5 w-5" />,
   },
-  {
-    key: 'EVENT_MANAGER',
-    title: 'Event Manager',
-    description: 'Nhân sự SportData vận hành và kiểm duyệt sự kiện.',
-    icon: <ShieldCheck className="h-5 w-5" />,
-  },
+
 ];
 
 export default function SportDataLoginPage() {
@@ -38,7 +33,6 @@ export default function SportDataLoginPage() {
   const [loading, setLoading] = useState(false);
 
   const submit = async (values: { email: string; password: string }) => {
-    if (mode === 'EVENT_MANAGER') return;
     setLoading(true);
     try {
       const { data } = await participantApi.post('/participant-auth/login', { ...values, accountType: mode });
@@ -81,35 +75,27 @@ export default function SportDataLoginPage() {
         </section>
 
         <Card className="h-fit" title={<span className="flex items-center gap-2">{selected.icon} {selected.title}</span>}>
-          {mode === 'EVENT_MANAGER' ? (
-            <div className="py-4">
-              <Link href="/cms/login"><Button block size="large" type="primary" icon={<ShieldCheck className="h-4 w-4" />}>Đăng nhập Event Manager</Button></Link>
+          <p className="mb-6 text-sm text-slate-400">{selected.description}</p>
+          <Form layout="vertical" onFinish={submit} requiredMark={false}>
+            <Form.Item name="email" label="Email" rules={[{ required: true }, { type: 'email' }]}>
+              <Input size="large" prefix={<Mail className="h-4 w-4" />} autoComplete="email" />
+            </Form.Item>
+            <Form.Item name="password" label="Mật khẩu" rules={[{ required: true }]}>
+              <Input.Password size="large" prefix={<LockKeyhole className="h-4 w-4" />} autoComplete="current-password" />
+            </Form.Item>
+            <div className="-mt-3 mb-5 text-right">
+              <Link className="text-sm font-semibold text-sky-400 hover:text-sky-300" href="/account/forgot-password">
+                Quên mật khẩu?
+              </Link>
             </div>
-          ) : (
-            <>
-              <p className="mb-6 text-sm text-slate-400">{selected.description}</p>
-              <Form layout="vertical" onFinish={submit} requiredMark={false}>
-                <Form.Item name="email" label="Email" rules={[{ required: true }, { type: 'email' }]}>
-                  <Input size="large" prefix={<Mail className="h-4 w-4" />} autoComplete="email" />
-                </Form.Item>
-                <Form.Item name="password" label="Mật khẩu" rules={[{ required: true }]}>
-                  <Input.Password size="large" prefix={<LockKeyhole className="h-4 w-4" />} autoComplete="current-password" />
-                </Form.Item>
-                <div className="-mt-3 mb-5 text-right">
-                  <Link className="text-sm font-semibold text-sky-400 hover:text-sky-300" href="/account/forgot-password">
-                    Quên mật khẩu?
-                  </Link>
-                </div>
-                <Button block size="large" type="primary" htmlType="submit" loading={loading} icon={<LogIn className="h-4 w-4" />}>Đăng nhập</Button>
-              </Form>
-              <p className="mt-6 text-center text-sm text-slate-400">
-                Chưa có tài khoản?{' '}
-                <Link className="font-semibold text-sky-400" href={mode === 'FEDERATION' ? '/account/register/federation' : '/account/register'}>
-                  {mode === 'FEDERATION' ? 'Đăng ký đại diện đơn vị' : 'Tạo tài khoản cá nhân'}
-                </Link>
-              </p>
-            </>
-          )}
+            <Button block size="large" type="primary" htmlType="submit" loading={loading} icon={<LogIn className="h-4 w-4" />}>Đăng nhập</Button>
+          </Form>
+          <p className="mt-6 text-center text-sm text-slate-400">
+            Chưa có tài khoản?{' '}
+            <Link className="font-semibold text-sky-400" href={mode === 'FEDERATION' ? '/account/register/federation' : '/account/register'}>
+              {mode === 'FEDERATION' ? 'Đăng ký đại diện đơn vị' : 'Tạo tài khoản cá nhân'}
+            </Link>
+          </p>
         </Card>
       </div>
     </main>
