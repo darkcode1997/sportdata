@@ -22,6 +22,7 @@ import {
   Upload,
 } from 'antd';
 import { Download, FileImage, ImageIcon, Loader2, Plus, RefreshCw, Send, Trash2, UploadCloud, Users } from 'lucide-react';
+import { RegistrationDisciplines, registrationCategoryLabel, type DisciplineEntry, type ExistingDisciplineRegistration, type RegistrationCategory } from '@/components/RegistrationDisciplines';
 import { CameraCaptureButton } from '@/components/CameraCaptureButton';
 import { EventParticipationCard } from '@/components/EventParticipationCard';
 import type { TicketDesign } from '@/lib/ticket-design';
@@ -38,15 +39,12 @@ type RegistrationMode = 'INDIVIDUAL' | 'GROUP';
 type IdentityType = 'CCCD' | 'PASSPORT';
 type Country = { id: string; code: string; name: string };
 type Federation = { id: string; name: string; countryId: string };
-type Category = {
-  id: string;
-  name: string;
+type Category = RegistrationCategory & {
   gender: string;
   minAge?: number | null;
   maxAge?: number | null;
   minWeight?: number | null;
   maxWeight?: number | null;
-  sport?: { name: string } | null;
 };
 type EventData = {
   id: string;
@@ -73,7 +71,7 @@ type AthleteDraft = {
   lookupMessage?: string;
   hasAvatar?: boolean;
   hasIdentity?: boolean;
-  existingRegistration?: { ticketCode: string; status: string; paymentStatus: string; feeAmount: number; categoryId: string };
+  existingRegistrations: ExistingDisciplineRegistration[];
   documentNumber?: string;
   address?: string;
   phone?: string;
@@ -83,7 +81,7 @@ type AthleteDraft = {
   gender?: 'MALE' | 'FEMALE';
   countryId?: string;
   federationId?: string;
-  categoryId?: string;
+  entries: DisciplineEntry[];
   weight?: number;
   height?: number;
   identityType: IdentityType;
@@ -98,7 +96,7 @@ type SubmissionResult = {
   referenceCode: string | null;
   ticketEmailSent?: boolean;
   ticketEmailQueued?: boolean;
-  registrations: { id: string; athleteId: string; athleteName: string; ticketCode: string; status: string; paymentStatus: string; feeAmount: number; currency: string; paymentDueAt?: string | null }[];
+  registrations: { id: string; categoryId: string; athleteIndex: number; athleteId: string; athleteName: string; ticketCode: string; status: string; paymentStatus: string; feeAmount: number; currency: string; paymentDueAt?: string | null }[];
 };
 type FederationSessionProfile = {
   email: string;
@@ -119,6 +117,8 @@ const emptyAthlete = (key: string): AthleteDraft => ({
   fullName: '',
   birthDate: null,
   identityType: 'CCCD',
+  entries: [{}],
+  existingRegistrations: [],
 });
 
 function DocumentPicker({
@@ -311,7 +311,7 @@ export default function GuestEventRegistrationPage() {
       const marker = JSON.stringify(request);
       setAthletes((current) => current.map((athlete) => athlete.key !== key ? athlete : {
         ...athlete, lookupKey: marker, lookupStatus: valid ? 'CHECKING' : undefined,
-        reuseToken: undefined, profileConfirmed: false, existingRegistration: undefined,
+        reuseToken: undefined, profileConfirmed: false, existingRegistrations: [],
         hasAvatar: false, hasIdentity: false,
       }));
       if (!valid) return undefined;
@@ -323,12 +323,11 @@ export default function GuestEventRegistrationPage() {
             if (athlete.key !== key || athlete.lookupKey !== marker) return athlete;
             const profile = data.athlete;
             return { ...athlete, lookupStatus: data.status, lookupMessage: data.message,
-              reuseToken: data.reuseToken, existingRegistration: data.registration,
+              reuseToken: data.reuseToken, existingRegistrations: data.registrations || (data.registration ? [data.registration] : []),
               ...(profile ? { fullName: profile.fullName, birthDate: profile.birthDate ? dayjs(profile.birthDate) : null,
                 gender: profile.gender, countryId: profile.countryId, federationId: profile.federationId || undefined,
                 weight: profile.weight ?? undefined, height: profile.height ?? undefined,
                 hasAvatar: profile.hasAvatar, hasIdentity: profile.hasIdentity,
-                ...(data.registration ? { categoryId: data.registration.categoryId } : {}),
               } : {}),
             };
           }));
@@ -454,19 +453,14 @@ export default function GuestEventRegistrationPage() {
       toast.info('Vui lòng xác nhận thông tin hồ sơ đã đúng trước khi tiếp tục.');
       return;
     }
-    const existing = activeAthletes.length === 1 && activeAthletes[0].profileConfirmed
-      ? activeAthletes[0].existingRegistration : undefined;
-    if (existing) {
-      router.push(`/tickets/${encodeURIComponent(existing.ticketCode)}${existing.paymentStatus === 'PENDING' && existing.feeAmount > 0 ? '?payment=1' : ''}`);
-      return;
-    }
     const missingIndex = activeAthletes.findIndex((athlete) => (
       !athlete.fullName.trim()
       || !athlete.documentNumber?.trim()
       || !athlete.birthDate
       || !athlete.gender
       || !athlete.countryId
-      || !athlete.categoryId
+      || !athlete.entries.length
+      || athlete.entries.some((entry) => !entry.categoryId)
       || (!athlete.hasAvatar && !athlete.avatar)
       || (!athlete.hasIdentity && (athlete.identityType === 'CCCD' ? !athlete.cccdFront || !athlete.cccdBack : !athlete.passport))
     ));
@@ -513,7 +507,7 @@ export default function GuestEventRegistrationPage() {
           gender: athlete.gender,
           countryId: athlete.countryId,
           federationId: athlete.federationId || undefined,
-          categoryId: athlete.categoryId,
+          categoryIds: athlete.entries.map((entry) => entry.categoryId),
           weight: athlete.weight,
           height: athlete.height,
           identityType: athlete.identityType,
@@ -600,12 +594,12 @@ export default function GuestEventRegistrationPage() {
               description="Bạn có thể hoàn tất thanh toán và theo dõi từng hồ sơ bên dưới. Khi được duyệt, vé A6 và mã QR check-in mới xuất hiện, đồng thời được gửi về email đăng ký."
             />
           ) : result.registrations.length > 1 && (
-            <Alert className="mb-6" showIcon type="info" message="Mỗi vận động viên có một vé và QR riêng" description="PDF đầu tiên là danh sách đoàn, sau đó mỗi VĐV có một trang vé độc lập để in, gửi hoặc check-in riêng." />
+            <Alert className="mb-6" showIcon type="info" message="Mỗi nội dung đăng ký có một vé và QR riêng" description="Bộ PDF gồm danh sách đăng ký và vé riêng cho từng nội dung thi đấu của mỗi VĐV." />
           )}
           <div className="mx-auto max-w-3xl space-y-7">
-            {result.registrations.map((registration, index) => {
-              const athlete = activeAthletes[index];
-              const category = event.categories.find((item) => item.id === athlete?.categoryId);
+            {result.registrations.map((registration) => {
+              const athlete = activeAthletes[registration.athleteIndex];
+              const category = event.categories.find((item) => item.id === registration.categoryId);
               const country = countries.find((item) => item.id === athlete?.countryId);
               const federation = federations.find((item) => item.id === athlete?.federationId);
               const ticket: ParticipationTicket = {
@@ -632,7 +626,7 @@ export default function GuestEventRegistrationPage() {
                   paymentProviders: event.paymentProviders,
                 },
                 sport: category?.sport || null,
-                category: { id: category?.id, name: category?.name || 'Hạng đấu đang cập nhật' },
+                category: { ...category, name: category?.name || 'Hạng đấu đang cập nhật' },
                 athlete: {
                   id: registration.athleteId,
                   fullName: registration.athleteName,
@@ -648,6 +642,7 @@ export default function GuestEventRegistrationPage() {
                 && (registration.paymentStatus === 'PAID' || registration.paymentStatus === 'NOT_REQUIRED');
               return (
                 <div key={registration.id}>
+                  {category && <h3 className="mb-3 font-semibold">{registrationCategoryLabel(category)}</h3>}
                   <PaymentCheckout ticket={ticket} />
                   {ticketIssued ? (
                     <EventParticipationCard ticket={ticket} />
@@ -758,8 +753,8 @@ export default function GuestEventRegistrationPage() {
               {(athlete.lookupStatus === 'VERIFY_CONTACT' || athlete.lookupStatus === 'RETRY') && <Alert className="mb-4" type="info" showIcon message="Xác nhận hồ sơ"
                 description={athlete.lookupMessage} action={athlete.lookupStatus === 'RETRY' ? <Button onClick={() => setLookupRevision((value) => value + 1)}>Kiểm tra lại</Button> : undefined} />}
               {athlete.reuseToken && <Alert className="mb-4" type="success" showIcon
-                message={athlete.existingRegistration ? 'VĐV đã có đăng ký tại sự kiện này' : 'Đã tìm thấy hồ sơ VĐV'}
-                description={athlete.existingRegistration ? 'Xác nhận thông tin bên dưới để xem trạng thái, tiếp tục thanh toán hoặc mở vé hiện có.' : 'Kiểm tra thông tin bên dưới và chọn nội dung thi đấu. Hệ thống sẽ sử dụng hồ sơ hiện có.'} />}
+                message={athlete.existingRegistrations.length ? 'VĐV đã có đăng ký tại sự kiện này' : 'Đã tìm thấy hồ sơ VĐV'}
+                description={athlete.existingRegistrations.length ? 'Xác nhận hồ sơ để đăng ký thêm nội dung thi đấu. Các vé hiện có được hiển thị bên dưới.' : 'Kiểm tra thông tin bên dưới và chọn nội dung thi đấu. Hệ thống sẽ sử dụng hồ sơ hiện có.'} />}
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                 <div><label className="mb-2 block text-sm font-semibold">Loại giấy tờ *</label><Select className="w-full" size="large" value={athlete.identityType} onChange={(value) => updateAthlete(athlete.key, { identityType: value, documentNumber: '', identityOcr: undefined })} options={[{ value: 'CCCD', label: 'CCCD' }, { value: 'PASSPORT', label: 'Hộ chiếu' }]} /></div>
                 <div className="lg:col-span-2"><label className="mb-2 block text-sm font-semibold">Số {athlete.identityType === 'CCCD' ? 'CCCD' : 'hộ chiếu'} *</label><Input size="large" maxLength={30} value={athlete.documentNumber} placeholder={athlete.identityType === 'CCCD' ? '12 chữ số theo CCCD' : 'Số hộ chiếu theo giấy tờ'} onChange={(event) => updateAthlete(athlete.key, { documentNumber: event.target.value })} /></div>
@@ -770,10 +765,12 @@ export default function GuestEventRegistrationPage() {
                 <div><label className="mb-2 block text-sm font-semibold">Giới tính *</label><Select className="w-full" disabled={Boolean(athlete.reuseToken)} size="large" value={athlete.gender} onChange={(value) => updateAthlete(athlete.key, { gender: value })} options={[{ value: 'MALE', label: 'Nam' }, { value: 'FEMALE', label: 'Nữ' }]} /></div>
                 <div><label className="mb-2 block text-sm font-semibold">Quốc gia *</label><Select disabled={isFederationAccount || Boolean(athlete.reuseToken)} showSearch optionFilterProp="label" className="w-full" size="large" value={athlete.countryId} onChange={(value) => updateAthlete(athlete.key, { countryId: value, federationId: undefined })} options={countries.map((item) => ({ value: item.id, label: `${item.code} · ${item.name}` }))} /></div>
                 <div><label className="mb-2 block text-sm font-semibold">Đơn vị / CLB</label><Select allowClear showSearch optionFilterProp="label" disabled={isFederationAccount || !athlete.countryId || Boolean(athlete.reuseToken)} className="w-full" size="large" value={athlete.federationId} onChange={(value) => updateAthlete(athlete.key, { federationId: value })} placeholder="Để trống nếu đăng ký tự do" options={availableFederations.map((item) => ({ value: item.id, label: item.name }))} /></div>
-                <div className="lg:col-span-2"><label className="mb-2 block text-sm font-semibold">Hạng đấu / nội dung *</label><Select showSearch optionFilterProp="label" className="w-full" disabled={Boolean(athlete.existingRegistration)} size="large" value={athlete.categoryId} onChange={(value) => updateAthlete(athlete.key, { categoryId: value })} options={(event.categories || []).map((category) => ({ value: category.id, label: `${category.sport?.name ? `${category.sport.name} · ` : ''}${category.name}` }))} /></div>
                 <div><label className="mb-2 block text-sm font-semibold">Cân nặng (kg, không bắt buộc)</label><InputNumber className="w-full" size="large" min={1} max={500} step={0.1} disabled={Boolean(athlete.reuseToken)} value={athlete.weight} onChange={(value) => updateAthlete(athlete.key, { weight: value ?? undefined })} /></div>
                 <div><label className="mb-2 block text-sm font-semibold">Chiều cao (cm, không bắt buộc)</label><InputNumber className="w-full" size="large" min={1} max={300} disabled={Boolean(athlete.reuseToken)} value={athlete.height} onChange={(value) => updateAthlete(athlete.key, { height: value ?? undefined })} /></div>
               </div>
+
+              <RegistrationDisciplines categories={event.categories || []} entries={athlete.entries} existingRegistrations={athlete.existingRegistrations}
+                onChange={(entries) => updateAthlete(athlete.key, { entries })} />
 
               {athlete.reuseToken && <div className="mt-5 rounded-xl border border-sky-500/20 bg-sky-500/5 p-4">
                 <Checkbox checked={athlete.profileConfirmed} onChange={(event) => updateAthlete(athlete.key, { profileConfirmed: event.target.checked })}>Tôi xác nhận đây là hồ sơ của VĐV và thông tin đã đúng.</Checkbox>
@@ -809,13 +806,11 @@ export default function GuestEventRegistrationPage() {
             : { countryId: defaultCountryId }),
         }])}>Thêm vận động viên</Button>
       )}
-      <p className="mt-6 text-sm text-slate-500">Ảnh tải lên được chuyển sang trạng thái chờ xác thực. Vé chỉ có hiệu lực sau khi giấy tờ được đối chiếu.</p>
+      <p className="mt-6 text-sm text-slate-500">Lệ phí được tính riêng cho từng nội dung thi đấu. Mỗi nội dung có thanh toán và vé riêng sau khi giấy tờ và lệ phí được xác nhận.</p>
       <div className="mt-6 flex flex-wrap justify-end gap-3">
         <Link href={`/events/${eventId}`}><Button size="large">Hủy</Button></Link>
         <Button type="primary" size="large" loading={submitting} disabled={activeAthletes.some((athlete) => ['CHECKING', 'VERIFY_CONTACT', 'RETRY'].includes(athlete.lookupStatus || '') || Boolean(athlete.reuseToken && !athlete.profileConfirmed))}
-          icon={<Send className="h-4 w-4" />} onClick={submit}>{activeAthletes.length === 1 && activeAthletes[0].existingRegistration
-            ? activeAthletes[0].existingRegistration.paymentStatus === 'PENDING' && activeAthletes[0].existingRegistration.feeAmount > 0 ? 'Tiếp tục thanh toán' : 'Xem trạng thái / vé'
-            : `Gửi ${mode === 'GROUP' ? `${activeAthletes.length} hồ sơ` : 'hồ sơ'}`}</Button>
+          icon={<Send className="h-4 w-4" />} onClick={submit}>Gửi {activeAthletes.length} hồ sơ · {activeAthletes.reduce((count, athlete) => count + athlete.entries.filter((entry) => entry.categoryId).length, 0)} nội dung</Button>
       </div>
       <IdentityOcrReviewModal
         open={Boolean(ocrReview)}
