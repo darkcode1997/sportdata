@@ -36,6 +36,7 @@ import {
   UpdateParticipantProfileDto,
   UpdateDocumentVerificationDto,
   UpdateRegistrationStatusDto,
+  UpdateRegistrationCategoryDto,
   UpdateRegistrationPaymentStatusDto,
   UpdateAccountVerificationDto,
 } from './dto/participant.dto';
@@ -279,6 +280,21 @@ export class ParticipantsController {
   @Roles(UserRole.ADMIN, UserRole.GAMES_ADMIN)
   updateFederationAccountStatus(@Param('id') id: string, @Body() dto: UpdateAccountVerificationDto) {
     return this.service.updateFederationAccountStatus(id, dto.status);
+  }
+
+  @Patch('admin/registrations/:id/category')
+  @UseGuards(JwtAuthGuard)
+  @Roles(UserRole.ADMIN, UserRole.GAMES_ADMIN)
+  updateRegistrationCategory(
+    @Req() request: Request & { user?: { email?: string; username?: string; sub?: string } },
+    @Param('id') id: string,
+    @Body() dto: UpdateRegistrationCategoryDto,
+  ) {
+    return this.service.updateRegistrationCategory(
+      id,
+      dto.categoryId,
+      request.user?.email || request.user?.username || request.user?.sub || 'CMS',
+    );
   }
 
   @Patch('admin/registrations/:id/status')

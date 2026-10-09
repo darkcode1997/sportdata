@@ -68,6 +68,7 @@ import { AthleteQuickViewModal } from '@/components/cms/AthleteQuickViewModal';
 import { RemoteAthleteSelect } from '@/components/cms/RemoteAthleteSelect';
 import { openCmsScoreboard, withCmsReturnTo } from '@/lib/cms-navigation';
 import { MATCH_STATUS_META } from '@/lib/vi-labels';
+import { registrationDisciplineKey, registrationDisciplineLabel, type RegistrationCategory } from '@/lib/registration-table';
 
 const TicketDesignEditor = dynamic(() => import('@/components/cms/TicketDesignEditor').then((module) => module.TicketDesignEditor), { ssr: false });
 const SportdataBracket = dynamic(() => import('@/components/brackets/SportdataBracket').then((module) => module.SportdataBracket), { ssr: false });
@@ -86,11 +87,13 @@ type Registration = {
   currency: string;
   statusReason?: string | null;
   paymentStatusReason?: string | null;
+  createdAt?: string;
   event: { id: string; name: string };
-  category: { id: string; name: string; sport?: { name: string } };
+  category: RegistrationCategory;
   athlete: {
     id: string;
     fullName: string;
+    gender: 'MALE' | 'FEMALE' | 'MIXED';
     email?: string | null;
     phone?: string | null;
     photoUrl?: string | null;
@@ -99,7 +102,16 @@ type Registration = {
     federation?: { name: string };
     media: Array<{ type: string; verificationStatus?: string | null }>;
   };
-  submission?: { type: string; organizationName?: string; contactName: string; referenceCode: string } | null;
+  submission?: {
+    type: string;
+    organizationName?: string | null;
+    contactName: string;
+    contactEmail?: string | null;
+    contactPhone?: string | null;
+    referenceCode: string;
+    createdAt?: string;
+  } | null;
+  account?: { displayName: string; email: string; phone?: string | null } | null;
   paymentTransactions?: Array<{
     orderId: string;
     provider: 'MOMO' | 'VNPAY' | 'BANK_QR' | 'VISA';
@@ -111,6 +123,8 @@ type Registration = {
   competitionEntry?: { id: string; seed?: number | null; status: string } | null;
 };
 
+type RegistrationFilters = Partial<Record<'athlete' | 'category' | 'seed' | 'documents' | 'source' | 'payment' | 'ticketCode' | 'status', string>>;
+
 type RegistrationIdentityDocument = 'CCCD_FRONT' | 'CCCD_BACK' | 'PASSPORT';
 
 const paymentStatusLabels: Record<string, { label: string; color: string }> = {
@@ -118,6 +132,13 @@ const paymentStatusLabels: Record<string, { label: string; color: string }> = {
   PENDING: { label: 'Chờ thanh toán', color: 'processing' },
   PAID: { label: 'Đã duyệt', color: 'success' },
   FAILED: { label: 'Thanh toán thất bại', color: 'error' },
+};
+
+const registrationStatusLabels: Record<string, { label: string; color: string }> = {
+  SUBMITTED: { label: 'Chờ duyệt', color: 'processing' },
+  CONFIRMED: { label: 'Đã xác nhận', color: 'success' },
+  REJECTED: { label: 'Từ chối', color: 'error' },
+  CANCELLED: { label: 'Đã hủy', color: 'default' },
 };
 
 const paymentModeOptions = [
@@ -568,18 +589,27 @@ function FopsTab({ event, canOperate, onRefresh }: EventWorkspaceProps & { canOp
 function RegistrationsTab({ event, canOperate, canConfirmPayment }: { event: any; canOperate: boolean; canConfirmPayment: boolean }) {
   const eventId = event.id;
   const toast = useSportDataToast();
+  const { mutate: mutateGlobal } = useSWRConfig();
   const { data: registrations = [], isLoading, mutate } = useSWR<Registration[]>(`/participant-auth/admin/registrations?eventId=${eventId}`, fetcher);
+  const refreshRegistrationData = async () => {
+    await Promise.all([
+      mutate(),
+      mutateGlobal((key) => {
+        const url = typeof key === 'string' ? key : Array.isArray(key) ? key[0] : null;
+        return typeof url === 'string' && (url.startsWith(`/competitions/events/${eventId}/categories/`)
+          || url.startsWith(`/matches/event/${eventId}/category/`));
+      }),
+    ]);
+  };
   const { data: countries = [] } = useSWR<any[]>('/countries', fetcher);
   const { data: federations = [] } = useSWR<any[]>('/federations', fetcher);
   const [reviewChange, setReviewChange] = useState<{ kind: 'registration' | 'payment'; item: Registration; nextStatus: string }>();
   const [reviewReason, setReviewReason] = useState('');
   const [reviewSaving, setReviewSaving] = useState(false);
   const [selectedAthleteId, setSelectedAthleteId] = useState<string>();
-  const [registrationSearch, setRegistrationSearch] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState<string>();
-  const [statusFilter, setStatusFilter] = useState<string>();
-  const [paymentFilter, setPaymentFilter] = useState<string>();
-  const [documentFilter, setDocumentFilter] = useState<string>();
+  const [registrationFilters, setRegistrationFilters] = useState<RegistrationFilters>({});
+  const [sourceRegistration, setSourceRegistration] = useState<Registration>();
+  const [registrationPage, setRegistrationPage] = useState(1);
   const [createOpen, setCreateOpen] = useState(false);
   const [createMode, setCreateMode] = useState<'existing' | 'new'>('existing');
   const [eligibility, setEligibility] = useState<{ eligible: boolean; reasons: string[]; warnings: string[] }>();
@@ -589,39 +619,146 @@ function RegistrationsTab({ event, canOperate, canConfirmPayment }: { event: any
   const [identityFiles, setIdentityFiles] = useState<Partial<Record<RegistrationIdentityDocument, File>>>({});
   const [createdRegistration, setCreatedRegistration] = useState<Registration>();
   const [registrationForm] = Form.useForm();
+  const [editingRegistration, setEditingRegistration] = useState<Registration>();
+  const [editingDiscipline, setEditingDiscipline] = useState<string>();
+  const [editingCategoryId, setEditingCategoryId] = useState<string>();
+  const [categorySaving, setCategorySaving] = useState(false);
   const selectedCountryId = Form.useWatch(['athlete', 'countryId'], registrationForm);
   const selectedPaymentStatus = Form.useWatch('paymentStatus', registrationForm) || 'PENDING';
   const availableFederations = federations.filter((item) => !selectedCountryId || item.countryId === selectedCountryId);
+  const sourceContact = sourceRegistration?.submission
+    ? { name: sourceRegistration.submission.contactName, email: sourceRegistration.submission.contactEmail, phone: sourceRegistration.submission.contactPhone }
+    : sourceRegistration?.account
+      ? { name: sourceRegistration.account.displayName, email: sourceRegistration.account.email, phone: sourceRegistration.account.phone }
+      : { name: sourceRegistration?.athlete.fullName, email: sourceRegistration?.athlete.email, phone: sourceRegistration?.athlete.phone };
+  const sourceCreatedAt = sourceRegistration?.submission?.createdAt || sourceRegistration?.createdAt;
   const filteredRegistrations = useMemo(() => {
-    const search = registrationSearch.trim().toLocaleLowerCase('vi');
+    const matchesText = (value: string, filter?: string) => !filter || value.toLocaleLowerCase('vi').includes(filter.toLocaleLowerCase('vi'));
     return registrations.filter((item) => {
       const documentStates = new Map((item.athlete.media || []).map((media) => [media.type, media.verificationStatus]));
       const hasIdentity = (documentStates.has('CCCD_FRONT') && documentStates.has('CCCD_BACK')) || documentStates.has('PASSPORT');
       const identityVerified = (documentStates.get('CCCD_FRONT') === 'VERIFIED' && documentStates.get('CCCD_BACK') === 'VERIFIED')
         || documentStates.get('PASSPORT') === 'VERIFIED';
-      const matchesDocument = !documentFilter
-        || (documentFilter === 'VERIFIED' && identityVerified)
-        || (documentFilter === 'PENDING' && hasIdentity && !identityVerified)
-        || (documentFilter === 'MISSING' && !hasIdentity);
-      const searchable = [item.athlete.fullName, item.athlete.email, item.athlete.phone, item.athlete.country?.code, item.athlete.federation?.name, item.ticketCode, item.category.name]
-        .filter(Boolean)
-        .join(' ')
-        .toLocaleLowerCase('vi');
-      return (!search || searchable.includes(search))
-        && (!categoryFilter || item.category.id === categoryFilter)
-        && (!statusFilter || item.status === statusFilter)
-        && (!paymentFilter || item.paymentStatus === paymentFilter)
-        && matchesDocument;
+      const documentStatus = identityVerified ? 'VERIFIED' : hasIdentity ? 'PENDING' : 'MISSING';
+      const athleteText = [item.athlete.fullName, item.athlete.email, item.athlete.phone, item.athlete.country?.code, item.athlete.federation?.name].filter(Boolean).join(' ');
+      const sourceText = item.submission
+        ? [item.submission.type === 'GROUP' ? 'Danh sách đội / CLB' : 'Khách', item.submission.organizationName, item.submission.contactName, item.submission.referenceCode].filter(Boolean).join(' ')
+        : 'Tài khoản SportData';
+      return matchesText(athleteText, registrationFilters.athlete)
+        && matchesText(sourceText, registrationFilters.source)
+        && matchesText(item.ticketCode, registrationFilters.ticketCode)
+        && (!registrationFilters.category || item.category.id === registrationFilters.category)
+        && (!registrationFilters.seed || String(item.competitionEntry?.seed ?? '') === registrationFilters.seed)
+        && (!registrationFilters.status || item.status === registrationFilters.status)
+        && (!registrationFilters.payment || item.paymentStatus === registrationFilters.payment)
+        && (!registrationFilters.documents || documentStatus === registrationFilters.documents);
     });
-  }, [categoryFilter, documentFilter, paymentFilter, registrationSearch, registrations, statusFilter]);
-  const clearRegistrationFilters = () => {
-    setRegistrationSearch('');
-    setCategoryFilter(undefined);
-    setStatusFilter(undefined);
-    setPaymentFilter(undefined);
-    setDocumentFilter(undefined);
+  }, [registrations, registrationFilters]);
+  const athleteCounts = useMemo(() => {
+    const seen = new Set<string>();
+    const counts = { total: 0, male: 0, female: 0, unspecified: 0 };
+    for (const { athlete } of filteredRegistrations) {
+      if (seen.has(athlete.id)) continue;
+      seen.add(athlete.id);
+      counts.total += 1;
+      if (athlete.gender === 'MALE') counts.male += 1;
+      else if (athlete.gender === 'FEMALE') counts.female += 1;
+      else counts.unspecified += 1;
+    }
+    return counts;
+  }, [filteredRegistrations]);
+  const editableCategories: RegistrationCategory[] = (event.categories || []).filter((category: RegistrationCategory) => category.sportId === editingRegistration?.category.sportId);
+  const disciplineOptions = [...new Map(editableCategories.map((category) => {
+    const key = registrationDisciplineKey(category);
+    const occupied = registrations.some((item) => item.athlete.id === editingRegistration?.athlete.id
+      && item.id !== editingRegistration?.id && registrationDisciplineKey(item.category) === key);
+    return [key, { value: key, label: registrationDisciplineLabel(category), disabled: occupied }];
+  })).values()];
+  const openCategoryEditor = (item: Registration) => {
+    setEditingRegistration(item);
+    setEditingDiscipline(registrationDisciplineKey(item.category));
+    setEditingCategoryId(item.category.id);
   };
-  const hasRegistrationFilters = Boolean(registrationSearch || categoryFilter || statusFilter || paymentFilter || documentFilter);
+  const saveRegistrationCategory = async () => {
+    if (!editingRegistration || !editingCategoryId) return;
+    setCategorySaving(true);
+    try {
+      await api.patch(`/participant-auth/admin/registrations/${editingRegistration.id}/category`, { categoryId: editingCategoryId });
+      setEditingRegistration(undefined);
+      await refreshRegistrationData();
+      toast.success('Đã cập nhật nội dung và hạng cân.');
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Không thể cập nhật nội dung / hạng cân.');
+    } finally {
+      setCategorySaving(false);
+    }
+  };
+  const clearRegistrationFilters = () => {
+    setRegistrationFilters({});
+    setRegistrationPage(1);
+  };
+  const hasRegistrationFilters = Object.values(registrationFilters).some(Boolean);
+  const columnFilter = (key: keyof RegistrationFilters, label: string, kind: 'text' | 'number' = 'text'): ColumnType<Registration> => ({
+    key,
+    filteredValue: registrationFilters[key] ? [registrationFilters[key]!] : null,
+    filterIcon: (filtered) => <Search className={`h-4 w-4 ${filtered ? 'text-blue-600' : ''}`} />,
+    filterDropdown: ({ selectedKeys, setSelectedKeys, confirm, clearFilters }) => (
+      <div className="space-y-3 p-3" style={{ width: 270 }} onKeyDown={(event) => event.stopPropagation()}>
+        <div className="text-sm font-medium">{label}</div>
+        {kind === 'number' ? (
+          <InputNumber
+            className="!w-full"
+            min={1}
+            max={2147483647}
+            precision={0}
+            aria-label={label}
+            value={selectedKeys[0] ? Number(selectedKeys[0]) : null}
+            onChange={(value) => setSelectedKeys(value === null ? [] : [String(value)])}
+            onPressEnter={() => confirm()}
+          />
+        ) : (
+          <Input
+            autoFocus
+            allowClear
+            aria-label={label}
+            placeholder={label}
+            value={String(selectedKeys[0] || '')}
+            onChange={(event) => setSelectedKeys(event.target.value ? [event.target.value] : [])}
+            onPressEnter={() => confirm()}
+          />
+        )}
+        <Space>
+          <Button type="primary" size="small" onClick={() => confirm()}>Áp dụng</Button>
+          <Button size="small" onClick={() => clearFilters?.({ confirm: true, closeDropdown: true })}>Xóa</Button>
+        </Space>
+      </div>
+    ),
+  });
+  const columnSelectFilter = (key: keyof RegistrationFilters, label: string, options: Array<{ value: string; label: string }>): ColumnType<Registration> => ({
+    key,
+    filteredValue: registrationFilters[key] ? [registrationFilters[key]!] : null,
+    filterIcon: (filtered) => <Search className={`h-4 w-4 ${filtered ? 'text-blue-600' : ''}`} />,
+    filterDropdown: ({ selectedKeys, setSelectedKeys, confirm, clearFilters }) => (
+      <div className="space-y-3 p-3" style={{ width: 270 }} onKeyDown={(event) => event.stopPropagation()}>
+        <div className="text-sm font-medium">{label}</div>
+        <Select
+          className="w-full"
+          allowClear
+          showSearch
+          optionFilterProp="label"
+          aria-label={label}
+          placeholder={label}
+          value={selectedKeys[0] ? String(selectedKeys[0]) : undefined}
+          options={options}
+          onChange={(value) => setSelectedKeys(value ? [value] : [])}
+        />
+        <Space>
+          <Button type="primary" size="small" onClick={() => confirm()}>Áp dụng</Button>
+          <Button size="small" onClick={() => clearFilters?.({ confirm: true, closeDropdown: true })}>Xóa</Button>
+        </Space>
+      </div>
+    ),
+  });
 
   const registrationPayload = async () => {
     const values = await registrationForm.validateFields();
@@ -710,11 +847,11 @@ function RegistrationsTab({ event, canOperate, canConfirmPayment }: { event: any
       if (!result.eligible) return;
       const { data: registration } = await api.post('/participant-auth/admin/registrations', payload);
       const documentFailures = await uploadAthleteMedia(registration.athlete.id);
-      await mutate();
+      await refreshRegistrationData();
       if (documentFailures.length) {
         toast.error(`Đã tạo đăng ký nhưng chưa tải được: ${documentFailures.join(', ')}. Hãy bổ sung trong hồ sơ VĐV.`);
       } else {
-        toast.success(createMode === 'new' ? 'Đã tạo VĐV, tải giấy tờ và thêm vào danh sách đăng ký.' : 'Đã thêm VĐV vào danh sách đăng ký.');
+        toast.success(createMode === 'new' ? 'Đã tạo VĐV, tải giấy tờ và xác nhận đăng ký.' : 'Đã thêm VĐV và xác nhận đăng ký.');
       }
       setCreatedRegistration(registration);
       setCreateOpen(false);
@@ -737,7 +874,7 @@ function RegistrationsTab({ event, canOperate, canConfirmPayment }: { event: any
         ? `/participant-auth/admin/registrations/${reviewChange.item.id}/payment-status`
         : `/participant-auth/admin/registrations/${reviewChange.item.id}/status`;
       await api.patch(endpoint, { status: reviewChange.nextStatus, reason: reviewReason.trim() });
-      await mutate();
+      await refreshRegistrationData();
       toast.success(reviewChange.kind === 'payment'
         ? 'Đã cập nhật trạng thái thanh toán.'
         : reviewChange.nextStatus === 'CONFIRMED'
@@ -756,7 +893,7 @@ function RegistrationsTab({ event, canOperate, canConfirmPayment }: { event: any
     if (!item.competitionEntry) return;
     try {
       await api.patch(`/competitions/entries/${item.competitionEntry.id}/seed`, { seed });
-      await mutate();
+      await refreshRegistrationData();
       toast.success(seed ? `Đã đặt ${item.athlete.fullName} là hạt giống số ${seed}.` : 'Đã xóa hạt giống.');
     } catch (error: any) {
       toast.error(error.response?.data?.message || 'Không thể cập nhật hạt giống.');
@@ -787,6 +924,17 @@ function RegistrationsTab({ event, canOperate, canConfirmPayment }: { event: any
     }
   };
 
+  const renderRegistrationCategory = (item: Registration) => (
+    <div className="flex items-center justify-between gap-2">
+      <span>{item.category.sport?.name || ''} · {item.category.name}</span>
+      {canOperate && (
+        <Tooltip title="Sửa nội dung / hạng cân">
+          <Button type="text" size="small" className="shrink-0" aria-label={`Sửa nội dung / hạng cân: ${item.category.name}`} icon={<Pencil className="h-4 w-4" />} onClick={() => openCategoryEditor(item)} />
+        </Tooltip>
+      )}
+    </div>
+  );
+
   return (
     <>
     <Card
@@ -794,57 +942,44 @@ function RegistrationsTab({ event, canOperate, canConfirmPayment }: { event: any
       extra={<Space wrap>{canOperate && <Button type="primary" icon={<Plus className="h-4 w-4" />} onClick={() => setCreateOpen(true)}>Thêm VĐV đăng ký</Button>}<Button icon={<RefreshCw className="h-4 w-4" />} onClick={() => mutate()}>Làm mới</Button></Space>}
       styles={{ body: { padding: 0 } }}
     >
-      <div className="border-b border-slate-300/10 p-4">
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(240px,1.4fr)_repeat(4,minmax(150px,1fr))_auto]">
-          <Input
-            allowClear
-            value={registrationSearch}
-            prefix={<Search className="h-4 w-4 text-slate-500" />}
-            placeholder="Tìm tên, mã vé, quốc gia, CLB..."
-            onChange={(event) => setRegistrationSearch(event.target.value)}
-          />
-          <Select
-            allowClear
-            value={categoryFilter}
-            placeholder="Tất cả hạng đấu"
-            onChange={setCategoryFilter}
-            options={(event.categories || []).map((item: any) => ({ value: item.id, label: item.name }))}
-          />
-          <Select
-            allowClear
-            value={statusFilter}
-            placeholder="Trạng thái hồ sơ"
-            onChange={setStatusFilter}
-            options={[{ value: 'SUBMITTED', label: 'Chờ duyệt' }, { value: 'CONFIRMED', label: 'Đã xác nhận' }, { value: 'REJECTED', label: 'Từ chối' }, { value: 'CANCELLED', label: 'Đã hủy' }]}
-          />
-          <Select
-            allowClear
-            value={paymentFilter}
-            placeholder="Thanh toán"
-            onChange={setPaymentFilter}
-            options={[{ value: 'NOT_REQUIRED', label: 'Miễn thanh toán' }, { value: 'PENDING', label: 'Chờ thanh toán' }, { value: 'PAID', label: 'Đã thanh toán' }, { value: 'FAILED', label: 'Thanh toán lỗi' }]}
-          />
-          <Select
-            allowClear
-            value={documentFilter}
-            placeholder="Giấy tờ"
-            onChange={setDocumentFilter}
-            options={[{ value: 'VERIFIED', label: 'Đã xác thực' }, { value: 'PENDING', label: 'Chờ xác thực' }, { value: 'MISSING', label: 'Thiếu giấy tờ' }]}
-          />
-          <Button disabled={!hasRegistrationFilters} onClick={clearRegistrationFilters}>Xóa lọc</Button>
+      <div className="space-y-3 border-b border-slate-300/10 p-4">
+        <div role="group" aria-label="Thống kê giới tính VĐV" className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-slate-500">
+          <span>Tổng VĐV: <strong className="text-lg tabular-nums text-slate-200">{isLoading ? '—' : athleteCounts.total}</strong></span>
+          <span>Nam: <strong className="text-lg tabular-nums text-sky-500">{isLoading ? '—' : athleteCounts.male}</strong></span>
+          <span>Nữ: <strong className="text-lg tabular-nums text-rose-500">{isLoading ? '—' : athleteCounts.female}</strong></span>
+          {athleteCounts.unspecified > 0 && <span>Chưa xác định: <strong className="text-lg tabular-nums text-slate-200">{athleteCounts.unspecified}</strong></span>}
+          <span className="text-xs">Mỗi VĐV tính một lần{hasRegistrationFilters ? ' · Theo bộ lọc hiện tại' : ''}.</span>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="text-sm text-slate-500">Bấm biểu tượng lọc trên tiêu đề cột để tìm đăng ký.</span>
+          {hasRegistrationFilters && <Button onClick={clearRegistrationFilters}>Xóa bộ lọc</Button>}
         </div>
       </div>
-      <Table
+      <Table<Registration>
         rowKey="id"
         loading={isLoading}
         dataSource={filteredRegistrations}
         scroll={{ x: 1700 }}
-        pagination={{ pageSize: 15, showSizeChanger: true }}
-        locale={{ emptyText: 'Chưa có vận động viên đăng ký.' }}
+        pagination={{ current: registrationPage, defaultPageSize: 15, showSizeChanger: true }}
+        locale={{ emptyText: hasRegistrationFilters ? 'Không tìm thấy đăng ký phù hợp. Thử đổi hoặc xóa bộ lọc.' : 'Chưa có vận động viên đăng ký.' }}
+        onChange={(pagination, tableFilters, _sorter, extra) => {
+          if (extra.action === 'filter') {
+            const nextFilters: RegistrationFilters = {};
+            Object.entries(tableFilters).forEach(([key, values]) => {
+              if (values?.[0] !== undefined && String(values[0]).trim()) {
+                Object.assign(nextFilters, { [key]: String(values[0]).trim() });
+              }
+            });
+            setRegistrationFilters(nextFilters);
+            setRegistrationPage(1);
+          } else if (extra.action === 'paginate') {
+            setRegistrationPage(pagination.current || 1);
+          }
+        }}
         columns={[
           {
             title: 'Vận động viên',
-            key: 'athlete',
+            ...columnFilter('athlete', 'Tên VĐV, quốc gia, CLB, email hoặc số điện thoại'),
             width: 250,
             render: (_, item) => (
               <div className="flex min-w-0 items-center gap-3">
@@ -871,10 +1006,10 @@ function RegistrationsTab({ event, canOperate, canConfirmPayment }: { event: any
               </div>
             ),
           },
-          { title: 'Hạng đấu', key: 'category', width: 240, render: (_, item) => `${item.category.sport?.name || ''} · ${item.category.name}` },
+          { title: 'Hạng đấu', ...columnSelectFilter('category', 'Hạng đấu', (event.categories || []).map((category: RegistrationCategory) => ({ value: category.id, label: `${category.sport?.name || ''} · ${category.name}` }))), width: 240, render: (_, item) => renderRegistrationCategory(item) },
           {
             title: 'Hạt giống',
-            key: 'seed',
+            ...columnFilter('seed', 'Số hạt giống', 'number'),
             width: 130,
             render: (_, item) => (
               <SeedInput
@@ -886,7 +1021,7 @@ function RegistrationsTab({ event, canOperate, canConfirmPayment }: { event: any
           },
           {
             title: 'Giấy tờ xác minh',
-            key: 'documents',
+            ...columnSelectFilter('documents', 'Giấy tờ xác minh', [{ value: 'VERIFIED', label: 'Đã xác thực' }, { value: 'PENDING', label: 'Chờ xác thực' }, { value: 'MISSING', label: 'Thiếu giấy tờ' }]),
             width: 330,
             render: (_, item) => (
               <div className="space-y-1.5">
@@ -903,15 +1038,29 @@ function RegistrationsTab({ event, canOperate, canConfirmPayment }: { event: any
           },
           {
             title: 'Nguồn hồ sơ',
-            key: 'source',
+            ...columnFilter('source', 'Đội / CLB, người liên hệ hoặc mã hồ sơ'),
             width: 210,
-            render: (_, item) => item.submission
-              ? <div><Tag color={item.submission.type === 'GROUP' ? 'purple' : 'blue'}>{item.submission.type === 'GROUP' ? 'Danh sách đội / CLB' : 'Khách'}</Tag><div className="mt-1 text-xs">{item.submission.organizationName || item.submission.contactName}</div><code className="text-xs text-slate-500">{item.submission.referenceCode}</code></div>
-              : <Tag>Tài khoản SportData</Tag>,
+            render: (_, item) => (
+              <button
+                type="button"
+                className="block w-full cursor-pointer rounded-md text-left hover:text-sky-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500"
+                aria-label={`Xem thông tin nguồn hồ sơ của ${item.athlete.fullName}`}
+                title="Xem thông tin nguồn hồ sơ"
+                onClick={() => setSourceRegistration(item)}
+              >
+                {item.submission ? (
+                  <>
+                    <Tag color={item.submission.type === 'GROUP' ? 'purple' : 'blue'}>{item.submission.type === 'GROUP' ? 'Danh sách đội / CLB' : 'Khách'}</Tag>
+                    <span className="mt-1 block text-xs">{item.submission.organizationName || item.submission.contactName}</span>
+                    <code className="text-xs text-slate-500">{item.submission.referenceCode}</code>
+                  </>
+                ) : <Tag>Tài khoản SportData</Tag>}
+              </button>
+            ),
           },
           {
             title: 'Thanh toán',
-            key: 'payment',
+            ...columnSelectFilter('payment', 'Thanh toán', Object.entries(paymentStatusLabels).map(([value, badge]) => ({ value, label: badge.label }))),
             width: 210,
             render: (_, item) => {
               const badge = paymentStatusLabels[item.paymentStatus] || { label: item.paymentStatus, color: 'default' };
@@ -939,6 +1088,7 @@ function RegistrationsTab({ event, canOperate, canConfirmPayment }: { event: any
           {
             title: 'Vé A6 / mã hồ sơ',
             dataIndex: 'ticketCode',
+            ...columnFilter('ticketCode', 'Mã vé A6'),
             width: 240,
             render: (value, item) => {
               const ticketIssued = item.status === 'CONFIRMED'
@@ -957,7 +1107,7 @@ function RegistrationsTab({ event, canOperate, canConfirmPayment }: { event: any
           },
           {
             title: 'Trạng thái',
-            key: 'status',
+            ...columnSelectFilter('status', 'Trạng thái hồ sơ', Object.entries(registrationStatusLabels).map(([value, badge]) => ({ value, label: badge.label }))),
             fixed: 'right' as const,
             width: 180,
             render: (_, item) => {
@@ -972,13 +1122,12 @@ function RegistrationsTab({ event, canOperate, canConfirmPayment }: { event: any
                       onChange={(nextStatus) => nextStatus !== item.status && setReviewChange({ kind: 'registration', item, nextStatus })}
                       options={[
                         { value: 'SUBMITTED', label: 'Chờ duyệt' },
-                        { value: 'CONFIRMED', label: identityVerified ? 'Đã xác nhận' : 'Cần xác thực giấy tờ', disabled: !identityVerified },
+                        { value: 'CONFIRMED', label: 'Đã xác nhận', disabled: !identityVerified && item.status !== 'CONFIRMED' },
                         { value: 'REJECTED', label: 'Từ chối' },
                         { value: 'CANCELLED', label: 'Đã hủy' },
                       ]}
                     />
-                  ) : <Tag>{item.status}</Tag>}
-                  {item.statusReason ? <span className="max-w-44 text-xs text-slate-500">Lý do: {item.statusReason}</span> : null}
+                  ) : <Tag color={registrationStatusLabels[item.status]?.color}>{registrationStatusLabels[item.status]?.label || item.status}</Tag>}
                 </Space>
               );
             },
@@ -986,6 +1135,69 @@ function RegistrationsTab({ event, canOperate, canConfirmPayment }: { event: any
         ]}
       />
     </Card>
+    <Modal
+      open={Boolean(sourceRegistration)}
+      title="Thông tin nguồn hồ sơ"
+      centered
+      width={560}
+      footer={<Button onClick={() => setSourceRegistration(undefined)}>Đóng</Button>}
+      onCancel={() => setSourceRegistration(undefined)}
+    >
+      {sourceRegistration && (
+        <Descriptions bordered column={1} size="small">
+          <Descriptions.Item label="Loại hồ sơ">{sourceRegistration.submission ? sourceRegistration.submission.type === 'GROUP' ? 'Danh sách đội / CLB' : 'Khách' : 'Tài khoản SportData'}</Descriptions.Item>
+          <Descriptions.Item label="Đội / CLB">{sourceRegistration.submission ? sourceRegistration.submission.organizationName || 'Chưa cung cấp' : sourceRegistration.athlete.federation?.name || 'VĐV tự do'}</Descriptions.Item>
+          <Descriptions.Item label="Người liên hệ">{sourceContact.name || 'Chưa cung cấp'}</Descriptions.Item>
+          <Descriptions.Item label="Số điện thoại">{sourceContact.phone ? <a href={`tel:${sourceContact.phone}`}>{sourceContact.phone}</a> : 'Chưa cung cấp'}</Descriptions.Item>
+          <Descriptions.Item label="Email">{sourceContact.email ? <a className="break-all" href={`mailto:${sourceContact.email}`}>{sourceContact.email}</a> : 'Chưa cung cấp'}</Descriptions.Item>
+          <Descriptions.Item label="Mã hồ sơ"><code>{sourceRegistration.submission?.referenceCode || sourceRegistration.ticketCode}</code></Descriptions.Item>
+          <Descriptions.Item label="Vận động viên">{sourceRegistration.athlete.fullName}</Descriptions.Item>
+          <Descriptions.Item label="Hạng đấu">{sourceRegistration.category.name}</Descriptions.Item>
+          <Descriptions.Item label="Ngày đăng ký">{sourceCreatedAt ? new Date(sourceCreatedAt).toLocaleString('vi-VN') : 'Chưa cung cấp'}</Descriptions.Item>
+        </Descriptions>
+      )}
+    </Modal>
+    <Modal
+      open={Boolean(editingRegistration)}
+      title="Sửa nội dung / hạng cân"
+      centered
+      okText="Lưu thay đổi"
+      cancelText="Hủy"
+      confirmLoading={categorySaving}
+      okButtonProps={{ disabled: !editingCategoryId || editingCategoryId === editingRegistration?.category.id }}
+      onOk={() => void saveRegistrationCategory()}
+      onCancel={() => { if (!categorySaving) setEditingRegistration(undefined); }}
+    >
+      <p className="mb-4">{editingRegistration?.athlete.fullName}</p>
+      <div className="space-y-4">
+        <div>
+          <label htmlFor="registration-discipline" className="mb-1 block text-sm font-medium">Nội dung thi đấu</label>
+          <Select
+            id="registration-discipline"
+            className="w-full"
+            value={editingDiscipline}
+            options={disciplineOptions}
+            disabled={categorySaving}
+            onChange={(value) => { setEditingDiscipline(value); setEditingCategoryId(undefined); }}
+          />
+        </div>
+        <div>
+          <label htmlFor="registration-weight-category" className="mb-1 block text-sm font-medium">Hạng đấu / hạng cân</label>
+          <Select
+            id="registration-weight-category"
+            className="w-full"
+            showSearch
+            optionFilterProp="label"
+            placeholder="Chọn hạng đấu phù hợp"
+            value={editingCategoryId}
+            disabled={categorySaving}
+            options={editableCategories.filter((category) => registrationDisciplineKey(category) === editingDiscipline).map((category) => ({ value: category.id, label: category.name }))}
+            onChange={setEditingCategoryId}
+          />
+        </div>
+        <p className="text-xs text-slate-500">Hạng đấu mới phải phù hợp với giới tính, tuổi và cân nặng của VĐV. Không thể đổi khi hạng đấu đã có bốc thăm hoặc lịch thi đấu. Hạt giống sẽ được xóa khi đổi hạng đấu.</p>
+      </div>
+    </Modal>
     <Modal
       open={createOpen}
       title="Thêm vận động viên đăng ký thi đấu"
@@ -1025,6 +1237,7 @@ function RegistrationsTab({ event, canOperate, canConfirmPayment }: { event: any
         initialValues={{ athlete: { gender: 'MALE' }, paymentStatus: 'PENDING' }}
         onValuesChange={() => setEligibility(undefined)}
       >
+        <Alert className="!mb-4" type="info" showIcon message="Hồ sơ do quản trị viên tạo được xác nhận ngay. Thanh toán được theo dõi riêng." />
         <Form.Item name="categoryId" label="Hạng đấu" rules={[{ required: true, message: 'Vui lòng chọn hạng đấu' }]}>
           <Select
             showSearch
@@ -1138,10 +1351,10 @@ function RegistrationsTab({ event, canOperate, canConfirmPayment }: { event: any
           <Alert
             showIcon
             type={createdRegistration.paymentStatus === 'PENDING' ? 'warning' : 'success'}
-            message={createdRegistration.paymentStatus === 'PENDING' ? 'Đăng ký đang chờ thanh toán' : createdRegistration.paymentStatus === 'PAID' ? 'Đã ghi nhận thanh toán' : 'Sự kiện miễn phí'}
+            message={createdRegistration.paymentStatus === 'PENDING' ? 'Đã xác nhận · Chờ thanh toán' : createdRegistration.paymentStatus === 'PAID' ? 'Đã xác nhận · Đã thanh toán' : 'Đã xác nhận · Miễn thanh toán'}
             description={createdRegistration.paymentStatus === 'PENDING'
-              ? `Lệ phí ${new Intl.NumberFormat('vi-VN').format(createdRegistration.feeAmount)} ${createdRegistration.currency}. Gửi liên kết dưới đây để VĐV thanh toán.`
-              : 'Hồ sơ sẽ được xác nhận sau khi giấy tờ định danh được duyệt.'}
+              ? `Hồ sơ đã được xác nhận. Lệ phí ${new Intl.NumberFormat('vi-VN').format(createdRegistration.feeAmount)} ${createdRegistration.currency}. Gửi liên kết dưới đây để VĐV thanh toán.`
+              : 'Hồ sơ đã được quản trị viên xác nhận, không cần chờ duyệt.'}
           />
           <div className="rounded-xl border border-slate-300/15 p-4">
             <div className="text-xs text-slate-500">Mã hồ sơ / vé</div>
@@ -1149,7 +1362,7 @@ function RegistrationsTab({ event, canOperate, canConfirmPayment }: { event: any
             <div className="mt-3 break-all text-sm text-sky-500">{`${window.location.origin}/tickets/${encodeURIComponent(createdRegistration.ticketCode)}`}</div>
           </div>
           <Space wrap>
-            <Button type="primary" href={`/tickets/${encodeURIComponent(createdRegistration.ticketCode)}`} target="_blank">Mở trang thanh toán</Button>
+            <Button type="primary" href={`/tickets/${encodeURIComponent(createdRegistration.ticketCode)}`} target="_blank">{createdRegistration.paymentStatus === 'PENDING' ? 'Mở trang thanh toán' : 'Mở vé A6'}</Button>
             <Button onClick={() => {
               void navigator.clipboard.writeText(`${window.location.origin}/tickets/${encodeURIComponent(createdRegistration.ticketCode)}`);
               toast.success('Đã sao chép liên kết thanh toán.');
@@ -1213,9 +1426,16 @@ type MatchFilters = {
 };
 
 function MatchesTab({ event, returnTo, canOperate, canScore, canEditMatch, canEditBracket }: { event: any; returnTo: string; canOperate: boolean; canScore: boolean; canEditMatch: boolean; canEditBracket: boolean }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const toast = useSportDataToast();
   const { mutate: mutateGlobal } = useSWRConfig();
-  const [categoryId, setCategoryId] = useState<string>(event.categories?.[0]?.id || '');
+  const requestedCategoryId = searchParams.get('categoryId');
+  const categoryId: string = requestedCategoryId && event.categories?.some((category: any) => category.id === requestedCategoryId)
+    ? requestedCategoryId
+    : event.categories?.[0]?.id || '';
+  const matchReturnTo = categoryId ? `${returnTo}&categoryId=${encodeURIComponent(categoryId)}` : returnTo;
   const [view, setView] = useState<'tree' | 'list'>('list');
   const [page, setPage] = useState(1);
   const [filters, setFilters] = useState<MatchFilters>({});
@@ -1228,6 +1448,20 @@ function MatchesTab({ event, returnTo, canOperate, canScore, canEditMatch, canEd
     if (value !== undefined && value !== null && String(value).trim()) query.set(key, String(value).trim());
   });
   const hasFilters = Object.values(filters).some((value) => value !== undefined && value !== null && String(value).trim());
+  const isWinner = (match: any, side: 1 | 2) => Boolean(
+    match.status === 'FINISHED' && match.winnerId && match.winnerId === match[`athlete${side}`]?.id,
+  );
+  const renderAthlete = (match: any, side: 1 | 2) => {
+    const athlete = match[`athlete${side}`];
+    if (!athlete) return 'Chờ xác định';
+    const winner = isWinner(match, side);
+    return (
+      <Space size={8}>
+        <Button type="link" className={`h-auto !p-0 ${winner ? '!text-emerald-500 font-semibold' : ''}`} onClick={() => setSelectedAthleteId(athlete.id)}>{athlete.fullName}</Button>
+        {winner && <Tag color="success" className="!m-0 inline-flex items-center gap-1"><CheckCircle2 className="h-3 w-3" aria-hidden="true" />Thắng</Tag>}
+      </Space>
+    );
+  };
   const columnFilter = (key: keyof MatchFilters, label: string, kind: 'text' | 'number' | 'date' = 'text'): ColumnType<any> => ({
     key,
     filteredValue: filters[key] !== undefined ? [String(filters[key])] : null,
@@ -1304,7 +1538,12 @@ function MatchesTab({ event, returnTo, canOperate, canScore, canEditMatch, canEd
     <div className="space-y-5">
       <Card styles={{ body: { padding: 16 } }}>
         <div className="flex flex-wrap items-center gap-3">
-          <Select className="min-w-72 flex-1" value={categoryId || undefined} placeholder="Chọn hạng đấu" onChange={(value) => { setCategoryId(value); setPage(1); }} options={(event.categories || []).map((category: any) => ({ value: category.id, label: `${category.sport?.name || ''} · ${category.name}` }))} />
+          <Select className="min-w-72 flex-1" aria-label="Hạng đấu" value={categoryId || undefined} placeholder="Chọn hạng đấu" onChange={(value) => {
+            const params = new URLSearchParams(searchParams.toString());
+            params.set('categoryId', value);
+            setPage(1);
+            router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+          }} options={(event.categories || []).map((category: any) => ({ value: category.id, label: `${category.sport?.name || ''} · ${category.name}` }))} />
           <Segmented value={view} onChange={(value) => setView(value as 'tree' | 'list')} options={[{ value: 'tree', label: 'Sơ đồ cây', icon: <Network className="h-4 w-4" /> }, { value: 'list', label: 'Danh sách', icon: <List className="h-4 w-4" /> }]} />
           <Popconfirm
             title="Chia đều trận đấu theo các ngày của sự kiện?"
@@ -1326,7 +1565,7 @@ function MatchesTab({ event, returnTo, canOperate, canScore, canEditMatch, canEd
       </Card>
       {view === 'tree' ? (
         <div className="space-y-5">
-          {drawsLoading ? <Card loading /> : draws.length ? draws.map((draw) => <SportdataBracket key={draw.id} draw={draw} sourceMatches={draws.flatMap((item) => item.matches)} readOnly={!canEditBracket} matchHref={(match) => withCmsReturnTo(`/cms/matches/${match.id}/edit`, returnTo)} />) : <Card><Empty description="Chưa sinh sơ đồ cây cho hạng đấu này." /></Card>}
+          {drawsLoading ? <Card loading /> : draws.length ? draws.map((draw) => <SportdataBracket key={draw.id} draw={draw} sourceMatches={draws.flatMap((item) => item.matches)} readOnly={!canEditBracket} matchHref={(match) => withCmsReturnTo(`/cms/matches/${match.id}/edit`, matchReturnTo)} />) : <Card><Empty description="Chưa sinh sơ đồ cây cho hạng đấu này." /></Card>}
         </div>
       ) : (
         <Card styles={{ body: { padding: 0 } }}>
@@ -1388,24 +1627,19 @@ function MatchesTab({ event, returnTo, canOperate, canScore, canEditMatch, canEd
                   })
                   : `${new Date(match.matchDate).toLocaleDateString('vi-VN')} · Chưa xếp giờ`,
               },
-              { title: 'VĐV 1', ...columnFilter('athleteName', 'Tên VĐV (ở bất kỳ bên nào)'), render: (_: unknown, match: any) => match.athlete1 ? <Button type="link" className="h-auto !p-0" onClick={() => setSelectedAthleteId(match.athlete1.id)}>{match.athlete1.fullName}</Button> : 'Chờ xác định' },
-              { title: 'VĐV 2', ...columnFilter('opponentName', 'Tên đối thủ (ở bất kỳ bên nào)'), render: (_: unknown, match: any) => match.athlete2 ? <Button type="link" className="h-auto !p-0" onClick={() => setSelectedAthleteId(match.athlete2.id)}>{match.athlete2.fullName}</Button> : 'Chờ xác định' },
+              { title: 'VĐV 1', ...columnFilter('athleteName', 'Tên VĐV (ở bất kỳ bên nào)'), render: (_: unknown, match: any) => renderAthlete(match, 1) },
+              { title: 'VĐV 2', ...columnFilter('opponentName', 'Tên đối thủ (ở bất kỳ bên nào)'), render: (_: unknown, match: any) => renderAthlete(match, 2) },
               {
                 title: 'Điểm',
                 key: 'score',
-                width: 145,
+                width: 180,
                 align: 'center',
                 render: (_: unknown, match: any) => match.athlete1 && match.athlete2 ? (
-                  <Tooltip title={`Lợi thế ${match.athlete1Advantages || 0}–${match.athlete2Advantages || 0} · Lỗi phạt ${match.athlete1Penalties || 0}–${match.athlete2Penalties || 0}`}>
-                    <div className="leading-tight">
-                      <div className="text-base font-bold tabular-nums text-slate-100">
-                        {formatScore(match.athlete1Score)} – {formatScore(match.athlete2Score)}
-                      </div>
-                      <div className="mt-1 text-xs tabular-nums text-slate-500">
-                        LT {match.athlete1Advantages || 0}–{match.athlete2Advantages || 0} · P {match.athlete1Penalties || 0}–{match.athlete2Penalties || 0}
-                      </div>
-                    </div>
-                  </Tooltip>
+                  <div className="inline-flex min-w-[148px] items-center justify-center gap-2 whitespace-nowrap text-base font-bold leading-tight tabular-nums text-slate-100">
+                    <span aria-label={isWinner(match, 1) ? `Điểm của người thắng: ${match.athlete1.fullName}` : undefined} className={`px-2 py-1 ${isWinner(match, 1) ? 'rounded-md bg-emerald-500/15 text-emerald-500 ring-1 ring-inset ring-emerald-500/30' : ''}`}>{formatScore(match.athlete1Score)}</span>
+                    <span className="text-slate-500">–</span>
+                    <span aria-label={isWinner(match, 2) ? `Điểm của người thắng: ${match.athlete2.fullName}` : undefined} className={`px-2 py-1 ${isWinner(match, 2) ? 'rounded-md bg-emerald-500/15 text-emerald-500 ring-1 ring-inset ring-emerald-500/30' : ''}`}>{formatScore(match.athlete2Score)}</span>
+                  </div>
                 ) : '—',
               },
               { title: 'Sân', dataIndex: 'fop', width: 120, ...columnFilter('venue', 'Tên sân / sàn') },
@@ -1414,7 +1648,7 @@ function MatchesTab({ event, returnTo, canOperate, canScore, canEditMatch, canEd
                 const ready = match.athlete1Id && match.athlete2Id && match.fopId && match.startTime && match.endTime;
                 const playable = ['SCHEDULED', 'RUNNING'].includes(match.status);
                 const reason = !canScore ? 'Bạn không có quyền chấm điểm' : !playable ? 'Trận đã kết thúc hoặc bị hủy' : !ready ? 'Cần đủ hai VĐV, sân và giờ thi đấu' : 'Mở bảng điểm; kiểm tra điều kiện trước khi bắt đầu';
-                return <Space><Tooltip title={reason}><span><Button aria-label={`Mở bảng điểm trận ${match.matchNumber || match.id}`} type="primary" target="sportdata-scoreboard" onClick={(event) => openCmsScoreboard(event, match.id)} disabled={!canScore || !playable || !ready} href={canScore && playable && ready ? `/cms/matches/${match.id}/scoreboard` : undefined} icon={<Play className="h-4 w-4" />}>Bảng điểm</Button></span></Tooltip>{canEditMatch && <Button aria-label="Chỉnh sửa trận" type="text" href={withCmsReturnTo(`/cms/matches/${match.id}/edit`, returnTo)} icon={<Eye className="h-4 w-4" />} />}</Space>;
+                return <Space><Tooltip title={reason}><span><Button aria-label={`Mở bảng điểm trận ${match.matchNumber || match.id}`} type="primary" target="sportdata-scoreboard" onClick={(event) => openCmsScoreboard(event, match.id)} disabled={!canScore || !playable || !ready} href={canScore && playable && ready ? `/cms/matches/${match.id}/scoreboard` : undefined} icon={<Play className="h-4 w-4" />}>Bảng điểm</Button></span></Tooltip>{canEditMatch && <Button aria-label="Chỉnh sửa trận" type="text" href={withCmsReturnTo(`/cms/matches/${match.id}/edit`, matchReturnTo)} icon={<Eye className="h-4 w-4" />} />}</Space>;
               } },
             ]}
           />
@@ -1706,8 +1940,11 @@ function BracketTab({ event, canOperate, preconfigureActorId }: { event: any; ca
     }
     setGenerating(true);
     try {
+      const currentEntries: any[] = await mutateEntries();
+      const athleteIds = (currentEntries || []).filter((entry) => entry.status === 'VERIFIED'
+        && entry.type === 'INDIVIDUAL' && entry.athlete?.id).map((entry) => entry.athlete.id);
       await api.post(`/matches/event/${event.id}/category/${categoryId}/generate-draw`, {
-        athleteIds: activeEntries.map((entry) => entry.athlete.id),
+        athleteIds,
         type: drawType,
         seedingMode,
         groupCount: format === 'REPECHAGE' ? 1 : usesRoundRobin ? groupCount : undefined,

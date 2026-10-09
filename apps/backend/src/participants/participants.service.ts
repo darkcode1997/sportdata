@@ -1564,7 +1564,10 @@ export class ParticipantsService {
     }
     const registrations = await this.prisma.eventRegistration.findMany({
       where: eventId ? { eventId } : undefined,
-      include: this.registrationInclude(),
+      include: {
+        ...this.registrationInclude(),
+        account: { select: { displayName: true, email: true, phone: true } },
+      },
       orderBy: { createdAt: 'desc' },
     });
     const entries = registrations.length
@@ -1651,7 +1654,6 @@ export class ParticipantsService {
               },
               include: { media: { select: { type: true, verificationStatus: true } } },
             });
-        const identityVerified = this.identityDocumentState(athlete.media).verified;
         const existing = await transaction.eventRegistration.findMany({
           where: { eventId: context.event.id, athleteId: athlete.id }, include: { category: true },
         });
@@ -1662,8 +1664,6 @@ export class ParticipantsService {
         const paymentStatus = payment.paymentStatus === PaymentStatus.NOT_REQUIRED
           ? payment.paymentStatus
           : dto.paymentStatus === PaymentStatus.PAID ? PaymentStatus.PAID : PaymentStatus.PENDING;
-        const confirmed = identityVerified
-          && (paymentStatus === PaymentStatus.NOT_REQUIRED || paymentStatus === PaymentStatus.PAID);
         const paymentNote = paymentStatus === PaymentStatus.PAID
           ? dto.paymentNote?.trim() || 'CMS ghi nhận đã thu lệ phí thủ công'
           : null;
@@ -1673,12 +1673,8 @@ export class ParticipantsService {
             athleteId: athlete.id,
             categoryId: context.category.id,
             federationId: athlete.federationId,
-            status: confirmed ? RegistrationStatus.CONFIRMED : RegistrationStatus.SUBMITTED,
-            statusReason: confirmed
-              ? 'CMS thêm VĐV đủ điều kiện, giấy tờ và thanh toán hợp lệ'
-              : !identityVerified
-                ? 'CMS thêm VĐV; chờ hoàn tất xác thực hồ sơ'
-                : 'CMS thêm VĐV; chờ hoàn tất thanh toán',
+            status: RegistrationStatus.CONFIRMED,
+            statusReason: 'Quản trị viên tạo và xác nhận hồ sơ trực tiếp trên CMS',
             statusChangedAt: new Date(),
             statusChangedBy: changedBy || 'CMS',
             paymentStatus,
@@ -1701,15 +1697,13 @@ export class ParticipantsService {
             },
           });
         }
-        if (confirmed) {
-          await this.syncCompetitionEntry(transaction, {
-            eventId: context.event.id,
-            categoryId: context.category.id,
-            athleteId: athlete.id,
-            countryId: athlete.countryId,
-            confirmed: true,
-          });
-        }
+        await this.syncCompetitionEntry(transaction, {
+          eventId: context.event.id,
+          categoryId: context.category.id,
+          athleteId: athlete.id,
+          countryId: athlete.countryId,
+          confirmed: true,
+        });
         return transaction.eventRegistration.findUniqueOrThrow({
           where: { id: registration.id },
           include: this.registrationInclude(),
@@ -1720,7 +1714,7 @@ export class ParticipantsService {
         created.id,
         'REGISTRATION_CREATED',
         'CMS vừa thêm một hồ sơ đăng ký',
-        created.status === RegistrationStatus.CONFIRMED ? 'Đã xác nhận tham dự' : 'Đang chờ hoàn tất hồ sơ',
+        'Quản trị viên đã xác nhận tham dự',
       );
       return created;
     } catch (error: any) {
@@ -1808,9 +1802,9 @@ export class ParticipantsService {
         reasons.push('Vận động viên đã đăng ký một hạng đấu trong nội dung này');
       }
       if (!this.identityDocumentState(existingAthlete.media).complete) {
-        warnings.push('Hồ sơ chưa có đủ CCCD hai mặt hoặc hộ chiếu; đăng ký sẽ ở trạng thái chờ duyệt');
+        warnings.push('Hồ sơ chưa có đủ CCCD hai mặt hoặc hộ chiếu; hãy bổ sung giấy tờ trong hồ sơ VĐV');
       } else if (!this.identityDocumentState(existingAthlete.media).verified) {
-        warnings.push('Giấy tờ chưa được xác thực; đăng ký sẽ ở trạng thái chờ duyệt');
+        warnings.push('Giấy tờ chưa được xác thực; có thể xác thực trong hồ sơ VĐV');
       }
     } else {
       warnings.push('VĐV mới chưa có giấy tờ định danh; hãy bổ sung trong hồ sơ sau khi tạo');
@@ -1831,6 +1825,93 @@ export class ParticipantsService {
     }
 
     return { event, category, athlete, athleteId: existingAthlete?.id, reasons: [...new Set(reasons)], warnings };
+  }
+
+  async updateRegistrationCategory(id: string, categoryId: string, changedBy?: string) {
+    try {
+      return await this.prisma.$transaction(async (transaction) => {
+        const current = await transaction.eventRegistration.findUnique({ where: { id } });
+        if (!current) throw new NotFoundException('Không tìm thấy lượt đăng ký');
+        // Share the draw lock so a category cannot move while a bracket is generated.
+        await transaction.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${current.eventId}))`;
+        await transaction.$queryRaw`SELECT "id" FROM "Event" WHERE "id" = ${current.eventId} FOR UPDATE`;
+        await transaction.$queryRaw`SELECT "id" FROM "Athlete" WHERE "id" = ${current.athleteId} FOR UPDATE`;
+        const registration = await transaction.eventRegistration.findUniqueOrThrow({
+          where: { id }, include: { athlete: true, category: true, event: true },
+        });
+        if (registration.categoryId === categoryId) {
+          return transaction.eventRegistration.findUniqueOrThrow({ where: { id }, include: this.registrationInclude() });
+        }
+        const category = await transaction.category.findFirst({
+          where: { id: categoryId, events: { some: { id: registration.eventId } } },
+        });
+        if (!category) throw new BadRequestException('Hạng đấu không thuộc sự kiện này');
+        if (category.sportId !== registration.category.sportId) {
+          throw new BadRequestException('Chỉ có thể đổi nội dung và hạng cân trong cùng môn thể thao');
+        }
+        this.validateAthleteForCategory(registration.athlete,
+          { ...category, ...resolveEventAgeLimits(registration.event, category) }, registration.event.startDate);
+        const otherRegistrations = await transaction.eventRegistration.findMany({
+          where: { eventId: registration.eventId, athleteId: registration.athleteId, id: { not: id } },
+          include: { category: true },
+        });
+        if (otherRegistrations.some((item) => registrationDisciplineKey(item.category) === registrationDisciplineKey(category))) {
+          throw new ConflictException('Vận động viên đã đăng ký một hạng đấu trong nội dung này');
+        }
+        const competitionWhere = { eventId: registration.eventId, categoryId: { in: [registration.categoryId, categoryId] } };
+        const [draws, matches, heats, groups] = await Promise.all([
+          transaction.draw.count({ where: competitionWhere }),
+          transaction.match.count({ where: competitionWhere }),
+          transaction.heat.count({ where: competitionWhere }),
+          transaction.roundRobinGroup.count({ where: competitionWhere }),
+        ]);
+        if (draws || matches || heats || groups) {
+          throw new ConflictException('Hạng đấu đã có bốc thăm hoặc lịch thi đấu. Hãy hoàn tác bốc thăm/lịch thi đấu trước khi đổi hạng đấu');
+        }
+        const targetEntry = await transaction.competitionEntry.findUnique({
+          where: { eventId_categoryId_athleteId: { eventId: registration.eventId, categoryId, athleteId: registration.athleteId } },
+        });
+        if (targetEntry) throw new ConflictException('Vận động viên đã có suất thi đấu ở hạng đấu mới');
+        if (category.maxEntriesPerCountry && (registration.status === RegistrationStatus.SUBMITTED || registration.status === RegistrationStatus.CONFIRMED)) {
+          const [registrations, entries] = await Promise.all([
+            transaction.eventRegistration.findMany({ where: {
+              eventId: registration.eventId, categoryId, athlete: { countryId: registration.athlete.countryId },
+              status: { in: [RegistrationStatus.SUBMITTED, RegistrationStatus.CONFIRMED] },
+            }, select: { athleteId: true } }),
+            transaction.competitionEntry.findMany({ where: {
+              eventId: registration.eventId, categoryId, countryId: registration.athlete.countryId,
+              status: { in: [EntryStatus.REGISTERED, EntryStatus.VERIFIED] },
+            }, select: { id: true, athleteId: true } }),
+          ]);
+          const occupiedPlaces = new Set([
+            ...registrations.map((item) => `athlete:${item.athleteId}`),
+            ...entries.map((item) => item.athleteId ? `athlete:${item.athleteId}` : `entry:${item.id}`),
+          ]);
+          if (occupiedPlaces.size >= category.maxEntriesPerCountry) {
+            throw new BadRequestException(`Quốc gia đã đạt giới hạn ${category.maxEntriesPerCountry} VĐV cho hạng đấu này`);
+          }
+        }
+        await transaction.competitionEntry.updateMany({
+          where: { eventId: registration.eventId, categoryId: registration.categoryId, athleteId: registration.athleteId },
+          data: { categoryId, seed: null },
+        });
+        await transaction.eventRegistration.update({ where: { id }, data: { categoryId } });
+        if (registration.status === RegistrationStatus.CONFIRMED) {
+          await this.syncCompetitionEntry(transaction, { eventId: registration.eventId, categoryId,
+            athleteId: registration.athleteId, countryId: registration.athlete.countryId, confirmed: true });
+        }
+        await this.notifications.notifyRegistration(transaction, id, 'REGISTRATION_CATEGORY_CHANGED',
+          'CMS đã cập nhật nội dung / hạng cân',
+          `${registration.category.name} → ${category.name} · ${changedBy || 'CMS'}`);
+        return transaction.eventRegistration.findUniqueOrThrow({ where: { id }, include: this.registrationInclude() });
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 30000 });
+    } catch (error: any) {
+      if (['P2002', 'P2034'].includes(error?.code)
+        || (error?.code === 'P2010' && ['40001', '40P01'].includes(String(error.meta?.code)))) {
+        throw new ConflictException('Dữ liệu vừa thay đổi hoặc hạng đấu đã được đăng ký. Hãy tải lại và thử lại');
+      }
+      throw error;
+    }
   }
 
   async updateRegistrationStatus(id: string, status: RegistrationStatus, reason: string, changedBy?: string) {

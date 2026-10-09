@@ -10,6 +10,7 @@ import { Alert, Button, Card, Col, DatePicker, Form, Input, Row, Select, Tag } f
 import { api, fetcher } from '@/lib/api';
 import { FormActions } from './AthleteForm';
 import { RemoteAthleteSelect } from './RemoteAthleteSelect';
+import { MatchScoreboardHistory } from './MatchScoreboardHistory';
 import { useSportDataToast } from '@/hooks/useSportDataToast';
 import { MATCH_STATUS_META, RESULT_STATUS_META, WIN_METHOD_LABELS } from '@/lib/vi-labels';
 
@@ -176,6 +177,7 @@ export function MatchForm({ matchId, initialData, returnTo = '/cms/events' }: { 
           <div className="mt-2 text-xs text-slate-500">Dữ liệu tự động làm mới từ bảng điểm sau mỗi thao tác chấm điểm.</div>
         </Card>
       )}
+      {matchId && <MatchScoreboardHistory match={initialData || {}} />}
       <Card className="cms-surface" title="Thông tin trận đấu">
         <Row gutter={[20, 2]}>
           <ControlledField name="eventId" control={control} label="Sự kiện" error={errors.eventId?.message} required>
