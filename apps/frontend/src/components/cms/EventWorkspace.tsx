@@ -61,6 +61,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { api, fetcher } from '@/lib/api';
+import { InlineMatchSchedule } from './InlineMatchSchedule';
 import { useSportDataToast } from '@/hooks/useSportDataToast';
 import { ticketDesign, validateTicketDesign, type TicketDesign } from '@/lib/ticket-design';
 import type { BracketDraw } from '@/components/brackets/SportdataBracket';
@@ -1661,7 +1662,7 @@ function MatchesTab({ event, returnTo, canOperate, canScore, canEditMatch, canEd
             size="small"
             tableLayout="fixed"
             locale={{ emptyText: <Empty description={hasFilters ? 'Không tìm thấy trận đấu phù hợp. Thử đổi hoặc xóa bộ lọc.' : 'Chưa có trận đấu trong hạng đấu này.'} /> }}
-            scroll={{ x: 1515 }}
+            scroll={{ x: 1550 }}
             onChange={(pagination, tableFilters, _sorter, extra) => {
               if (extra.action === 'filter') {
                 const nextFilters: MatchFilters = {};
@@ -1690,16 +1691,13 @@ function MatchesTab({ event, returnTo, canOperate, canScore, canEditMatch, canEd
               {
                 title: 'Ngày / giờ',
                 ...columnFilter('date', 'Ngày thi đấu', 'date'),
-                width: 185,
-                render: (_: unknown, match: any) => match.startTime
-                  ? new Date(match.startTime).toLocaleString('vi-VN', {
-                    day: '2-digit',
-                    month: '2-digit',
-                    year: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })
-                  : `${new Date(match.matchDate).toLocaleDateString('vi-VN')} · Chưa xếp giờ`,
+                width: 220,
+                render: (_: unknown, match: any) => <InlineMatchSchedule match={match} canEdit={canEditMatch} event={event} onSaved={async (updated) => {
+                  await mutate((current: any) => current ? {
+                    ...current, items: current.items.map((item: any) => item.id === match.id ? { ...item, ...updated } : item),
+                  } : current, { revalidate: false });
+                  void Promise.allSettled([mutate(), mutateDraws(), mutateGlobal(`/events/${event.id}`)]);
+                }} />,
               },
               { title: 'VĐV 1', width: 220, ...columnFilter('athleteName', 'Tên VĐV (ở bất kỳ bên nào)'), render: (_: unknown, match: any) => renderAthlete(match, 1) },
               { title: 'VĐV 2', width: 220, ...columnFilter('opponentName', 'Tên đối thủ (ở bất kỳ bên nào)'), render: (_: unknown, match: any) => renderAthlete(match, 2) },
