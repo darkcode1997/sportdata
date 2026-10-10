@@ -27,7 +27,7 @@ export function EventParticipationCard({ ticket, design }: { ticket: Participati
   }, [ticket.ticketCode]);
 
   return (
-    <article className="event-pass-card relative mx-auto aspect-[105/148] w-full max-w-[560px] overflow-hidden bg-white text-slate-950" data-ticket-layout="CUSTOM" aria-label="Thẻ thi đấu A6">
+    <article className="event-pass-card relative mx-auto aspect-[105/148] w-full max-w-[560px] overflow-hidden bg-white text-slate-950" data-ticket-layout="CUSTOM" aria-label="Thẻ tham dự sự kiện A6">
       {ticket.event.ticketBackgroundUrl && (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={imageUrl(ticket.event.ticketBackgroundUrl, 'hero')} alt="Nền thẻ thi đấu" draggable={false} className="pointer-events-none absolute inset-0 h-full w-full object-contain" />

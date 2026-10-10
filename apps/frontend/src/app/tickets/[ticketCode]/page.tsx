@@ -46,6 +46,7 @@ export default function TicketVerificationPage() {
   const { data: ticket, error, isLoading, mutate } = useSWR<ParticipationTicket>(
     ticketCode ? `/participant-auth/tickets/${encodeURIComponent(ticketCode)}` : null,
     fetcher,
+    { refreshInterval: 30_000 },
   );
 
   if (isLoading) {
@@ -110,7 +111,7 @@ export default function TicketVerificationPage() {
           />
         </div>
 
-        <PaymentCheckout ticket={ticket} onPaid={() => mutate()} />
+        {!ticket.role && <PaymentCheckout ticket={ticket} onPaid={() => mutate()} />}
 
         {ticket.isValid ? (
           <div className="ticket-pass-stage">
@@ -122,13 +123,21 @@ export default function TicketVerificationPage() {
               <FileCheck2 className="mx-auto h-10 w-10 text-sky-400" />
               <h2 className="mt-3 text-lg font-bold">Thẻ chưa được phát hành</h2>
               <p className="mx-auto mt-2 max-w-xl text-sm text-slate-500">
-                Bạn vẫn có thể theo dõi hồ sơ và hoàn tất thanh toán tại trang này. Khi hồ sơ được duyệt,
+                Bạn có thể theo dõi trạng thái hồ sơ tại trang này. Khi hồ sơ được duyệt,
                 thẻ sẽ xuất hiện tại đây và được gửi tới email đăng ký.
               </p>
             </Card>
           </div>
         )}
 
+        {ticket.role ? <Card className="ticket-details mt-8" title="Thông tin tham gia sự kiện">
+          <Descriptions column={1} colon={false}>
+            <Descriptions.Item label="Họ và tên">{ticket.athlete.fullName}</Descriptions.Item>
+            <Descriptions.Item label="Vai trò">{ticket.roleLabel}</Descriptions.Item>
+            <Descriptions.Item label="Liên đoàn">{ticket.athlete.federation?.name || '—'}</Descriptions.Item>
+            <Descriptions.Item label="Sự kiện">{ticket.event.name}</Descriptions.Item>
+          </Descriptions>
+        </Card> : <>
         <div className="ticket-details mt-8 grid gap-6 lg:grid-cols-[1.15fr_.85fr]">
           <Card title="Thông tin vận động viên" extra={<Tag color={status.color}>{status.label}</Tag>}>
             <Descriptions column={1} size="small" colon={false}>
@@ -169,6 +178,7 @@ export default function TicketVerificationPage() {
           </div>
         </Card>
 
+        </>}
         <div className="ticket-page-controls mt-6 flex items-start gap-3 rounded-2xl border border-sky-500/20 bg-sky-500/5 p-4 text-sm text-slate-400">
           <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-sky-400" />
           <p>Trang xác thực chỉ công khai thông tin phục vụ thi đấu. Ảnh CCCD, hộ chiếu, email và số điện thoại không được hiển thị qua mã QR.</p>

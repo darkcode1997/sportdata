@@ -11,11 +11,14 @@ import { TicketEmailWorkerService } from './ticket-email-worker.service';
 import { SystemSettingsModule } from '../system-settings/system-settings.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { AthletesModule } from '../athletes/athletes.module';
+import { EventParticipationsController } from './event-participations.controller';
+import { EventParticipationsService } from './event-participations.service';
+import { OptionalParticipantAuthGuard } from './optional-participant-auth.guard';
 
 @Module({
   imports: [AuthModule, SystemSettingsModule, NotificationsModule, AthletesModule],
-  controllers: [ParticipantsController],
-  providers: [ParticipantsService, ParticipantAuthGuard, IdentityOcrService, TicketPdfService, TicketEmailService, TicketEmailQueueService, TicketEmailWorkerService],
+  controllers: [ParticipantsController, EventParticipationsController],
+  providers: [ParticipantsService, ParticipantAuthGuard, OptionalParticipantAuthGuard, EventParticipationsService, IdentityOcrService, TicketPdfService, TicketEmailService, TicketEmailQueueService, TicketEmailWorkerService],
   exports: [ParticipantsService],
 })
 export class ParticipantsModule {}

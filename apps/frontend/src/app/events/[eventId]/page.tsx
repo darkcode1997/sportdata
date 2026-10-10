@@ -4,18 +4,17 @@ import { ToastNotice } from '@/components/ToastNotice';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import useSWR from 'swr';
 import useSWRInfinite from 'swr/infinite';
 import { Button, Card, Empty, Form, Input, InputNumber, Select, Skeleton, Spin, Table, Tag } from 'antd';
-import { ArrowRight, Building2, CalendarDays, LogIn, MapPin, Radio, ShieldCheck, TicketCheck, Trophy, UserRound, Users } from 'lucide-react';
+import { CalendarDays, MapPin, Radio, TicketCheck, Trophy, Users } from 'lucide-react';
 import { MatchCard } from '@/components/MatchCard';
 import { MATCH_STATUS_META } from '@/lib/vi-labels';
-import { useSportDataToast } from '@/hooks/useSportDataToast';
 import { useEventScheduleStream } from '@/hooks/useEventScheduleStream';
 import { fetcher } from '@/lib/api';
 import { imageUrl } from '@/lib/image-url';
-import { getParticipantAccount, getParticipantToken, participantApi, participantError, type SportDataAccount } from '@/lib/participant-auth';
+import { RegistrationRolePicker } from '@/components/RegistrationRolePicker';
 
 interface Sport {
   id: string;
@@ -137,20 +136,6 @@ interface RegistrationSummaryRow {
   federation?: { name: string } | null;
 }
 
-interface OwnRegistrationState {
-  registered: boolean;
-  registration?: {
-    id: string;
-    ticketCode: string;
-    status: string;
-    paymentStatus: string;
-    feeAmount: number;
-    currency: string;
-    createdAt: string;
-    category: { id: string; name: string; sport?: { id: string; name: string } | null };
-  } | null;
-}
-
 const demoEvent: EventData = {
   id: 'ev-jjau-001',
   name: '5TH JJAU REGIONAL CHAMPIONSHIP SOUTHEAST ASIA',
@@ -201,8 +186,6 @@ function getRegistrationState(event: EventData) {
 }
 
 export default function EventDetailPage() {
-  const router = useRouter();
-  const toast = useSportDataToast();
   const params = useParams<{ eventId: string }>();
   const eventId = params.eventId;
   const refreshScheduleRef = useRef<() => Promise<unknown>>(async () => undefined);
@@ -239,40 +222,6 @@ export default function EventDetailPage() {
   const [filterForm] = Form.useForm<ScheduleFilters>();
   const [matchFilters, setMatchFilters] = useState<ScheduleFilters>({});
   const hasMatchFilters = Object.values(matchFilters).some((value) => value !== undefined && value !== null && String(value).trim());
-  const [registrationCategoryId, setRegistrationCategoryId] = useState<string>();
-  const [registrationSubmitting, setRegistrationSubmitting] = useState(false);
-  const [participantAccount, setParticipantAccount] = useState<SportDataAccount | null>(null);
-  const [hasParticipantSession, setHasParticipantSession] = useState(false);
-
-  useEffect(() => {
-    const syncParticipantSession = () => {
-      const account = getParticipantAccount();
-      const hasSession = Boolean(getParticipantToken() && account);
-      setParticipantAccount(hasSession ? account : null);
-      setHasParticipantSession(hasSession);
-    };
-    syncParticipantSession();
-    window.addEventListener('participant-session-change', syncParticipantSession);
-    window.addEventListener('storage', syncParticipantSession);
-    return () => {
-      window.removeEventListener('participant-session-change', syncParticipantSession);
-      window.removeEventListener('storage', syncParticipantSession);
-    };
-  }, []);
-
-  const participantAccountType = participantAccount?.accountType || 'ATHLETE';
-  const {
-    data: ownRegistrationState,
-    error: ownRegistrationError,
-    isLoading: ownRegistrationLoading,
-    mutate: mutateOwnRegistrationState,
-  } = useSWR<OwnRegistrationState>(
-    hasParticipantSession && participantAccountType === 'ATHLETE' && eventId
-      ? `/participant-auth/registrations/state?eventId=${encodeURIComponent(eventId)}`
-      : null,
-    (url: string) => participantApi.get(url).then((response) => response.data),
-  );
-
   useEffect(() => {
     if (!dateGroups.length) return;
     if (!selectedDate || (selectedDate !== 'all' && !dateGroups.some((group) => group.date === selectedDate))) {
@@ -432,38 +381,6 @@ export default function EventDetailPage() {
 
   const registrationState = event ? getRegistrationState(event) : { open: false, expired: false, label: '' };
 
-  const register = async () => {
-    if (!registrationCategoryId) {
-      toast.error('Vui lòng chọn hạng đấu.');
-      return;
-    }
-    if (!getParticipantToken()) {
-      toast.error('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại để tiếp tục.');
-      return;
-    }
-    setRegistrationSubmitting(true);
-    try {
-      const { data } = await participantApi.post('/participant-auth/registrations', {
-        eventId,
-        categoryId: registrationCategoryId,
-      });
-      toast.success({
-        content: data.status === 'CONFIRMED'
-          ? `Đăng ký đã được xác nhận. Thẻ ${data.ticketCode}${data.ticketEmailSent ? ' đã được gửi về email.' : data.ticketEmailQueued ? ' đã sẵn sàng và sẽ được gửi về email.' : ' đã sẵn sàng để tải.'}`
-          : `Đã tiếp nhận hồ sơ ${data.ticketCode}.${data.paymentStatus === 'PENDING' ? ' Mở trang hồ sơ để thanh toán lệ phí.' : ''} Thẻ sẽ được phát hành và gửi email sau khi hồ sơ được duyệt.`,
-        duration: 6,
-      });
-      await Promise.allSettled([mutateOwnRegistrationState(), mutateRegistrationSummary()]);
-      if (data.paymentStatus === 'PENDING' && data.feeAmount > 0) {
-        router.push(`/tickets/${encodeURIComponent(data.ticketCode)}?payment=1`);
-      }
-    } catch (requestError) {
-      toast.error(participantError(requestError, 'Không thể đăng ký'));
-    } finally {
-      setRegistrationSubmitting(false);
-    }
-  };
-
   return (
     <div className="schedule-page min-h-screen pb-20">
         <section className={`event-detail-hero${event?.bannerUrl ? ' has-banner' : ''}`}>
@@ -512,131 +429,11 @@ export default function EventDetailPage() {
         </section>
       <div className="mx-auto w-full max-w-[1200px] px-3 sm:px-5">
 
-        {!registrationState.expired && (
-          <Card className="schedule-registration-card mt-7 border-sky-400/20" title={<span className="flex items-center gap-2"><TicketCheck className="h-5 w-5 text-sky-400" />Đăng ký thi đấu</span>} extra={<Tag color={registrationState.open ? 'success' : 'default'}>{registrationState.label}</Tag>}>
-            {hasParticipantSession && participantAccountType === 'FEDERATION' ? (
-              <div className="schedule-registration-account">
-                <div className="flex min-w-0 items-center gap-3">
-                  <span className="schedule-registration-icon"><Building2 className="h-5 w-5" /></span>
-                  <div className="min-w-0">
-                    <span className="schedule-registration-eyebrow">Tài khoản đơn vị đã đăng nhập</span>
-                    <strong className="block truncate">{participantAccount?.displayName}</strong>
-                    <span className="mt-1 block text-sm text-slate-400">SportData sẽ tự gắn đúng liên đoàn/CLB cho toàn bộ danh sách VĐV.</span>
-                  </div>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Link href="/federation-account"><Button>Quản lý tài khoản</Button></Link>
-                  <Link href={`/events/${eventId}/register?mode=group`}><Button type="primary" size="large" disabled={!registrationState.open} icon={<Users className="h-4 w-4" />}>Đăng ký danh sách VĐV</Button></Link>
-                </div>
-              </div>
-            ) : hasParticipantSession ? (
-              <div className="space-y-4">
-                <div className="schedule-registration-account">
-                  <div className="flex min-w-0 items-center gap-3">
-                    <span className="schedule-registration-icon"><UserRound className="h-5 w-5" /></span>
-                    <div className="min-w-0">
-                      <span className="schedule-registration-eyebrow">Tài khoản cá nhân đã đăng nhập</span>
-                      <strong className="block truncate">{participantAccount?.displayName}</strong>
-                      <span className="mt-1 flex items-center gap-1.5 text-sm text-slate-400"><ShieldCheck className="h-4 w-4 text-emerald-400" />Đăng ký cho chính bạn hoặc gửi hồ sơ cho VĐV khác.</span>
-                    </div>
-                  </div>
-                  <Link href="/account"><Button>Kiểm tra hồ sơ</Button></Link>
-                </div>
-                {ownRegistrationLoading || (!ownRegistrationState && !ownRegistrationError) ? (
-                  <div className="flex items-center gap-2 rounded-xl border border-white/10 px-4 py-4 text-sm text-slate-400">
-                    <Spin size="small" /> Đang kiểm tra trạng thái đăng ký của bạn...
-                  </div>
-                ) : ownRegistrationError ? (
-                  <div className="schedule-registration-warning flex flex-wrap items-center justify-between gap-3 rounded-xl px-4 py-3">
-                    <span className="text-sm">Chưa thể kiểm tra trạng thái đăng ký. Phần đăng ký chính chủ đang tạm khóa để tránh đăng ký trùng.</span>
-                    <Button size="small" onClick={() => void mutateOwnRegistrationState()}>Kiểm tra lại</Button>
-                  </div>
-                ) : ownRegistrationState?.registered && ownRegistrationState.registration ? (
-                  <div className="flex flex-col gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-4 md:flex-row md:items-center md:justify-between">
-                    <div className="flex min-w-0 items-start gap-3">
-                      <TicketCheck className="mt-0.5 h-5 w-5 shrink-0 text-emerald-400" />
-                      <div className="min-w-0">
-                        <strong className="block text-emerald-200">Bạn đã đăng ký tham gia sự kiện này</strong>
-                        <span className="mt-1 block truncate text-sm text-slate-400">
-                          {ownRegistrationState.registration.category.name} · {ownRegistrationState.registration.status === 'CONFIRMED' ? 'Mã thẻ' : 'Mã hồ sơ'} {ownRegistrationState.registration.ticketCode}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                    <Link href={`/events/${eventId}/register?mode=individual&source=account`}><Button>Đăng ký thêm nội dung</Button></Link>
-                    <Link href={`/tickets/${encodeURIComponent(ownRegistrationState.registration.ticketCode)}${ownRegistrationState.registration.paymentStatus === 'PENDING' ? '?payment=1' : ''}`}>
-                      <Button type={ownRegistrationState.registration.paymentStatus === 'PENDING' ? 'primary' : 'default'}>
-                        {ownRegistrationState.registration.paymentStatus === 'PENDING'
-                          ? `Thanh toán ${new Intl.NumberFormat('vi-VN').format(ownRegistrationState.registration.feeAmount)} ${ownRegistrationState.registration.currency}`
-                          : ownRegistrationState.registration.status === 'CONFIRMED'
-                            ? 'Xem thẻ của tôi'
-                            : 'Theo dõi hồ sơ'}
-                      </Button>
-                    </Link>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="grid items-end gap-4 md:grid-cols-[1fr_auto]">
-                    <div>
-                      <label className="mb-2 block text-sm font-semibold text-slate-300">Đăng ký cho chính tôi · Hạng đấu / nội dung</label>
-                      <Select
-                        showSearch
-                        optionFilterProp="label"
-                        size="large"
-                        className="w-full"
-                        value={registrationCategoryId}
-                        onChange={setRegistrationCategoryId}
-                        placeholder="Chọn hạng đấu phù hợp"
-                        options={eventCategories.map((category) => ({ value: category.id, label: categoryLabel(category) }))}
-                      />
-                    </div>
-                    <Button className="md:min-w-56" type="primary" size="large" disabled={!registrationState.open} loading={registrationSubmitting} onClick={register} icon={<TicketCheck className="h-4 w-4" />}>
-                      Đăng ký cho tôi
-                    </Button>
-                  </div>
-                )}
-                <div className="flex flex-col gap-3 border-t border-white/10 pt-4 md:flex-row md:items-center md:justify-between">
-                  <div>
-                    <strong className="block text-slate-200">Đăng ký hộ vận động viên khác</strong>
-                    <span className="text-sm text-slate-400">Bạn là người liên hệ và quản lý các thẻ được tạo từ lần đăng ký này.</span>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Link href={`/events/${eventId}/register?mode=individual&source=account`}>
-                      <Button size="large" disabled={!registrationState.open} icon={<UserRound className="h-4 w-4" />}>Thêm 1 VĐV</Button>
-                    </Link>
-                    <Link href={`/events/${eventId}/register?mode=group&source=account`}>
-                      <Button size="large" disabled={!registrationState.open} icon={<Users className="h-4 w-4" />}>Đăng ký nhiều VĐV</Button>
-                    </Link>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="schedule-registration-guest-grid">
-                <section className="schedule-registration-choice is-primary">
-                  <span className="schedule-registration-icon"><LogIn className="h-5 w-5" /></span>
-                  <div>
-                    <span className="schedule-registration-eyebrow">Đã có tài khoản SportData</span>
-                    <h3>Đăng ký nhanh bằng hồ sơ đã lưu</h3>
-                    <p>Không cần nhập lại thông tin cá nhân và giấy tờ ở mỗi sự kiện.</p>
-                  </div>
-                  <Link href={`/account/login?next=${encodeURIComponent(`/events/${eventId}`)}`}><Button block type="primary" size="large" icon={<LogIn className="h-4 w-4" />}>Đăng nhập để đăng ký</Button></Link>
-                </section>
-                <section className="schedule-registration-choice">
-                  <span className="schedule-registration-icon"><Users className="h-5 w-5" /></span>
-                  <div>
-                    <span className="schedule-registration-eyebrow">Chưa có tài khoản</span>
-                    <h3>Tiếp tục với hồ sơ mới</h3>
-                    <p>Phù hợp cho khách đăng ký cá nhân hoặc người phụ trách gửi danh sách đội.</p>
-                  </div>
-                  <div className="grid gap-2">
-                    <Link href={`/events/${eventId}/register?mode=individual`}><Button block size="large" disabled={!registrationState.open}>Đăng ký một VĐV <ArrowRight className="h-4 w-4" /></Button></Link>
-                    <Link href={`/events/${eventId}/register?mode=group`}><Button block size="large" disabled={!registrationState.open}>Đăng ký danh sách đội / CLB</Button></Link>
-                  </div>
-                </section>
-              </div>
-            )}
-          </Card>
-        )}
+        <Card className="schedule-registration-card registration-flow mt-7" title={<span className="flex items-center gap-2"><TicketCheck className="h-5 w-5 text-sky-400" />Tham gia sự kiện</span>} extra={<Tag color={registrationState.open ? 'success' : 'default'}>{registrationState.label}</Tag>}>
+          <p className="registration-muted mb-5">Bạn tham gia với vai trò nào? Chọn bên dưới để mở thông tin đăng ký phù hợp.</p>
+          <RegistrationRolePicker eventId={eventId} disabled={!registrationState.open} />
+          <div className="registration-card-note"><TicketCheck size={17} /><span>Vé có mã QR được gửi qua email sau khi hồ sơ được duyệt.</span><Link href="/account">Xem hồ sơ và vé của tôi →</Link></div>
+        </Card>
 
         <div className="event-shared-filter-label mt-7"><strong>Bộ lọc chung</strong><span>Áp dụng cho bảng đăng ký và lịch thi đấu</span></div>
         <div className="schedule-day-tabs mt-4 flex flex-wrap justify-center gap-2">

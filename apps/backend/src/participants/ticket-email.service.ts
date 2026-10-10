@@ -49,13 +49,13 @@ export class TicketEmailService {
       const fileCode = batch?.referenceCode || tickets[0]?.ticketCode || 'tickets';
       const athleteSummary = tickets.length === 1
         ? tickets[0].athlete.fullName
-        : `${tickets.length} vận động viên`;
+        : `${tickets.length} người tham gia`;
       await transporter.sendMail({
         from: integration.SMTP_FROM || integration.SMTP_USER || 'SportData',
         to,
         subject: `[SportData] Thẻ tham dự ${eventName}`,
         text: `Hồ sơ ${athleteSummary} đã được SportData duyệt. Thẻ chính thức được đính kèm trong email này và có thể dùng để check-in sự kiện.`,
-        html: `<div style="font-family:Arial,sans-serif;color:#0f172a;line-height:1.6"><h2 style="color:#0284c7">Thẻ tham dự ${this.escape(eventName)}</h2><p>Hồ sơ <strong>${this.escape(athleteSummary)}</strong> đã được SportData duyệt.</p><p>Thẻ chính thức để in và đeo tại sự kiện được đính kèm. Mỗi vận động viên có một mã QR riêng để ban tổ chức check-in.</p></div>`,
+        html: `<div style="font-family:Arial,sans-serif;color:#0f172a;line-height:1.6"><h2 style="color:#0284c7">Thẻ tham dự ${this.escape(eventName)}</h2><p>Hồ sơ <strong>${this.escape(athleteSummary)}</strong>${tickets[0]?.roleLabel ? ` (${this.escape(tickets[0].roleLabel)})` : ''} đã được SportData duyệt.</p><p>Thẻ chính thức để in và đeo tại sự kiện được đính kèm. Mỗi người tham gia có một mã QR riêng để ban tổ chức check-in.</p></div>`,
         attachments: [{
           filename: `sportdata-${fileCode}-A6.pdf`,
           content: pdf,

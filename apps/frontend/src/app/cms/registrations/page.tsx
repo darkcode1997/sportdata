@@ -8,6 +8,7 @@ import { api, fetcher } from '@/lib/api';
 import { CmsPageHeader } from '@/components/cms/CmsPageHeader';
 import { useSportDataToast } from '@/hooks/useSportDataToast';
 import { AthleteQuickViewModal } from '@/components/cms/AthleteQuickViewModal';
+import { EventParticipationsTable } from '@/components/cms/EventParticipationsTable';
 
 type Registration = {
   id: string;
@@ -101,8 +102,8 @@ export default function CmsRegistrationsPage() {
   return (
     <div>
       <CmsPageHeader
-        title="Đăng ký thi đấu"
-        description="Duyệt hồ sơ, đối chiếu giấy tờ và quản lý thẻ tham dự của vận động viên."
+        title="Đăng ký tham gia sự kiện"
+        description="Quản lý vai trò tham gia sự kiện, duyệt hồ sơ VĐV và đối chiếu giấy tờ thi đấu."
         icon={<TicketCheck className="h-6 w-6" />}
       />
       <Card className="cms-surface mb-6">
@@ -122,7 +123,8 @@ export default function CmsRegistrationsPage() {
           <Typography.Text type="secondary">{registrations.length} lượt đăng ký</Typography.Text>
         </div>
       </Card>
-      <Card className="cms-surface" styles={{ body: { padding: 0 } }}>
+      <EventParticipationsTable eventId={eventId || undefined} />
+      <Card className="cms-surface" title="Đăng ký VĐV thi đấu" styles={{ body: { padding: 0 } }}>
         <Table
           rowKey="id"
           loading={isLoading}

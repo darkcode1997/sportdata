@@ -3,6 +3,10 @@ import { PartialType, PickType } from '@nestjs/mapped-types';
 import { CreateAthleteDto } from '../../athletes/dto/create-athlete.dto';
 import {
   IsDateString,
+  IsArray,
+  ArrayNotEmpty,
+  ArrayMaxSize,
+  ArrayUnique,
   IsEmail,
   IsEnum,
   IsNumber,
@@ -27,6 +31,21 @@ import {
 } from '@prisma/client';
 
 export class ParticipantRegisterDto {
+  @IsOptional()
+  @IsArray()
+  @ArrayNotEmpty()
+  @ArrayMaxSize(1, { message: 'Mỗi tài khoản chỉ được chọn một loại' })
+  @ArrayUnique()
+  @IsEnum(SportDataAccountType, { each: true })
+  accountTypes?: SportDataAccountType[];
+  @IsIn(['CCCD', 'PASSPORT'])
+  identityType: 'CCCD' | 'PASSPORT';
+
+  @IsString()
+  @MinLength(1)
+  @MaxLength(50)
+  documentNumber: string;
+
   @IsEmail()
   email: string;
 
@@ -75,6 +94,15 @@ export class ParticipantLoginDto {
   accountType?: SportDataAccountType;
 }
 
+export class UpdateAccountTypesDto {
+  @IsArray()
+  @ArrayNotEmpty()
+  @ArrayMaxSize(1, { message: 'Mỗi tài khoản chỉ được chọn một loại' })
+  @ArrayUnique()
+  @IsEnum(SportDataAccountType, { each: true })
+  accountTypes: SportDataAccountType[];
+}
+
 export class ParticipantForgotPasswordDto {
   @IsEmail()
   @MaxLength(254)
@@ -91,30 +119,6 @@ export class ParticipantResetPasswordDto {
   @MinLength(8)
   @MaxLength(128)
   password: string;
-}
-
-export class FederationAccountRegisterDto {
-  @IsEmail()
-  email: string;
-
-  @IsString()
-  @MinLength(8)
-  password: string;
-
-  @IsString()
-  @MinLength(2)
-  displayName: string;
-
-  @IsString()
-  @MinLength(8)
-  phone: string;
-
-  @IsString()
-  federationId: string;
-
-  @IsString()
-  @MinLength(2)
-  representativePosition: string;
 }
 
 export class UpdateParticipantProfileDto {

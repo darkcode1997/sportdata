@@ -1,4 +1,5 @@
 import axios from 'axios';
+import type { SportDataAccountType } from './sportdata-account-types';
 
 const TOKEN_KEY = 'participant_token';
 const ACCOUNT_KEY = 'participant_account';
@@ -29,7 +30,8 @@ export type SportDataAccount = {
   id: string;
   email: string;
   displayName: string;
-  accountType?: 'ATHLETE' | 'FEDERATION';
+  accountType?: SportDataAccountType;
+  accountTypes?: SportDataAccountType[];
   verificationStatus?: 'PENDING' | 'VERIFIED' | 'REJECTED';
   federationId?: string | null;
 };
@@ -38,7 +40,14 @@ export function getParticipantAccount(): SportDataAccount | null {
   if (typeof window === 'undefined') return null;
   const value = localStorage.getItem(ACCOUNT_KEY);
   if (!value) return null;
-  try { return JSON.parse(value); } catch { return null; }
+  try {
+    const account = JSON.parse(value);
+    // Normalize sessions saved before the unified account migration.
+    if (account.accountType === 'FEDERATION') account.accountType = 'TEAM_LEADER';
+    account.accountType ||= account.accountTypes?.[0] || 'ATHLETE';
+    account.accountTypes = [account.accountType];
+    return account;
+  } catch { return null; }
 }
 
 export function setParticipantSession(token: string, account: unknown) {

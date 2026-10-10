@@ -17,7 +17,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { AnyFilesInterceptor, FileInterceptor } from '@nestjs/platform-express';
-import { AthleteMediaType, SportDataAccountType } from '@prisma/client';
+import { AthleteMediaType } from '@prisma/client';
 import type { Request, Response } from 'express';
 import { ParticipantsService } from './participants.service';
 import { ParticipantAuthGuard } from './participant-auth.guard';
@@ -29,7 +29,7 @@ import {
   AdminCreateRegistrationDto,
   ConfirmIdentityOcrDto,
   DownloadSubmissionTicketsDto,
-  FederationAccountRegisterDto,
+  UpdateAccountTypesDto,
   ParticipantLoginDto,
   ParticipantForgotPasswordDto,
   ParticipantResetPasswordDto,
@@ -42,6 +42,7 @@ import {
   UpdateAccountVerificationDto,
 } from './dto/participant.dto';
 import { TicketPdfService } from './ticket-pdf.service';
+import { EventParticipationsService } from './event-participations.service';
 import { CheckAthleteIdentityDto } from './dto/check-athlete-identity.dto';
 import { LookupAthleteDto } from './dto/lookup-athlete.dto';
 
@@ -52,16 +53,12 @@ export class ParticipantsController {
   constructor(
     private readonly service: ParticipantsService,
     private readonly ticketPdf: TicketPdfService,
+    private readonly eventParticipations: EventParticipationsService,
   ) {}
 
   @Post('register')
   register(@Body() dto: ParticipantRegisterDto) {
     return this.service.register(dto);
-  }
-
-  @Post('register/federation')
-  registerFederation(@Body() dto: FederationAccountRegisterDto) {
-    return this.service.registerFederation(dto);
   }
 
   @Post('login')
@@ -108,7 +105,7 @@ export class ParticipantsController {
     return this.service.lookupAthlete(dto);
   }
 
-  @Post('federation/registrations')
+  @Post('team/registrations')
   @UseGuards(ParticipantAuthGuard)
   @UseInterceptors(AnyFilesInterceptor({ limits: { fileSize: 8 * 1024 * 1024, files: 120 } }))
   createFederationRegistrations(
@@ -116,7 +113,7 @@ export class ParticipantsController {
     @Body() body: Record<string, unknown>,
     @UploadedFiles() files: Express.Multer.File[] = [],
   ) {
-    return this.service.createGuestRegistrations(this.registrationPayload(body), files, request.participant.id, SportDataAccountType.FEDERATION);
+    return this.service.createGuestRegistrations(this.registrationPayload(body), files, request.participant.id, true);
   }
 
   @Post('assisted-registrations')
@@ -127,17 +124,17 @@ export class ParticipantsController {
     @Body() body: Record<string, unknown>,
     @UploadedFiles() files: Express.Multer.File[] = [],
   ) {
-    return this.service.createGuestRegistrations(this.registrationPayload(body), files, request.participant.id, SportDataAccountType.ATHLETE);
+    return this.service.createGuestRegistrations(this.registrationPayload(body), files, request.participant.id);
   }
 
   private registrationPayload(body: Record<string, unknown>) {
     return typeof body?.payload === 'string' ? body.payload : JSON.stringify(body || {});
   }
 
-  @Get('federation/me')
+  @Get('team/me')
   @UseGuards(ParticipantAuthGuard)
   federationMe(@Req() request: ParticipantRequest) {
-    return this.service.getFederationProfile(request.participant.id);
+    return this.service.getTeamProfile(request.participant.id);
   }
 
   @Post('ocr/preview')
@@ -215,12 +212,15 @@ export class ParticipantsController {
 
   @Get('tickets/:ticketCode')
   ticket(@Param('ticketCode') ticketCode: string) {
+    if (ticketCode.trim().toUpperCase().startsWith('SDP-')) return this.eventParticipations.getTicket(ticketCode);
     return this.service.getTicket(ticketCode);
   }
 
   @Get('tickets/:ticketCode/pdf')
   async ticketPdfFile(@Param('ticketCode') ticketCode: string, @Res() response: Response) {
-    const ticket = await this.service.getIssuedTicket(ticketCode, true);
+    const ticket = ticketCode.trim().toUpperCase().startsWith('SDP-')
+      ? await this.eventParticipations.getIssuedTicket(ticketCode, true)
+      : await this.service.getIssuedTicket(ticketCode, true);
     const pdf = await this.ticketPdf.generate([ticket]);
     response.setHeader('Content-Type', 'application/pdf');
     response.setHeader('Cache-Control', 'private, no-store');
@@ -269,18 +269,25 @@ export class ParticipantsController {
     );
   }
 
-  @Get('admin/federation-accounts')
+  @Get('admin/accounts')
   @UseGuards(JwtAuthGuard)
   @Roles(UserRole.ADMIN, UserRole.GAMES_ADMIN, UserRole.READ_ONLY)
   federationAccounts() {
-    return this.service.listFederationAccounts();
+    return this.service.listAccounts();
   }
 
-  @Patch('admin/federation-accounts/:id/status')
+  @Patch('admin/accounts/:id/status')
   @UseGuards(JwtAuthGuard)
   @Roles(UserRole.ADMIN, UserRole.GAMES_ADMIN)
-  updateFederationAccountStatus(@Param('id') id: string, @Body() dto: UpdateAccountVerificationDto) {
-    return this.service.updateFederationAccountStatus(id, dto.status);
+  updateAccountStatus(@Param('id') id: string, @Body() dto: UpdateAccountVerificationDto) {
+    return this.service.updateAccountStatus(id, dto.status);
+  }
+
+  @Patch('admin/accounts/:id/types')
+  @UseGuards(JwtAuthGuard)
+  @Roles(UserRole.ADMIN, UserRole.GAMES_ADMIN)
+  updateAccountTypes(@Param('id') id: string, @Body() dto: UpdateAccountTypesDto) {
+    return this.service.updateAccountTypes(id, dto.accountTypes);
   }
 
   @Patch('admin/registrations/:id/category')

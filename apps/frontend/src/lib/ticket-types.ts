@@ -14,6 +14,8 @@ export type TicketStatistics = {
 
 export type ParticipationTicket = {
   ticketCode: string;
+  role?: string;
+  roleLabel?: string;
   status: TicketStatus | string;
   paymentStatus?: string;
   feeAmount?: number;

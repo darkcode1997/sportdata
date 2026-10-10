@@ -28,7 +28,7 @@ export function PublicShell({ children }: { children: React.ReactNode }) {
   const [participant, setParticipant] = useState<ReturnType<typeof getParticipantAccount>>(null);
   const isLight = colorMode === 'light';
   const publicTheme = useMemo(() => createSportdataTheme(colorMode), [colorMode]);
-  const accountHref = participant?.accountType === 'FEDERATION' ? '/federation-account' : '/account';
+  const accountHref = '/account';
   const selectedKey = navigation.find((item) =>
     item.href === '/' ? pathname === '/' : pathname.startsWith(item.href),
   )?.href || '/';

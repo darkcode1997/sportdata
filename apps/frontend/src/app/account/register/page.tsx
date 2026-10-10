@@ -11,14 +11,19 @@ import { useSportDataToast } from '@/hooks/useSportDataToast';
 import { participantApi, participantError, setParticipantSession } from '@/lib/participant-auth';
 import { vietnamCountryId } from '@/lib/countries';
 import { capitalizeRegistrationName } from '@/lib/registration-names';
+import { sportDataAccountTypeOptions } from '@/lib/sportdata-account-types';
 
 type Country = { id: string; code: string; name: string };
+type Federation = { id: string; name: string; countryId: string };
 export default function ParticipantRegisterPage() {
   const router = useRouter();
   const toast = useSportDataToast();
   const [form] = Form.useForm();
+  const identityType = Form.useWatch('identityType', form);
+  const countryId = Form.useWatch('countryId', form);
   const [loading, setLoading] = useState(false);
   const { data: countries = [] } = useSWR<Country[]>('/countries', fetcher);
+  const { data: federations = [] } = useSWR<Federation[]>('/federations', fetcher);
 
   useEffect(() => {
     const defaultCountryId = vietnamCountryId(countries);
@@ -30,8 +35,10 @@ export default function ParticipantRegisterPage() {
   const submit = async (values: any) => {
     setLoading(true);
     try {
+      const { accountType, ...details } = values;
       const payload = {
-        ...values,
+        ...details,
+        accountTypes: [accountType],
         displayName: capitalizeRegistrationName(values.displayName),
         birthDate: values.birthDate.format('YYYY-MM-DD'),
       };
@@ -51,8 +58,32 @@ export default function ParticipantRegisterPage() {
       <div className="w-full max-w-5xl">
       <Card className="w-full" title="Đăng ký tài khoản SportData">
         <p className="mb-6 text-sm text-slate-400">Tài khoản cá nhân dùng chung cho mọi sự kiện và bộ môn trên nền tảng.</p>
-        <Form form={form} layout="vertical" requiredMark={false} onFinish={submit}>
+        <Form form={form} layout="vertical" requiredMark={false} initialValues={{ identityType: 'CCCD', accountType: 'ATHLETE' }} onFinish={submit}>
           <Row gutter={16}>
+            <Col xs={24}>
+              <Form.Item name="accountType" label="Loại tài khoản" rules={[{ required: true, message: 'Chọn một loại tài khoản' }]} extra="Mỗi tài khoản chỉ được chọn một loại.">
+                <Select size="large" options={[...sportDataAccountTypeOptions]} />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item name="identityType" label="Loại giấy tờ" rules={[{ required: true }]}>
+                <Select size="large" options={[{ value: 'CCCD', label: 'CCCD' }, { value: 'PASSPORT', label: 'Passport (Hộ chiếu)' }]} />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item name="documentNumber" label={identityType === 'PASSPORT' ? 'Số Passport' : 'Số CCCD'} dependencies={['identityType']} rules={[
+                { required: true, whitespace: true, message: 'Vui lòng nhập số giấy tờ' },
+                {
+                  validator: (_, value) => {
+                    const number = (value || '').toUpperCase().replace(/[\s.-]/g, '');
+                    const valid = identityType === 'PASSPORT' ? /^[A-Z0-9]{5,20}$/.test(number) : /^\d{12}$/.test(number);
+                    return !value || valid ? Promise.resolve() : Promise.reject(new Error(identityType === 'PASSPORT' ? 'Số Passport gồm 5–20 ký tự chữ hoặc số' : 'Số CCCD gồm 12 chữ số'));
+                  },
+                },
+              ]}>
+                <Input size="large" maxLength={50} autoComplete="off" />
+              </Form.Item>
+            </Col>
             <Col xs={24} md={12}>
               <Form.Item name="displayName" label="Họ và tên theo giấy tờ" rules={[{ required: true, min: 2 }]}>
                 <Input size="large" autoComplete="name" autoCapitalize="words" onBlur={(event) => form.setFieldValue('displayName', capitalizeRegistrationName(event.target.value))} />
@@ -89,8 +120,14 @@ export default function ParticipantRegisterPage() {
                   showSearch
                   optionFilterProp="label"
                   size="large"
+                  onChange={() => form.setFieldValue('federationId', undefined)}
                   options={countries.map((item) => ({ value: item.id, label: `${item.code} · ${item.name}` }))}
                 />
+              </Form.Item>
+            </Col>
+            <Col xs={24}>
+              <Form.Item name="federationId" label="Đơn vị / CLB" extra="Trưởng đoàn cần được SportData duyệt để đăng ký đại diện đơn vị.">
+                <Select allowClear showSearch optionFilterProp="label" size="large" disabled={!countryId} placeholder="Để trống nếu không thuộc đơn vị" options={federations.filter((item) => item.countryId === countryId).map((item) => ({ value: item.id, label: item.name }))} />
               </Form.Item>
             </Col>
           </Row>

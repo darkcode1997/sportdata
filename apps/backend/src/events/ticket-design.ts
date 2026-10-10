@@ -22,6 +22,7 @@ export type TicketElement = {
 export type TicketDesign = { version: 1; elements: TicketElement[] };
 export type TicketContent = {
   ticketCode: string;
+  roleLabel?: string;
   status: string;
   paymentStatus?: string;
   isValid?: boolean;
@@ -83,9 +84,10 @@ export function ticketDesign(value: unknown): TicketDesign {
 
 export function ticketTextValue(element: TicketElement, ticket: TicketContent): string {
   const values: Record<TicketField, string> = {
-    CUSTOM: element.text || '',
+    CUSTOM: ticket.roleLabel && element.text?.trim().toUpperCase() === 'VẬN ĐỘNG VIÊN'
+      ? ticket.roleLabel.toUpperCase() : element.text || '',
     ATHLETE_NAME: ticket.athlete.fullName,
-    FEDERATION: ticket.athlete.federation?.name || 'Vận động viên tự do',
+    FEDERATION: ticket.athlete.federation?.name || (ticket.roleLabel ? 'Người tham gia cá nhân' : 'Vận động viên tự do'),
     COUNTRY: ticket.athlete.country?.name || '—',
     EVENT_NAME: ticket.event.name,
     CATEGORY: ticket.category.name,

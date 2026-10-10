@@ -213,7 +213,18 @@ enum RegistrationSubmissionType {
 
 enum SportDataAccountType {
   ATHLETE
-  FEDERATION
+  REFEREE
+  COACH
+  TEAM_LEADER
+  MEDICAL_STAFF
+}
+
+enum EventParticipationRole {
+  ATTENDEE
+  REFEREE
+  TEAM_LEADER
+  COACH
+  MEDICAL_STAFF
 }
 
 enum AccountVerificationStatus {
@@ -271,6 +282,7 @@ model Country {
 }
 
 model Federation {
+  eventParticipations EventParticipation[]
   id                  String               @id @default(cuid())
   code                String?
   name                String
@@ -337,12 +349,22 @@ model SystemSetting {
 }
 
 model ParticipantAccount {
+  eventParticipations    EventParticipation[]
   id                     String                    @id @default(cuid())
   email                  String                    @unique
   password               String
   displayName            String
   phone                  String?
+  gender                 Gender?
+  birthDate              DateTime?
+  countryId              String?
+  weight                 Float?
+  height                 Float?
+  identityType           String?
+  documentHash           String?                   @unique
+  documentEncrypted      String?
   accountType            SportDataAccountType      @default(ATHLETE)
+  accountTypes           SportDataAccountType[]    @default([ATHLETE])
   verificationStatus     AccountVerificationStatus @default(VERIFIED)
   representativePosition String?
   federationId           String?
@@ -497,6 +519,7 @@ enum EventAgeLimitMode {
 }
 
 model Event {
+  eventParticipations EventParticipation[]
   drawPreconfigurations DrawPreconfiguration[]
   id                       String                   @id @default(cuid())
   name                     String
@@ -681,6 +704,31 @@ model RegistrationSubmission {
   @@index([eventId, createdAt])
   @@index([contactEmail, createdAt])
   @@index([accountId])
+}
+
+model EventParticipation {
+  id            String                 @id @default(cuid())
+  eventId       String
+  event         Event                  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  accountId     String?
+  account       ParticipantAccount?     @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  role          EventParticipationRole
+  contactName   String
+  contactEmail  String
+  contactPhone  String?
+  federationId  String?
+  federation    Federation?            @relation(fields: [federationId], references: [id], onDelete: Restrict)
+  referenceCode String                 @unique
+  status        RegistrationStatus     @default(SUBMITTED)
+  statusReason  String?
+  statusChangedAt DateTime?
+  statusChangedBy String?
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
+
+  @@unique([eventId, contactEmail, role])
+  @@index([accountId, createdAt])
+  @@index([eventId, role, status])
 }
 
 model EventRegistration {

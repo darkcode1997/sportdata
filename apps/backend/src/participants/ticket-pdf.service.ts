@@ -6,6 +6,7 @@ import { POINTS_PER_MM, TICKET_WIDTH, TICKET_HEIGHT, ticketDesign, ticketTextSvg
 
 export type TicketPayload = {
   ticketCode: string;
+  roleLabel?: string;
   status: string;
   paymentStatus?: string;
   isValid?: boolean;
@@ -96,7 +97,7 @@ export class TicketPdfService {
           ? `Bộ thẻ ${batch.referenceCode}`
           : `Thẻ ${tickets[0]?.ticketCode || ""}`,
         author: "SportData Việt Nam",
-        subject: "Thẻ đeo vận động viên khổ A6",
+        subject: "Thẻ tham dự sự kiện khổ A6",
       },
     };
     const bytes = await pdfMake.createPdf(definition).getBuffer();

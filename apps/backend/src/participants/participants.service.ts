@@ -36,7 +36,6 @@ import {
   ConfirmIdentityOcrDto,
   AdminCreateRegistrationDto,
   CreatePublicRegistrationDto,
-  FederationAccountRegisterDto,
   ParticipantLoginDto,
   ParticipantForgotPasswordDto,
   ParticipantResetPasswordDto,
@@ -209,77 +208,55 @@ export class ParticipantsService {
   }
 
   async register(dto: ParticipantRegisterDto) {
+    if (dto.accountTypes && dto.accountTypes.length !== 1) {
+      throw new BadRequestException('Mỗi tài khoản chỉ được chọn một loại');
+    }
     const email = dto.email.trim().toLowerCase();
     if (await this.prisma.participantAccount.findUnique({ where: { email } })) {
       throw new ConflictException('Email này đã được đăng ký');
     }
     await this.validateAffiliation(dto.countryId, dto.federationId);
-    const name = this.splitName(dto.displayName);
+    const input = { ...dto, fullName: dto.displayName, birthDate: new Date(dto.birthDate) };
+    const identity = this.athleteIdentity.normalize(input);
+    if (!identity.documentHash) throw new BadRequestException('Vui lòng nhập số CCCD hoặc hộ chiếu.');
     const password = await bcrypt.hash(dto.password, 12);
     const account = await this.prisma.$transaction(async (transaction) => {
       await this.athleteIdentity.lock(transaction);
-      await this.athleteIdentity.assertNew(transaction, {
-        fullName: dto.displayName, birthDate: new Date(dto.birthDate), gender: dto.gender,
-        countryId: dto.countryId, federationId: dto.federationId, phone: dto.phone,
-      });
+      if (await transaction.participantAccount.findUnique({ where: { email } })) {
+        throw new ConflictException('Email này đã được đăng ký');
+      }
+      if (await transaction.participantAccount.findUnique({ where: { documentHash: identity.documentHash } })) {
+        throw new ConflictException('Giấy tờ này đã được liên kết với một tài khoản SportData.');
+      }
+      const matches = await this.athleteIdentity.findDocumentMatches(transaction, input);
+      if (matches.length > 1) throw new ConflictException('Có nhiều hồ sơ trùng giấy tờ. Vui lòng liên hệ ban tổ chức để kiểm tra.');
+      const athlete = matches[0];
+      if (athlete?.participantAccountId) throw new ConflictException('Hồ sơ VĐV này đã được liên kết với một tài khoản SportData.');
+      const normalizedName = (value: string) => value.normalize('NFC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('vi');
+      if (athlete && (normalizedName(athlete.fullName) !== normalizedName(dto.displayName)
+        || athlete.birthDate?.toISOString().slice(0, 10) !== input.birthDate.toISOString().slice(0, 10))) {
+        throw new ConflictException('Họ tên và ngày sinh không khớp hồ sơ theo giấy tờ. Vui lòng kiểm tra hoặc liên hệ ban tổ chức.');
+      }
       return transaction.participantAccount.create({
-      data: {
-        email,
-        password,
-        displayName: dto.displayName.trim(),
-        phone: dto.phone?.trim() || null,
-        accountType: SportDataAccountType.ATHLETE,
-        verificationStatus: AccountVerificationStatus.VERIFIED,
-        athlete: {
-          create: {
-            firstName: name.firstName,
-            lastName: name.lastName,
-            fullName: dto.displayName.trim(),
-            email,
-            phone: dto.phone?.trim() || null,
-            gender: dto.gender,
-            birthDate: new Date(dto.birthDate),
-            weight: dto.weight,
-            countryId: dto.countryId,
-            federationId: dto.federationId || null,
-          },
+        data: {
+          email, password,
+          displayName: athlete?.fullName || dto.displayName.trim(),
+          phone: athlete?.phone || dto.phone?.trim() || null,
+          gender: athlete?.gender || dto.gender, birthDate: athlete?.birthDate || input.birthDate,
+          countryId: athlete?.countryId || dto.countryId,
+          federationId: athlete?.federationId || dto.federationId || null,
+          weight: athlete?.weight ?? dto.weight,
+          height: athlete?.height,
+          identityType: dto.identityType, documentHash: identity.documentHash,
+          documentEncrypted: dto.identityType === 'CCCD' ? identity.cccdEncrypted : identity.passportEncrypted,
+          accountType: dto.accountTypes?.[0] || SportDataAccountType.ATHLETE,
+          accountTypes: dto.accountTypes || [SportDataAccountType.ATHLETE],
+          verificationStatus: dto.accountTypes?.includes(SportDataAccountType.TEAM_LEADER) && (athlete?.federationId || dto.federationId)
+            ? AccountVerificationStatus.PENDING : AccountVerificationStatus.VERIFIED,
+          ...(athlete ? { athlete: { connect: { id: athlete.id } } } : {}),
         },
-      },
-      select: { id: true, email: true, displayName: true, accountType: true, verificationStatus: true },
+        select: { id: true, email: true, displayName: true, accountType: true, accountTypes: true, federationId: true, verificationStatus: true },
       });
-    });
-    return { account, accessToken: this.sign(account.id, account.email) };
-  }
-
-  async registerFederation(dto: FederationAccountRegisterDto) {
-    const email = dto.email.trim().toLowerCase();
-    if (await this.prisma.participantAccount.findUnique({ where: { email } })) {
-      throw new ConflictException('Email này đã được đăng ký');
-    }
-    const federation = await this.prisma.federation.findUnique({
-      where: { id: dto.federationId },
-      select: { id: true, name: true },
-    });
-    if (!federation) throw new NotFoundException('Không tìm thấy liên đoàn/đơn vị');
-    const account = await this.prisma.participantAccount.create({
-      data: {
-        email,
-        password: await bcrypt.hash(dto.password, 12),
-        displayName: dto.displayName.trim(),
-        phone: dto.phone.trim(),
-        representativePosition: dto.representativePosition.trim(),
-        federationId: federation.id,
-        accountType: SportDataAccountType.FEDERATION,
-        verificationStatus: AccountVerificationStatus.PENDING,
-      },
-      select: {
-        id: true,
-        email: true,
-        displayName: true,
-        accountType: true,
-        verificationStatus: true,
-        federation: { select: { id: true, name: true } },
-      },
     });
     return { account, accessToken: this.sign(account.id, account.email) };
   }
@@ -292,10 +269,8 @@ export class ParticipantsService {
       throw new UnauthorizedException('Email hoặc mật khẩu không đúng');
     }
     if (!account.isActive) throw new UnauthorizedException('Tài khoản đã bị vô hiệu hóa');
-    if (dto.accountType && account.accountType !== dto.accountType) {
-      throw new UnauthorizedException(dto.accountType === SportDataAccountType.FEDERATION
-        ? 'Email này không phải tài khoản đại diện liên đoàn/CLB'
-        : 'Email này không phải tài khoản cá nhân/VĐV');
+    if (dto.accountType && !account.accountTypes.includes(dto.accountType)) {
+      throw new UnauthorizedException('Loại tài khoản không phù hợp. Vui lòng đăng nhập bằng Tài khoản SportData.');
     }
     return {
       account: {
@@ -303,6 +278,7 @@ export class ParticipantsService {
         email: account.email,
         displayName: account.displayName,
         accountType: account.accountType,
+        accountTypes: account.accountTypes,
         verificationStatus: account.verificationStatus,
         federationId: account.federationId,
       },
@@ -384,7 +360,7 @@ export class ParticipantsService {
     return { message: 'Mật khẩu đã được cập nhật. Bạn có thể đăng nhập ngay.' };
   }
 
-  async getFederationProfile(accountId: string) {
+  async getTeamProfile(accountId: string) {
     const account = await this.prisma.participantAccount.findUnique({
       where: { id: accountId },
       select: {
@@ -394,6 +370,7 @@ export class ParticipantsService {
         phone: true,
         representativePosition: true,
         accountType: true,
+        accountTypes: true,
         verificationStatus: true,
         createdAt: true,
         federation: {
@@ -413,20 +390,20 @@ export class ParticipantsService {
         },
       },
     });
-    if (!account || account.accountType !== SportDataAccountType.FEDERATION || !account.federation) {
+    if (!account || !account.accountTypes.includes(SportDataAccountType.TEAM_LEADER) || !account.federation) {
       throw new ForbiddenException('Tài khoản không có quyền đại diện liên đoàn/CLB');
     }
     return account;
   }
 
-  async listFederationAccounts() {
+  async listAccounts() {
     return this.prisma.participantAccount.findMany({
-      where: { accountType: SportDataAccountType.FEDERATION },
       select: {
         id: true,
         email: true,
         displayName: true,
         phone: true,
+        accountType: true, accountTypes: true,
         representativePosition: true,
         verificationStatus: true,
         isActive: true,
@@ -437,15 +414,33 @@ export class ParticipantsService {
     });
   }
 
-  async updateFederationAccountStatus(accountId: string, status: AccountVerificationStatus) {
+  async updateAccountStatus(accountId: string, status: AccountVerificationStatus) {
     const account = await this.prisma.participantAccount.findUnique({ where: { id: accountId } });
-    if (!account || account.accountType !== SportDataAccountType.FEDERATION) {
-      throw new NotFoundException('Không tìm thấy tài khoản liên đoàn/CLB');
+    if (!account) {
+      throw new NotFoundException('Không tìm thấy tài khoản SportData');
     }
     return this.prisma.participantAccount.update({
       where: { id: accountId },
       data: { verificationStatus: status },
       select: { id: true, email: true, displayName: true, verificationStatus: true, federationId: true },
+    });
+  }
+
+  async updateAccountTypes(accountId: string, accountTypes: SportDataAccountType[]) {
+    if (accountTypes.length !== 1) {
+      throw new BadRequestException('Mỗi tài khoản chỉ được chọn một loại');
+    }
+    const account = await this.prisma.participantAccount.findUnique({ where: { id: accountId } });
+    if (!account) throw new NotFoundException('Không tìm thấy tài khoản SportData');
+    return this.prisma.participantAccount.update({
+      where: { id: accountId },
+      data: {
+        accountTypes, accountType: accountTypes[0],
+        ...(accountTypes.includes(SportDataAccountType.TEAM_LEADER)
+          && !account.accountTypes.includes(SportDataAccountType.TEAM_LEADER) && account.federationId
+          ? { verificationStatus: AccountVerificationStatus.PENDING } : {}),
+      },
+      select: { id: true, accountTypes: true, accountType: true, verificationStatus: true },
     });
   }
 
@@ -457,8 +452,11 @@ export class ParticipantsService {
         email: true,
         displayName: true,
         phone: true,
+        gender: true, birthDate: true, countryId: true, federationId: true,
+        weight: true, height: true, identityType: true, documentHash: true,
         createdAt: true,
         accountType: true,
+        accountTypes: true,
         athlete: {
           include: {
             country: true,
@@ -469,7 +467,7 @@ export class ParticipantsService {
       },
     });
     if (!account) throw new NotFoundException('Không tìm thấy tài khoản SportData');
-    if (!account.athlete && account.accountType === SportDataAccountType.ATHLETE) {
+    if (!account.athlete && !account.documentHash && account.accountTypes.includes(SportDataAccountType.ATHLETE)) {
       const candidates = await this.prisma.athlete.findMany({
         where: {
           email: { equals: account.email, mode: 'insensitive' },
@@ -486,8 +484,27 @@ export class ParticipantsService {
         return this.getProfile(accountId);
       }
     }
-    if (!account.athlete) throw new NotFoundException('Tài khoản chưa được liên kết với hồ sơ vận động viên');
-    return account;
+    const { documentHash, ...publicAccount } = account;
+    if (account.athlete) return { ...publicAccount, hasAthleteProfile: true, athlete: account.athlete };
+    const country = account.countryId ? await this.prisma.country.findUniqueOrThrow({ where: { id: account.countryId } })
+      : { id: '', code: '', name: 'Chưa cập nhật' };
+    const federation = account.federationId ? await this.prisma.federation.findUnique({
+      where: { id: account.federationId }, include: { country: true },
+    }) : null;
+    // Compatibility projection of personal account data, never persisted as an Athlete.
+    const athlete = {
+      id: '', fullName: account.displayName, ...this.splitName(account.displayName),
+      email: account.email, phone: account.phone, gender: account.gender || Gender.MIXED,
+      birthDate: account.birthDate, countryId: account.countryId || country.id, federationId: account.federationId,
+      weight: account.weight, height: account.height, photoUrl: null, country, federation, media: [],
+    };
+    return { ...publicAccount, hasAthleteProfile: false, athlete };
+  }
+
+  private async getAthleteProfile(accountId: string) {
+    const profile = await this.getProfile(accountId);
+    if (!profile.hasAthleteProfile) throw new BadRequestException('Vui lòng đăng ký tham dự sự kiện để tạo hồ sơ VĐV.');
+    return profile;
   }
 
   async updateProfile(accountId: string, dto: UpdateParticipantProfileDto) {
@@ -497,7 +514,22 @@ export class ParticipantsService {
       ? account.athlete.federationId
       : dto.federationId || null;
     await this.validateAffiliation(countryId, federationId || undefined);
+    const unitChanged = dto.federationId !== undefined && federationId !== account.federationId;
+    const verificationChange = unitChanged && account.accountTypes.includes(SportDataAccountType.TEAM_LEADER)
+      ? { verificationStatus: AccountVerificationStatus.PENDING } : {};
     const displayName = dto.displayName?.trim() || account.displayName;
+    if (dto.countryId && dto.countryId !== account.athlete.countryId && account.identityType === 'PASSPORT') {
+      throw new BadRequestException('Không thể thay đổi quốc gia cấp hộ chiếu của tài khoản.');
+    }
+    if (!account.hasAthleteProfile) {
+      await this.prisma.participantAccount.update({ where: { id: accountId }, data: {
+        displayName, phone: dto.phone !== undefined ? dto.phone.trim() || null : account.phone,
+        countryId, federationId, gender: dto.gender, birthDate: dto.birthDate ? new Date(dto.birthDate) : undefined,
+        weight: dto.weight, height: dto.height,
+        ...verificationChange,
+      } });
+      return this.getProfile(accountId);
+    }
     const name = this.splitName(displayName);
     await this.prisma.$transaction(async (transaction) => {
       await this.athleteIdentity.lock(transaction);
@@ -512,6 +544,8 @@ export class ParticipantsService {
         data: {
           ...(dto.displayName ? { displayName } : {}),
           ...(dto.phone !== undefined ? { phone: dto.phone?.trim() || null } : {}),
+          countryId, federationId,
+          ...verificationChange,
         },
       });
       await transaction.athlete.update({
@@ -534,7 +568,7 @@ export class ParticipantsService {
 
   async upsertMedia(accountId: string, type: AthleteMediaType, file?: Express.Multer.File) {
     if (!file) throw new BadRequestException('Vui lòng chọn tệp cần tải lên');
-    const profile = await this.getProfile(accountId);
+    const profile = await this.getAthleteProfile(accountId);
     this.validateFile(type, file);
     const settings = await this.systemSettings.get();
     const autoVerify = type !== AthleteMediaType.AVATAR && !settings.values.identityOcrEnabled;
@@ -598,7 +632,7 @@ export class ParticipantsService {
 
   async confirmIdentityOcr(accountId: string, type: AthleteMediaType, dto: ConfirmIdentityOcrDto) {
     if (type === AthleteMediaType.AVATAR) throw new BadRequestException('Ảnh đại diện không có dữ liệu OCR');
-    const profile = await this.getProfile(accountId);
+    const profile = await this.getAthleteProfile(accountId);
     const media = await this.prisma.athleteMedia.findUnique({
       where: { athleteId_type: { athleteId: profile.athlete.id, type } },
     });
@@ -690,7 +724,7 @@ export class ParticipantsService {
   }
 
   async getOwnMedia(accountId: string, type: AthleteMediaType, variant?: ImageVariant) {
-    const profile = await this.getProfile(accountId);
+    const profile = await this.getAthleteProfile(accountId);
     return this.getMedia(profile.athlete.id, type, variant);
   }
 
@@ -753,7 +787,7 @@ export class ParticipantsService {
     payloadText: string,
     files: Express.Multer.File[],
     submittingAccountId?: string,
-    requiredAccountType?: SportDataAccountType,
+    requireTeamLeader = false,
   ) {
     let payload: GuestRegistrationPayload;
     try {
@@ -771,19 +805,15 @@ export class ParticipantsService {
     if (submittingAccountId && !submittingAccount) {
       throw new ForbiddenException('Tài khoản đăng ký không còn tồn tại');
     }
-    if (requiredAccountType && submittingAccount?.accountType !== requiredAccountType) {
-      throw new ForbiddenException(requiredAccountType === SportDataAccountType.FEDERATION
-        ? 'Chỉ tài khoản liên đoàn/CLB được đăng ký theo đoàn'
-        : 'Chỉ tài khoản cá nhân được đăng ký hộ vận động viên');
+    if (requireTeamLeader && !submittingAccount?.accountTypes.includes(SportDataAccountType.TEAM_LEADER)) {
+      throw new ForbiddenException('Chỉ Trưởng đoàn được đăng ký đại diện đơn vị.');
     }
-    const federationAccount = submittingAccount?.accountType === SportDataAccountType.FEDERATION
-      ? submittingAccount
-      : null;
+    const federationAccount = requireTeamLeader ? submittingAccount : null;
     if (federationAccount && !federationAccount.federation) {
-      throw new ForbiddenException('Tài khoản đơn vị chưa được gắn với liên đoàn/CLB');
+      throw new ForbiddenException('Tài khoản Trưởng đoàn chưa được gắn với liên đoàn/CLB');
     }
     if (federationAccount && federationAccount.verificationStatus !== AccountVerificationStatus.VERIFIED) {
-      throw new ForbiddenException('Tài khoản đơn vị phải được SportData duyệt trước khi gửi danh sách');
+      throw new ForbiddenException('Tài khoản Trưởng đoàn phải được SportData duyệt trước khi gửi danh sách');
     }
 
     const eventId = payload.eventId?.trim();
@@ -1057,6 +1087,18 @@ export class ParticipantsService {
             media: { create: media },
           },
         });
+        const documentHash = this.athleteIdentity.normalize(item.identityInput).documentHash;
+        if (documentHash && !createdAthlete.participantAccountId) {
+          const owner = await transaction.participantAccount.findUnique({
+            where: { documentHash },
+            select: { id: true, displayName: true, birthDate: true, athlete: { select: { id: true } } },
+          });
+          const normalizeName = (value: string) => value.normalize('NFC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('vi');
+          if (owner && !owner.athlete && normalizeName(owner.displayName) === normalizeName(createdAthlete.fullName)
+            && owner.birthDate?.toISOString().slice(0, 10) === createdAthlete.birthDate?.toISOString().slice(0, 10)) await transaction.athlete.update({
+            where: { id: createdAthlete.id }, data: { participantAccountId: owner.id },
+          });
+        }
         if (item.existingAthlete) {
           for (const document of media) {
             await transaction.athleteMedia.upsert({
@@ -1196,7 +1238,8 @@ export class ParticipantsService {
   }
 
   async createRegistration(accountId: string, dto: CreatePublicRegistrationDto) {
-    let profile = await this.getProfile(accountId);
+    let profile = await this.getAthleteProfile(accountId);
+    if (!profile.accountTypes.includes(SportDataAccountType.ATHLETE)) throw new ForbiddenException('Tài khoản chưa có loại VĐV.');
     const event = await this.prisma.event.findUnique({
       where: { id: dto.eventId },
       include: {
@@ -1291,7 +1334,7 @@ export class ParticipantsService {
 
   async listRegistrations(accountId: string) {
     return this.prisma.eventRegistration.findMany({
-      where: { accountId },
+      where: { OR: [{ accountId }, { athlete: { participantAccountId: accountId } }] },
       include: this.registrationInclude(),
       orderBy: { createdAt: 'desc' },
     });
@@ -1303,7 +1346,8 @@ export class ParticipantsService {
       where: { id: accountId },
       select: { athlete: { select: { id: true } } },
     });
-    if (!account?.athlete) throw new NotFoundException('Không tìm thấy hồ sơ vận động viên của tài khoản');
+    if (!account) throw new NotFoundException('Không tìm thấy tài khoản');
+    if (!account.athlete) return { registered: false, registration: null };
 
     let registration = await this.prisma.eventRegistration.findFirst({
       where: { eventId: eventId.trim(), athleteId: account.athlete.id },

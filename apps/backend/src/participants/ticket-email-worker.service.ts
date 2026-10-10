@@ -3,6 +3,7 @@ import { ParticipantsService } from './participants.service';
 import { TicketEmailQueueService } from './ticket-email-queue.service';
 import { TicketEmailService } from './ticket-email.service';
 import { TicketNotFoundException, TicketNotIssuedException } from './ticket-availability.exceptions';
+import { EventParticipationsService } from './event-participations.service';
 
 @Injectable()
 export class TicketEmailWorkerService implements OnApplicationBootstrap, OnModuleDestroy {
@@ -16,6 +17,7 @@ export class TicketEmailWorkerService implements OnApplicationBootstrap, OnModul
     private readonly queue: TicketEmailQueueService,
     private readonly participants: ParticipantsService,
     private readonly email: TicketEmailService,
+    private readonly eventParticipations: EventParticipationsService,
   ) {}
 
   onApplicationBootstrap() {
@@ -64,7 +66,9 @@ export class TicketEmailWorkerService implements OnApplicationBootstrap, OnModul
       // Prepare tickets in the background; HTTP handlers only enqueue the job.
       const batch = job.referenceCode
         ? await this.participants.getSubmissionTickets(job.referenceCode, job.to, true)
-        : { tickets: [await this.participants.getIssuedTicket(job.ticketCode!, true)], meta: undefined };
+        : { tickets: [job.ticketCode?.startsWith('SDP-')
+          ? await this.eventParticipations.getIssuedTicket(job.ticketCode, true)
+          : await this.participants.getIssuedTicket(job.ticketCode!, true)], meta: undefined };
       const sent = await this.email.send(job.to, batch.tickets, batch.meta);
       await this.queue.finish(job, sent);
     } catch (error) {

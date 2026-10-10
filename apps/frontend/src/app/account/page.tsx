@@ -18,11 +18,17 @@ import { IdentityOcrReviewModal, type IdentityOcrFields, type IdentityOcrResult 
 import { useSportDataToast } from '@/hooks/useSportDataToast';
 import { fetcher } from '@/lib/api';
 import { clearParticipantSession, getParticipantAccount, getParticipantToken, participantApi, participantError, setParticipantSession } from '@/lib/participant-auth';
+import { accountTypeLabel, type SportDataAccountType } from '@/lib/sportdata-account-types';
+import { TeamAccountPanel } from '@/components/TeamAccountPanel';
+import { MyEventParticipations } from '@/components/MyEventParticipations';
 import type { ParticipationTicket, TicketStatistics } from '@/lib/ticket-types';
 
 type MediaType = 'AVATAR' | 'CCCD_FRONT' | 'CCCD_BACK' | 'PASSPORT';
 type UploadRequestOption = Parameters<NonNullable<ComponentProps<typeof Upload>['customRequest']>>[0];
 type Profile = {
+  hasAthleteProfile?: boolean;
+  accountTypes: SportDataAccountType[];
+  federationId?: string | null;
   id: string;
   email: string;
   displayName: string;
@@ -172,20 +178,25 @@ export default function ParticipantAccountPage() {
   const [confirmingOcr, setConfirmingOcr] = useState(false);
   const [editingProfile, setEditingProfile] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
-  const [resolvingLegacyAccount, setResolvingLegacyAccount] = useState(false);
-  const [profileNotFound, setProfileNotFound] = useState(false);
   const sessionAccount = getParticipantAccount();
-  const isAthleteAccount = sessionAccount?.accountType !== 'FEDERATION';
   const { data: profile, error, isLoading, mutate } = useSWR<Profile>(
-    getParticipantToken() && isAthleteAccount ? '/participant-auth/me' : null,
+    getParticipantToken() ? '/participant-auth/me' : null,
     authFetcher,
     { shouldRetryOnError: false },
   );
-  const { data: registrations = [], mutate: mutateRegistrations } = useSWR<Registration[]>(getParticipantToken() && isAthleteAccount ? '/participant-auth/registrations' : null, authFetcher);
+  const { data: registrations = [], mutate: mutateRegistrations } = useSWR<Registration[]>(getParticipantToken() ? '/participant-auth/registrations' : null, authFetcher);
   const { data: countries = [] } = useSWR<Country[]>('/countries', fetcher);
   const { data: federations = [] } = useSWR<Federation[]>('/federations', fetcher);
   const selectedCountryId = Form.useWatch('countryId', profileForm);
   const mediaItems = profile?.athlete.media ?? emptyMediaItems;
+
+  useEffect(() => {
+    const token = getParticipantToken();
+    const account = getParticipantAccount();
+    if (profile && token && account && JSON.stringify(account.accountTypes) !== JSON.stringify(profile.accountTypes)) {
+      setParticipantSession(token, { ...account, accountTypes: profile.accountTypes, federationId: profile.federationId });
+    }
+  }, [profile]);
   const uploadedTypes = useMemo(() => new Set(mediaItems.map((item) => item.type)), [mediaItems]);
   const mediaByType = useMemo(() => new Map(mediaItems.map((item) => [item.type, item])), [mediaItems]);
   const cccdComplete = uploadedTypes.has('CCCD_FRONT') && uploadedTypes.has('CCCD_BACK');
@@ -198,7 +209,6 @@ export default function ParticipantAccountPage() {
 
   useEffect(() => {
     if (!getParticipantToken()) router.replace('/account/login');
-    else if (sessionAccount?.accountType === 'FEDERATION') router.replace('/federation-account');
   }, [router, sessionAccount?.accountType]);
 
   useEffect(() => {
@@ -207,40 +217,6 @@ export default function ParticipantAccountPage() {
       router.replace('/account/login');
     }
   }, [error, router]);
-
-  useEffect(() => {
-    if (error?.response?.status !== 404 || profileNotFound) return;
-    let cancelled = false;
-    setResolvingLegacyAccount(true);
-    participantApi.get('/participant-auth/federation/me')
-      .then(({ data }) => {
-        if (cancelled) return;
-        const token = getParticipantToken();
-        const account = getParticipantAccount();
-        if (token && account) {
-          setParticipantSession(token, {
-            ...account,
-            accountType: 'FEDERATION',
-            federationId: data.federation?.id || account.federationId,
-          });
-        }
-        router.replace('/federation-account');
-      })
-      .catch((requestError) => {
-        if (cancelled) return;
-        setResolvingLegacyAccount(false);
-        if (requestError?.response?.status === 401) {
-          clearParticipantSession();
-          router.replace('/account/login');
-          return;
-        }
-        setProfileNotFound(true);
-      })
-      .finally(() => {
-        if (!cancelled) setResolvingLegacyAccount(false);
-      });
-    return () => { cancelled = true; };
-  }, [error?.response?.status, profileNotFound, router]);
 
   useEffect(() => {
     let cancelled = false;
@@ -345,7 +321,7 @@ export default function ParticipantAccountPage() {
     }
   };
 
-  if (isLoading || resolvingLegacyAccount || (!profile && !error)) {
+  if (isLoading || (!profile && !error)) {
     return <main className="grid min-h-[60vh] place-items-center"><Spin size="large" /></main>;
   }
 
@@ -389,9 +365,13 @@ export default function ParticipantAccountPage() {
               <p className="text-sm font-semibold uppercase tracking-wider text-sky-400">Tài khoản SportData</p>
               <h1 className="text-3xl font-black text-white">{profile.displayName}</h1>
               <p className="text-slate-400">{profile.email}</p>
+              <div className="mt-2 flex flex-wrap gap-1">{profile.accountTypes.map((type) => <Tag key={type} color="blue">{accountTypeLabel(type)}</Tag>)}</div>
             </div>
           </div>
         </header>
+
+        {profile.accountTypes.includes('TEAM_LEADER') && profile.federationId && <TeamAccountPanel />}
+        <MyEventParticipations />
 
         <Segmented
           className="mb-6"
@@ -425,7 +405,12 @@ export default function ParticipantAccountPage() {
                 {profile.athlete.height != null && <div><dt className="text-slate-500">Chiều cao</dt><dd className="font-semibold text-slate-100">{profile.athlete.height} cm</dd></div>}
               </dl>
             </Card>
-            <Card
+            {profile.hasAthleteProfile === false ? (
+              <Card title="Thông tin Tài khoản SportData">
+                <p className="text-slate-400">Thông tin cá nhân và các loại tài khoản đã được lưu. Bạn có thể chọn sự kiện để gửi hồ sơ đăng ký VĐV cho bản thân hoặc cho người khác.</p>
+                <Link href="/events"><Button className="mt-4" type="primary">Xem sự kiện và đăng ký</Button></Link>
+              </Card>
+            ) : <Card
               title="Ảnh và giấy tờ xác minh"
               extra={identityVerified
                 ? <Tag color="success">Đã xác thực</Tag>
@@ -499,7 +484,7 @@ export default function ParticipantAccountPage() {
                   );
                 })}
               </div>
-            </Card>
+            </Card>}
           </div>
         ) : registrations.length ? (
           <div className="mx-auto max-w-4xl space-y-7">
