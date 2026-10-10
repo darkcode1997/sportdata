@@ -69,6 +69,11 @@ const roles = ['ATTENDEE', 'ATHLETE', 'REFEREE', 'TEAM_LEADER', 'COACH', 'MEDICA
   await page.getByText('Đăng ký bằng hồ sơ VĐV của tôi', { exact: true }).waitFor();
   await page.getByText('Nhập hồ sơ VĐV / danh sách đội', { exact: true }).click();
   await page.getByText('Hình thức đăng ký', { exact: true }).waitFor();
+  await page.goto(`${base}/events/qa-registration`);
+  await page.locator('.schedule-registration-card .registration-role-choice').first().waitFor();
+  assert.equal(await page.locator('.schedule-registration-card .registration-role-choice').count(), 6);
+  assert.equal(await page.getByText('Đăng ký cho chính tôi · Hạng đấu / nội dung', { exact: true }).count(), 0);
+  await page.locator('.schedule-registration-card').screenshot({ path: 'tmp/ui-qa/event-role-card.png' });
   assert.equal(errors.length, 0, JSON.stringify(errors));
   console.log('PASS: six roles, changing role, original athlete and legacy group form, self athlete profile, responsive light/dark layouts and no runtime errors (mock API, no registrations submitted).');
   await browser.close();
