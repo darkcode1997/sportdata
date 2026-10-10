@@ -129,6 +129,10 @@ export function AthleteForm({ athleteId, initialData, returnTo = '/cms/athletes'
     athleteId ? `/athletes/${athleteId}/documents` : null,
     fetcher,
   );
+  const { data: identityDetails, error: identityError, isLoading: identityLoading, mutate: mutateIdentity } = useSWR<{ cccd: string | null }>(
+    athleteId ? `/athletes/${athleteId}/identity-details` : null,
+    fetcher,
+  );
 
   const {
     control,
@@ -305,6 +309,7 @@ export function AthleteForm({ athleteId, initialData, returnTo = '/cms/athletes'
     try {
       await sendDocument(athleteId, type, file);
       await mutateDocuments();
+      await mutateIdentity();
       toast.success(`Đã tải lên ${documentLabel(type)}.`);
     } catch (error: any) {
       const message = error.response?.data?.message || error.message || 'Không thể tải giấy tờ';
@@ -349,6 +354,7 @@ export function AthleteForm({ athleteId, initialData, returnTo = '/cms/athletes'
     try {
       await api.delete(`/athletes/${athleteId}/documents/${type}`);
       await mutateDocuments();
+      await mutateIdentity();
       toast.success(`Đã xóa ${documentLabel(type)}.`);
     } catch (error: any) {
       const message = error.response?.data?.message || error.message || 'Không thể xóa giấy tờ';
@@ -379,6 +385,22 @@ export function AthleteForm({ athleteId, initialData, returnTo = '/cms/athletes'
           <ControlledField name="phone" control={control} label="Số điện thoại" error={errors.phone?.message}>
             {(field) => <Input {...field} size="large" type="tel" placeholder="0901234567" />}
           </ControlledField>
+          <Col xs={24} md={12}>
+            <Form.Item
+              label="Số CCCD"
+              validateStatus={identityError ? 'error' : undefined}
+              help={identityError ? 'Không thể tải số CCCD. Vui lòng thử lại.' : undefined}
+            >
+              <Input
+                size="large"
+                readOnly
+                aria-label="Số CCCD"
+                value={identityDetails?.cccd || ''}
+                placeholder={identityLoading ? 'Đang tải...' : 'Chưa có số CCCD'}
+                suffix={identityError ? <Button size="small" type="link" onClick={() => mutateIdentity()}>Thử lại</Button> : undefined}
+              />
+            </Form.Item>
+          </Col>
           <ControlledField name="gender" control={control} label="Giới tính" error={errors.gender?.message}>
             {(field) => <Select size="large" className="w-full" value={field.value} onChange={field.onChange} options={[{ value: 'MALE', label: 'Nam' }, { value: 'FEMALE', label: 'Nữ' }, { value: 'MIXED', label: 'Hỗn hợp' }]} />}
           </ControlledField>

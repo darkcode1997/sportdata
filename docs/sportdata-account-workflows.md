@@ -17,7 +17,7 @@ Một tài khoản cá nhân đăng nhập trên trang người dùng. Một ng�
 - Vai trò: USER, ATHLETE, COACH, REFEREE, DELEGATION_LEADER, MEDICAL.
 - Vai trò tự khai chỉ là hồ sơ đăng ký. Quyền làm việc phát sinh sau khi xác minh hoặc phân công.
 - Phân công gồm tài khoản, vai trò, sự kiện, đơn vị/đoàn, phạm vi trận/khu vực nếu cần, trạng thái và người duyệt.
-- Liên đoàn/CLB là đơn vị; quyền đại diện quản lý được cấp cho người cụ thể. Cần quyết định phương án chuyển các tài khoản FEDERATION hiện có, không tự xóa hoặc đổi quyền.
+- Đã thống nhất: Liên đoàn/CLB là đơn vị; cấp quyền quản lý cho tài khoản cá nhân HLV/trưởng đoàn. Các tài khoản FEDERATION hiện có cần được chuyển sau khi xác minh người đại diện, không tự xóa hoặc cấp quyền hàng loạt.
 - Tài khoản CMS được quản lý riêng. Các vai trò công khai không được tạo tài khoản CMS hay dùng token công khai gọi API CMS.
 - Event Manager được bỏ khỏi trang đăng nhập công khai. GAMES_ADMIN vẫn là vai trò CMS hiện có, không đồng nghĩa xóa nhân sự hay dữ liệu vận hành.
 
@@ -92,7 +92,19 @@ Kiểm chứng cần có: mọi loại token người tham gia bị từ chối 
 ## Những quyết định còn cần chốt
 
 - Tự đổi trước duyệt hay mọi thay đổi đều phải BTC duyệt?
-- Giữ tài khoản FEDERATION riêng hay chuyển sang người đại diện có phân quyền?
+- Cách xác minh và chuyển từng tài khoản FEDERATION cũ sang tài khoản người đại diện có phân quyền (mô hình đơn vị đã được thống nhất).
 - Đăng ký do đoàn nộp: VĐV có thể tự đổi hay cần trưởng đoàn xác nhận?
 - Phí khi đổi hạng: giữ nguyên, thu thêm/hoàn, hay chỉ hỗ trợ các hạng cùng phí ở giai đoạn đầu?
 - Ai xác minh chuyên môn HLV/trọng tài/y tế, ai duyệt phân công và kết quả?
+
+## Đối chiếu thực tế và điều chỉnh đề xuất
+
+Đối chiếu ngày 10/10/2026, các ví dụ sau áp dụng cho Jiu-Jitsu; không coi là điều lệ chung cho tất cả môn.
+
+- [IBJJF Help Desk](https://help.ibjjf.com/championship/): VĐV chỉnh đăng ký trong tài khoản đến Athlete Correction Deadline; sau đó HLV có cửa sổ chỉnh riêng. Ngày kiểm tra danh sách không nhận yêu cầu mới thông thường, chỉ xử lý sửa sai theo quy định.
+- [IBJJF quyền đại diện](https://ibjjf.com/academy-registration-informations): đại diện được ủy quyền có thể sửa đội/hạng trong Professor Correction Period. Thời gian này thường hai ngày nhưng phụ thuộc từng giải.
+- [AJP hướng dẫn đổi hạng](https://support.ajptour.com/article/25-how-to-change-weight-classes-or-cancel): VĐV sửa đăng ký trực tiếp trong tài khoản trước hạn ghi trên trang sự kiện.
+
+Từ các ví dụ này, đề xuất điều chỉnh: tách trạng thái duyệt hồ sơ khỏi trạng thái khóa danh sách. Không mặc định yêu cầu BTC duyệt mọi thay đổi chỉ vì hồ sơ đã CONFIRMED hoặc đã thanh toán. Với giải mở/cá nhân, có thể cho tự đổi cả hồ sơ đã xác nhận đến hạn đổi, nếu hạng hợp lệ, không vướng phí/khóa chuyên môn/bốc thăm. Với giải theo đoàn, VĐV gửi đề nghị và HLV/trưởng đoàn có quyền xác nhận thay đổi trong phạm vi được giao. Sau hạn tự đổi là cửa sổ đại diện/BTC xử lý; sau hạn chốt thì khóa thao tác thông thường.
+
+Các bước 4–5 của luồng đề xuất ban đầu là phương án thận trọng; điều chỉnh theo cấu hình loại giải và các mốc hạn ở trên trước khi triển khai. Hạn tự đổi, hạn đại diện xử lý và hạn khóa danh sách do BTC thiết lập theo điều lệ, không hardcode số ngày. Trường hợp hạng chỉ có một VĐV cần luồng riêng: BTC đưa lựa chọn hạng hợp lệ/rút theo chính sách; không tự chuyển hạng không có sự xác nhận.
